@@ -79,55 +79,66 @@ Then, each road could be a specific locked constraint set, like when one saves t
 ## **CONCEPT SPECIFICATIONS AND ESSENTIAL REACTIONS**
 ### **CONCEPTS**
 
-1. **COURSE_OFFERING** 
+*Conventions (new):* **Subject** is the generic type for a course/subject in all concepts. Semesters are numbered along the student's timeline: semester 1 is the first Fall at MIT, so odd numbers are Fall and even numbers are Spring. Semester 0 holds credit the student arrives with (e.g. AP credit, transfer credit, etc.). A **plan** is a list of sets of subjects, one per semester, where the k-th set (counting from 0) is semester k. The past is not a separate input: subjects the student has already taken are **pinned** to the semester they were taken in, and those semesters are **locked** (see CONSTRAIN), so a plan always describes the whole timeline and the search only ever fills in what comes after the locked semesters. A **road** holds constraints; a **plan** is one possible answer that satisfies a road.
+
+1. **COURSE_OFFERING** [Subject]
 
     - **Purpose:** Store information about MIT subjects, including when subjects are offered and what pre-requisites/co-requisites they have, as well as any other information that could be useful when constructing a plan.
 
     - **Principle:** A course offering can be loaded from the [MIT Subject Listing](https://student.mit.edu/catalog/index.cgi) extracting key properties, such as its pre-requisites and the semesters in which it is offered. Ratings associated with each class and lecturer should also be extracted from MIT's [Subject Evaluation Reports](https://eduapps.mit.edu/ose-rpt/?Search+Online+Reports=Search+Subject+Evaluation+Reports) site.
 
     - **State:**
-        * *courses*: a set of courses with
+        * *courses*: a set of Subjects with
             * a name String
             * a course Id String
             * a description String
             * a lecturer String
-            * semesters offered: a set of Strings
+            * semesters offered: a set of Strings (each "Fall" or "Spring")
+            * technical: a Boolean (true for technical subjects, false for e.g. HASS)
 
-        * *prerequisites*: mapping from a course to its set of prerequisite courses (NOT recursive, if a prereq has a prereq, only list the direct pre-reqs)
+        * *prerequisites*: mapping from a course to its set of prerequisite courses (NOT recursive, if a prereq has a prereq, only list the direct pre-reqs). The prerequisite graph is derived from this mapping.
 
         * *corequisites*: mapping from a course to its set of corequisite courses
 
-        * *ratings*: mapping from a course to its class and professor ratings
+        * *ratings*: partial mapping from a course to its class and professor ratings (courses without evaluation data have no entry)
 
     - **Actions:**
         * *load* (subjectListingURL: String, ratingsURL: String) : return (count: Number)
             * **where** subjectListingURL and ratingsURL can be retrieved and parsed
-            * **then** extract the courses, course IDs, descriptions, lecturers, semesters offered, prerequisites, corequisites, and ratings. Store them in courses, corequisites and ratings respectively, and construct the prerequisite graph by adding an edge from each direct prerequisite to its course. Return the number of courses stored.
+            * **then** extract the courses, course IDs, descriptions, lecturers, semesters offered, technical flags, prerequisites, corequisites, and ratings. Store them in courses, prerequisites, corequisites and ratings respectively. Return the number of courses stored.
 
-        * *prerequisites* (course: Course) : return (prerequisites: set of Course)
+        * *prerequisites* (course: Subject) : return (prerequisites: set of Subject)
             * **where** course is in courses
             * **then** return the set of direct prerequisites of course if course in prerequisites, else return empty set.
 
-        * *corequisites* (course: Course) : return (corequisites: set of Course)
+        * *corequisites* (course: Subject) : return (corequisites: set of Subject)
             * **where** course is in courses
             * **then** return the set of corequisites of course if course in corequisites, else return empty set.
 
-        * *isOffered* (course: Course, semester: String) : return (offered: Boolean)
+        * *isOffered* (course: Subject, semester: String) : return (offered: Boolean)
             * **where** course is in courses
-            * **then** return whether course is offered in semester.
+            * **then** return whether course is offered in semester ("Fall" or "Spring").
 
-        * *ratings* (course: Course) : return (classRating: Number, professorRating: Number)
-            * **where** course is in courses and in ratings
-            * **then** return the class and professor ratings associated with course.
+        * *isTechnical* (course: Subject) : return (technical: Boolean)
+            * **where** course is in courses
+            * **then** return the technical flag of course.
 
-        * *search* (query: String) : return (courses: set of Course)
-            * **then** return every course whose name, description or course Id contains query.
+        * *ratings* (course: Subject) : return (found: Boolean, classRating: Number, professorRating: Number)
+            * **where** course is in courses
+            * **then** if course is in ratings, return found = true with the class and professor ratings associated with course; otherwise return found = false.
+
+        * *search* (query: String) : return (courses: set of Subject)
+            * **where** query is not empty
+            * **then** return every course whose name, description or course Id contains query, ignoring case.
+
+        * *catalog* () : return (prerequisites, corequisites, offered, technical)
+            * **then** return the prerequisites, corequisites, semesters offered and technical flags of all courses, so other concepts can use them without reading this concept's state.
 
 ### 2. **CONSTRAIN** [Subject]
 
 - **Purpose:** Maintain the set of constraints that a user wants their course plans to satisfy.
 
-- **Principle:** A user creates a road and adds constraints to it, such as a specific subject in a specific semester, or capping every semester at 4 subjects. They can later relax or remove a constraint to widen the set of valid plans. Possible plans can be found by checking against the constraints of the road to determine whether it is valid.
+- **Principle:** A user creates a road and adds constraints to it, such as a specific subject in a specific semester, or capping every semester at 4 subjects. They can later relax or remove a constraint to widen the set of valid plans. Possible plans can be found by checking against the constraints of the road to determine whether it is valid. The student's past is expressed the same way: a subject already taken is pinned to the semester it was taken in, and those past semesters are locked so that nothing else can be added to them.
 
 - **State:**
     * *roads*: a set of roads with
@@ -137,18 +148,21 @@ Then, each road could be a specific locked constraint set, like when one saves t
         * pins: a set of pins
         * a maxPerSemester Number (0 means no cap)
         * a maxTechnicalPerSemester Number (0 means no cap)
+        * a lockedThrough Number (semesters 0 up to and including lockedThrough are locked; 0 means only the incoming-credit semester is locked)
 
     * *pins*: a set of pins with
         * a Subject
-        * a semester Number
+        * a semester Number (0 for incoming credit, 1 for the first Fall, and so on)
+
+    A pinned subject must appear in every valid plan, whether or not it is also required. A *locked* semester contains exactly the subjects pinned to it, no more and no fewer; it is how history is recorded.
 
 - **Actions:**
     * *newRoad* (name: String) : return (road: Road)
         * **where** name is not empty
-        * **then** create a new road with this name, no constraints and maxPerSemester set to 0, and return it.
+        * **then** create a new road with this name, no constraints, maxPerSemester set to 0 and lockedThrough set to 0, and return it.
 
     * *addRequirement* (road: Road, subject: Subject)
-        * **where** road exists and subject is not excluded or credited in road
+        * **where** road exists
         * **then** add subject to the required subjects of road.
 
     * *removeRequirement* (road: Road, subject: Subject)
@@ -179,14 +193,113 @@ Then, each road could be a specific locked constraint set, like when one saves t
         * **where** road exists and a pin for subject exists in road
         * **then** remove the pin from road and delete it
 
-    * *satisfies* (road: Road, plan: list of set of Subject) : return (satisfied: Boolean)
+    * *lockThrough* (road: Road, semester: Number)
+        * **where** road exists and semester is at least 0
+        * **then** set the lockedThrough of road to semester. Semesters 0 through semester now contain exactly their pinned subjects (a locked semester with no pins is empty).
+
+    * *constraints* (road: Road) : return (required, elective_blocks, pins, maxPerSemester, maxTechnicalPerSemester, lockedThrough)
         * **where** road exists
-        * **then** return true if every required subject appears in some set of plan, every pin in road has its subject in the set of plan at the pin's semester, and, if maxPerSemester is not 0, no set of plan has more than maxPerSemester subjects. Otherwise return false.
+        * **then** return the constraints currently stored for road.
 
+    * *satisfies* (road: Road, plan: list of set of Subject, technical: set of Subject) : return (satisfied: Boolean)
+        * **where** road exists
+        * **then** return true if (the k-th set of plan, counting from 0, is semester k): every required subject appears in some set of plan, at least one subject of every elective block appears in some set of plan, every pin in road has its subject in the set of plan at the pin's semester, every locked semester (0 through lockedThrough) contains exactly the subjects pinned to it, and, for the semesters after lockedThrough, if maxPerSemester is not 0, no set has more than maxPerSemester subjects, and if maxTechnicalPerSemester is not 0, no set has more than maxTechnicalPerSemester subjects that are in technical. Otherwise return false. (Caps are not applied to locked semesters, since history is a fact and not a choice.)
 
+    * *findPath* (road: Road, catalog, limit: Number) : return (paths: list of list of set of Subject)
+
+        * **where** road exists, limit is at least 1, and catalog holds the prerequisites, corequisites, semesters offered and technical flags of the subjects (as returned by COURSE_OFFERING.catalog).
+        * **then** return the shortest possible plans that satisfy the constraints of road. Each plan is a list of sets of subjects, one set per semester, starting at semester 0, so the locked semesters appear first exactly as pinned and only the semesters after lockedThrough are chosen by the search. If no valid plan exists, return an empty list. 
+
+### 3. **SHARE** [Road, User]
+
+- **Purpose:** Allow students to share their course plans with advisors or other students.
+
+- **Principle:** A student can share a road so that another person can view its constraints and the course plans generated from them. The viewer always sees the current state of the road.
+
+- **State:**
+    * a set of Accesses with:
+        * An *owner* String (the user who owns it).
+        * An *accessList* a set of user Stings who can access it.
+        * The *road* Road object we are referring to.
+
+- **Actions:**
+
+    * *claim* (road: Road, user: User)
+        * **where** road has no owner
+        * **then** set user as the owner of road.
+
+    * *share* (road: Road, requester: User, user: String)
+        * **where** road exists, requester is the owner of road, and user is not empty.
+        * **then** add user to the set of users who can access road and its associated course plans.
+
+    * *canView* (road: Road, user: User) : return (allowed: Boolean)
+        * **then** return true if user is the owner of road or is in the accessList of road, otherwise false.
+
+    * *isOwner* (road: Road, user: User) : return (owner: Boolean)
+        * **then** return true if user is the owner of road, otherwise false.
+
+### 4. **AUTHENTICATION** [User]
+
+- **Purpose:** Establish the identity of the person using the application, so roads can be owned and shared.
+
+- **Principle:** A person registers with a username and password, then logs in to get a session. Requests that carry that session are attributed to that user until they log out.
+
+- **State:**
+    * *users*: a set of users with a unique username String and a password hash
+    * *sessions*: a mapping from a session String to a user
+
+- **Actions:**
+    * *register* (username: String, password: String) : return (user: User)
+        * **where** username and password are not empty and username is not taken
+        * **then** create a user with this username and the hash of the password, and return it.
+
+    * *login* (username: String, password: String) : return (session: String)
+        * **where** a user with this username exists and the password matches
+        * **then** create a new session for that user and return it.
+
+    * *logout* (session: String)
+        * **where** session exists
+        * **then** remove session.
+
+    * *authenticate* (session: String) : return (user: User)
+        * **where** session exists
+        * **then** return the user of session.
 
 ### **REACTIONS**
 
+1. **loadCatalog**
+    * **when** Request.loadCatalog (subjectListingURL, ratingsURL)
+    * **then** COURSE_OFFERING.load (subjectListingURL, ratingsURL)
+
+2. **newRoad**
+    * **when** 
+        * Request.newRoad (session, name)
+        * CONSTRAIN.newRoad (name) : (road)
+    * **where**  user = AUTHENTICATION.authenticate (session)
+    * **then**   SHARE.claim (road, user)
+
+3. **findPaths**
+    * **when** Request.findPaths (session, road, limit)
+    * **where**
+        * user = AUTHENTICATION.authenticate (session)
+        * SHARE.canView (road, user) = true
+        * catalog = COURSE_OFFERING.catalog ()
+    * **then** CONSTRAIN.findPath (road, catalog, limit)
+
+4. **shareRoad**
+    * **when** Request.share (session, road, advisor)
+    * **where** requester = AUTHENTICATION.authenticate(session)
+    * **then** SHARE.share (road, requester, advisor)
+
+5. **viewRoad**
+    * **when** Request.viewRoad (session, road, limit)
+    * **where**  
+        * user = AUTHENTICATION.authenticate (session)
+        * SHARE.canView (road, user) = true
+        * catalog = COURSE_OFFERING.catalog ()
+    * **then**
+        * CONSTRAIN.constraints (road)
+        * CONSTRAIN.findPath (road, catalog, limit)
 
 
 ## UI SKETCHES
