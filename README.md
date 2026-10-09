@@ -304,4 +304,15 @@ Then, each road could be a specific locked constraint set, like when one saves t
 
 ## UI SKETCHES
 
+![Create Account screen](create_account.jpg)
+![Update or Add Constraints screen](setAdd_constraint.jpg)
+![Path Finder Results screen](possible_paths.jpg)
+
+
 ## USER JOURNEY
+
+Omar is a junior in 6-3 and it is the week before registration. He is in Stata with CourseRoad open, moving 6.1220 and 6.1800 between semesters, and every change shifts his other subjects around. He also knows he has to keep his schedule workable, because he wants to sleep from 10pm to 7am and make sure he has time for his soccer practices. Instead of editing the same road again, he opens BFS-this-MESS and fills out the Create Account page with his sleep time, his 6-3 major, his soccer practice times, and how many semesters he has been at MIT.
+
+Next, he goes to the Constraint set/add page and enters what he wants his plan to follow: at most 4 subjects per semester, at most 3 technical ones, and the 6-3 major requirements. He pins 6.1220 and 6.1800 to the semesters he wants them in and clicks Save. Whenever he wants to try something different, he can click Edit and change a constraint without losing the rest.
+
+Finally, he gets to the Possible Paths page, which shows up to 10 paths made of semester columns. His past semesters are locked, and his pinned subjects are marked, so he can see right away how his pins fit. He clicks on semester 4 to see the metrics for each of its classes, such as class rating, professor rating, expected hours per week, and units, and he sees that it is a lighter semester than the ones after it. He flips through Path 2 and Path 3 to compare, picks the one he likes, and instead of hours of trial and error, he has a plan that fits his constraints.
