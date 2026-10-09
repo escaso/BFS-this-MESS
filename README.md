@@ -77,9 +77,14 @@ Then, each road could be a specific locked constraint set, like when one saves t
     - Shareability: Share your paths with your advisor for them to approve.
 
 ## **CONCEPT SPECIFICATIONS AND ESSENTIAL REACTIONS**
-### **CONCEPTS**
 
-*Conventions (new):* **Subject** is the generic type for a course/subject in all concepts. Semesters are numbered along the student's timeline: semester 1 is the first Fall at MIT, so odd numbers are Fall and even numbers are Spring. Semester 0 holds credit the student arrives with (e.g. AP credit, transfer credit, etc.). A **plan** is a list of sets of subjects, one per semester, where the k-th set (counting from 0) is semester k. The past is not a separate input: subjects the student has already taken are **pinned** to the semester they were taken in, and those semesters are **locked** (see CONSTRAIN), so a plan always describes the whole timeline and the search only ever fills in what comes after the locked semesters. A **road** holds constraints; a **plan** is one possible answer that satisfies a road.
+### **Conventions:**
+* **Subject** is the generic type for a course/subject in all concepts. 
+* Semesters are numbered along the student's timeline: semester 1 is the first Fall at MIT, so odd numbers are Fall and even numbers are Spring. Semester 0 holds credit the student arrives with (e.g. AP credit, transfer credit, etc.). 
+* A **plan** is a list of sets of subjects, one per semester, where the k-th set (counting from 0) is semester k. 
+* The past is not a separate input: subjects the student has already taken are **pinned** to the semester they were taken in, and those semesters are **locked** (see CONSTRAIN), so a plan always describes the whole timeline and the search only ever fills in what comes after the locked semesters. 
+* A **road** holds constraints; a **plan** is one possible answer that satisfies a road.
+### **CONCEPTS**
 
 1. **COURSE_OFFERING** [Subject]
 
