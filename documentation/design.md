@@ -148,19 +148,20 @@ Then, each road could be a specific locked constraint set, like when one saves t
 
 ### 2. **CONSTRAIN** [Subject]
 
-- **Purpose:** Maintain the set of constraints that a user wants their course plans to satisfy.
+- **Purpose:** Maintain the set of constraints that a user wants their course plans to satisfy, including major requirements, elective blocks, credit/course caps, and historical timeline locks.
 
 - **Principle:** A user creates a road and adds constraints to it, such as a specific subject in a specific semester, or capping every semester at 4 subjects. They can later relax or remove a constraint to widen the set of valid plans. Possible plans can be found by checking against the constraints of the road to determine whether it is valid. The student's past is expressed the same way: a subject already taken is pinned to the semester it was taken in, and those past semesters are locked so that nothing else can be added to them.
 
 - **State:**
     * *roads*: a set of roads with
-        * a name String
-        * required: a set of Subjects (must be taken at some point)
-        * elective_blocks: a set of sets of Subjects (one   subject must be taken from each block)
-        * pins: a set of pins
-        * a maxPerSemester Number (0 means no cap)
-        * a maxTechnicalPerSemester Number (0 means no cap)
-        * a lockedThrough Number (semesters 0 up to and including lockedThrough are locked; 0 means only the incoming-credit semester is locked)
+        * a *name* String
+        * a *major* String (e.g., "6-3", "2-A") 
+        * a *required* set of Subjects (must be taken at some point)
+        * a *elective_blocks* set of sets of Subjects (one   subject must be taken from each block)
+        * a *pins* set of pins
+        * a *maxPerSemester* Number (0 means no cap)
+        * a *maxTechnicalPerSemester* Number (0 means no cap)
+        * a *lockedThrough* Number (semesters 0 up to and including lockedThrough are locked; 0 means only the incoming-credit semester is locked)
 
     * *pins*: a set of pins with
         * a Subject
@@ -169,9 +170,13 @@ Then, each road could be a specific locked constraint set, like when one saves t
     A pinned subject must appear in every valid plan, whether or not it is also required. A *locked* semester contains exactly the subjects pinned to it, no more and no fewer; it is how history is recorded.
 
 - **Actions:**
-    * *newRoad* (name: String) : return (road: Road)
+    * *newRoad* (name: String, major: String) : return (road: Road)
         * **where** name is not empty
-        * **then** create a new road with this name, no constraints, maxPerSemester set to 0 and lockedThrough set to 0, and return it.
+        * **then** create a new road with this name, the specified major, no constraints, maxPerSemester set to 0, maxTechnicalPerSemester set to 0, and  lockedThrough set to 0, and return it.
+
+    * *setMajor* (road: Road, major: String)
+        * **where** road exists and major is not empty
+        * **then** update the major attribute of road to reflect new degree requirements.
 
     * *addRequirement* (road: Road, subject: Subject)
         * **where** road exists
@@ -193,19 +198,15 @@ Then, each road could be a specific locked constraint set, like when one saves t
         * **where** road exists and semester is at least 0
         * **then** If a pin for subject exists in road, set its semester to the given semester, otherwise create a new pin for subject with this semester and add it to road.
 
-    * *cap* (road: Road, limit: Number)
-        * **where** road exists and limit is at least 0
-        * **then** set the maxPerSemester of road to limit (0 removes the cap).
-
-    * *capTechnical* (road: Road, limit: Number)
-        * **where** road exists and limit is at least 0
-        * **then** set the maxTechnicalPerSemester of road to limit (0 removes the cap).
-
     * *unPin* (road: Road, subject: Subject)
         * **where** road exists and a pin for subject exists in road
         * **then** remove the pin from road and delete it
 
-    * *lockThrough* (road: Road, semester: Number)
+    * *setCap* (road: Road, capType: String, limit: Number)
+        * **where** road exists, limit is at least 0, and capType is either "total" or "technical"
+        * **then** if capType is "total", set maxPerSemester to limit; if capType is "technical", set maxTechnicalPerSemester to limit (0 removes the respective cap).
+
+    * *lockThroughSemester* (road: Road, semester: Number)
         * **where** road exists and semester is at least 0
         * **then** set the lockedThrough of road to semester. Semesters 0 through semester now contain exactly their pinned subjects (a locked semester with no pins is empty).
 
