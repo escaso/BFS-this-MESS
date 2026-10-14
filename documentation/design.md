@@ -94,14 +94,17 @@ Then, each road could be a specific locked constraint set, like when one saves t
 
     - **State:**
         * *courses*: a set of Subjects with
-            * a name String
-            * a course Id String
-            * a description String
-            * a lecturer String
-            * a level String (e.g., Undergraduate vs Graduate)
-            * a terms set of Strings (e.g., "Fall", "IAP", "Spring", "Summer")
-            * a offering String (e.g., "Offered normally", "Not offered THIS year", "Not offered NEXT year", "Not currently listed")
+            * a *name* String
+            * a *course Id* String
+            * a *description* String
+            * a *lecturer* String
+            * a *level* String (e.g., Undergraduate vs Graduate)
+            * a *terms* set of Strings (e.g., "Fall", "IAP", "Spring", "Summer")
+            * a *offering* String (e.g., "Offered normally", "Not offered THIS year", "Not offered NEXT year", "Not currently listed")
             canBeRepeated Boolean
+            * a *units* String (optional, e.g., "3-0-9")
+            * a *meetingTimes* String (optional, e.g., "TR2.30-4")
+            * a *location* String (optional, e.g., "36-153")
 
             * Attributes in accordance with [MIT Subject Listing & Schedule Symbol Definitions](https://student.mit.edu/catalog/symbols.html).
 
@@ -138,6 +141,10 @@ Then, each road could be a specific locked constraint set, like when one saves t
 
         * *catalog* () : return (prerequisites, corequisites, offered, technical)
             * **then** return the prerequisites, corequisites, terms, and offering status of all courses, so other concepts can use them without reading this concept's state.
+
+        * *schedule* (course: Subject) : return (found: Boolean, units: String, meetingTimes: String, location: String)
+            * **where** course is in courses
+            * **then** if course has meetingTimes (is not empty/null), return found = true with its units, meeting times, and location; otherwise return found = false.
 
 ### 2. **CONSTRAIN** [Subject]
 

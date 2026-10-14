@@ -37,5 +37,10 @@
         4. I intended is_technical to represent subjects that are in you major, so this depends on the user and no longer feels like it belongs in course_offering... Technicals for theatre majors would be courses in 21T, where for a 6-3 major they would be hasses. I'm not sure how to define technical, and I think it should be called is_technical in the state, not just technical since it represents a boolean
 
             technical doesn't belong in course_offering because it is major specific.
-            
+
         5. For search, do we need to know the data structure first or is the query not the concept's concern?
+
+        6. Need to add schedule data
+        
+
+# WED OCT 14
