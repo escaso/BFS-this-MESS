@@ -41,6 +41,32 @@
         5. For search, do we need to know the data structure first or is the query not the concept's concern?
 
         6. Need to add schedule data
-        
+
 
 # WED OCT 14
+
+* **Concept design review:**
+    1. ****CONSTRAIN****
+        1.  Should elective_blocks be inside of required?
+
+            No because different types of objects and combining them would get messy.
+
+        2. Should I add a major attribute, or a technicals, or is this all portrayed in required and elective_blocks?
+
+            Major implies technicals (defined as requirements, or subjects within that course)
+
+        3. How do we match future planning with course offerings that currently say “not offered THIS/NEXT year” and know what year we are talking about.
+
+            Reaction's scope
+
+        4. Dont like the name locked through number
+
+            But useful to keep a Number instead of a Semester object
+
+        5. Should cap and captechngical be the same action with an extra parameter?
+
+            Yes
+
+        6. When does automatic pinning come in? In a reaction? By taht I mean locking a semester when it is literally in the past date wise.
+
+            Reaction
