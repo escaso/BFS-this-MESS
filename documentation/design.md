@@ -88,7 +88,7 @@ Then, each road could be a specific locked constraint set, like when one saves t
 
 1. **COURSE_OFFERING** [Subject]
 
-    - **Purpose:** Store information about MIT subjects, including when subjects are offered and what pre-requisites/co-requisites they have, as well as any other information that could be useful when constructing a plan.
+    - **Purpose:** Store information about MIT subjects, including when subjects are offeredtheir metadata (level, terms, offering status, repeatability), prerequisites, corequisites, and evaluation ratings with source links.
 
     - **Principle:** A course offering can be loaded from the [MIT Subject Listing](https://student.mit.edu/catalog/index.cgi) extracting key properties, such as its pre-requisites and the semesters in which it is offered. Ratings associated with each class and lecturer should also be extracted from MIT's [Subject Evaluation Reports](https://eduapps.mit.edu/ose-rpt/?Search+Online+Reports=Search+Subject+Evaluation+Reports) site.
 
@@ -98,14 +98,18 @@ Then, each road could be a specific locked constraint set, like when one saves t
             * a course Id String
             * a description String
             * a lecturer String
-            * semesters offered: a set of Strings (each "Fall" or "Spring")
-            * technical: a Boolean (true for technical subjects, false for e.g. HASS)
+            * a level String (e.g., Undergraduate vs Graduate)
+            * a terms set of Strings (e.g., "Fall", "IAP", "Spring", "Summer")
+            * a offering String (e.g., "Offered normally", "Not offered THIS year", "Not offered NEXT year", "Not currently listed")
+            canBeRepeated Boolean
+
+            * Attributes in accordance with [MIT Subject Listing & Schedule Symbol Definitions](https://student.mit.edu/catalog/symbols.html).
 
         * *prerequisites*: mapping from a course to its set of prerequisite courses (NOT recursive, if a prereq has a prereq, only list the direct pre-reqs). The prerequisite graph is derived from this mapping.
 
-        * *corequisites*: mapping from a course to its set of corequisite courses
+        * *corequisites*: mapping from a course to its set of corequisite courses.
 
-        * *ratings*: partial mapping from a course to its class and professor ratings (courses without evaluation data have no entry)
+        * *ratings*: partial mapping from a course to its class and professor ratings, and source URL (courses without evaluation data have no entry).
 
     - **Actions:**
         * *load* (subjectListingURL: String, ratingsURL: String) : return (count: Number)
@@ -122,22 +126,18 @@ Then, each road could be a specific locked constraint set, like when one saves t
 
         * *isOffered* (course: Subject, semester: String) : return (offered: Boolean)
             * **where** course is in courses
-            * **then** return whether course is offered in semester ("Fall" or "Spring").
+            * **then** return whether course is offered in the specified term and available according to its offering status.
 
-        * *isTechnical* (course: Subject) : return (technical: Boolean)
+        * *ratings* (course: Subject) : return (found: Boolean, classRating: Number, professorRating: Number, url: String)
             * **where** course is in courses
-            * **then** return the technical flag of course.
-
-        * *ratings* (course: Subject) : return (found: Boolean, classRating: Number, professorRating: Number)
-            * **where** course is in courses
-            * **then** if course is in ratings, return found = true with the class and professor ratings associated with course; otherwise return found = false.
+            * **then** if course is in ratings, return found = true with the class rating, professor rating, and source URL associated with course; otherwise return found = false.
 
         * *search* (query: String) : return (courses: set of Subject)
             * **where** query is not empty
-            * **then** return every course whose name, description or course Id contains query, ignoring case.
+            * **then** return every course whose name, description **or** course Id contains query, ignoring case.
 
         * *catalog* () : return (prerequisites, corequisites, offered, technical)
-            * **then** return the prerequisites, corequisites, semesters offered and technical flags of all courses, so other concepts can use them without reading this concept's state.
+            * **then** return the prerequisites, corequisites, terms, and offering status of all courses, so other concepts can use them without reading this concept's state.
 
 ### 2. **CONSTRAIN** [Subject]
 
