@@ -70,3 +70,9 @@
         6. When does automatic pinning come in? In a reaction? By taht I mean locking a semester when it is literally in the past date wise.
 
             Reaction
+
+* Postponing hour block intake for now in MVP
+* Semester 1 is not same for everyone, some students start in Spring, others take gaps, others are transfer students, etc.
+* Where do we check if a major is valid?
+* What about double-majors?
+* What if you want to lock a random semester withoug locking every semester up to it?
