@@ -13,10 +13,4 @@ instantiate CourseOffering with
 
 instantiate Constrain with
   Subject is CourseId
-
-instantiate Authentication
-
-instantiate Share with
-  Road is Constrain.Road
-  User is Authentication.User
 ```
