@@ -12,10 +12,10 @@ export function assembleApplication() {
     conceptSet: applicationConceptSet,
     // Keys must match the names in conceptSet({...}) in concepts.ts.
     instances: {
-      Share: new ShareConcept(db),
+      // Share: new ShareConcept(db),
       Constrain: new ConstrainConcept(db),
       CourseOffering: new CourseOfferingConcept(db),
-      Authentication: new AuthenticationConcept(db),
+      // Authentication: new AuthenticationConcept(db),
     },
     composition: { BFSThisMess: composition },
     // Print what went wrong. Otherwise a failure only shows up as INTERNAL_ERROR.
