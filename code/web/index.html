@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BFS This Mess</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./app.ts"></script>
+  </head>
+  <body>
+    <header>
+      <a href="#" class="brand">BFS This Mess</a>
+      <span id="roadId"></span>
+    </header>
+    <p id="status"></p>
+
+    <!-- Start: make a road or open one by id -->
+    <main id="start" hidden>
+      <h1>Your road</h1>
+      <form id="newRoad">
+        <input name="name" placeholder="Road name" required />
+        <input name="major" placeholder="Major, e.g. 6-3" required />
+        <button>New road</button>
+      </form>
+      <form id="openRoad">
+        <input name="road" placeholder="Existing road id" required />
+        <button>Open</button>
+      </form>
+    </main>
+
+    <!-- Possible paths -->
+    <main id="paths" hidden>
+      <div class="titlebar">
+        <h1>Possible paths</h1>
+        <button id="toEdit">Edit constraints</button>
+      </div>
+      <nav id="tabs"></nav>
+      <div id="road"></div>
+      <section id="details"></section>
+    </main>
+
+    <!-- Constraints -->
+    <main id="edit" hidden>
+      <div class="titlebar">
+        <h1>Constraints</h1>
+        <button id="toPaths">Back to paths</button>
+      </div>
+
+      <form id="caps" class="grid">
+        <label>Max subjects per semester <input name="total" type="number" min="0" /></label>
+        <label>Max technicals per semester <input name="technical" type="number" min="0" /></label>
+        <label>Locked through semester <input name="locked" type="number" min="0" max="8" /></label>
+        <label>Major <input name="major" placeholder="unchanged" /></label>
+        <button>Save</button>
+      </form>
+
+      <h2>Pinned subjects</h2>
+      <ul id="pins"></ul>
+      <form id="addPin">
+        <input name="subject" placeholder="6.1220" required />
+        <input name="semester" type="number" min="1" max="8" placeholder="Semester" required />
+        <button>Pin</button>
+      </form>
+
+      <h2>Required subjects</h2>
+      <ul id="required"></ul>
+      <form id="addReq">
+        <input name="subject" placeholder="6.1010" required />
+        <button>Add</button>
+      </form>
+
+      <h2>Elective blocks (take one of)</h2>
+      <ul id="electives"></ul>
+      <form id="addBlock">
+        <input name="options" placeholder="6.1800, 6.1850, 6.1810" required />
+        <button>Add</button>
+      </form>
+    </main>
+  </body>
+</html>
