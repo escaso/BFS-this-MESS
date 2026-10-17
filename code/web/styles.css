@@ -50,5 +50,5 @@ button { cursor: pointer; }
 table { border-collapse: collapse; margin-top: 0.5rem; }
 th, td { border-bottom: 1px solid #ccc; padding: 0.3rem 0.8rem; text-align: left; }
 .hint { color: #777; }
-/* Hide the raw template until Vue has mounted. */
-[v-cloak] { display: none; }
+
+

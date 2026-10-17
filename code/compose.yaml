@@ -22,7 +22,7 @@ services:
 
   frontend:
     build: .
-    command: bun web/server.ts
+    command: bunx --bun vite preview
     init: true
     ports:
       - "127.0.0.1:8080:8080"
