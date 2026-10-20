@@ -1,10 +1,11 @@
 <script setup lang="ts">
-// Ratings and units for every class in one semester of a plan.
+// Ratings and units for every class in one semester of a plan. Both come from
+// CourseOffering, so they show "—" until the catalog has been loaded.
 import { computed, ref, watch } from "vue";
-import { api, unwrap, type Ratings, type Schedule } from "../api.ts";
-import { unitSum } from "../util.ts";
+import { call, type Ratings, type Schedule } from "../api.ts";
+import { label, unitSum, type Season } from "../util.ts";
 
-const props = defineProps<{ semester: number; courses: string[] }>();
+const props = defineProps<{ season: Season; courses: string[] }>();
 
 type Row = { course: string; r: Ratings | null; s: Schedule | null };
 
@@ -14,19 +15,22 @@ let token = 0;
 
 async function lookUp(course: string): Promise<Row> {
   const [r, s] = await Promise.all([
-    unwrap(api.viewRatings({ course }))
+    call("viewRatings", { course })
       .then((d) => d.ratings.ratings[0] ?? null)
       .catch(() => null),
-    unwrap(api.viewSchedule({ course }))
+    call("viewSchedule", { course })
       .then((d) => d.schedule.schedule[0] ?? null)
       .catch(() => null),
   ]);
   return { course, r, s };
 }
 
+// Watch the contents, not the array: the parent builds a new array on every
+// render, and only a different set of courses needs a new lookup.
 watch(
-  () => props.courses,
-  async (courses) => {
+  () => props.courses.join(","),
+  async () => {
+    const courses = props.courses;
     const mine = ++token;
     loading.value = true;
     const rows = await Promise.all(courses.map(lookUp));
@@ -45,7 +49,7 @@ const totalUnits = computed(() =>
 <template>
   <p v-if="loading" class="hint">Loading…</p>
   <template v-else>
-    <h2>Sem {{ semester }} · {{ totalUnits }} units</h2>
+    <h2>{{ label(season) }} · {{ totalUnits }} units</h2>
     <table>
       <thead>
         <tr><th>Class</th><th>Class rating</th><th>Professor rating</th><th>Units</th></tr>
