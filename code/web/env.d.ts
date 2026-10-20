@@ -5,3 +5,6 @@ declare module "*.vue" {
   const component: DefineComponent<{}, {}, any>;
   export default component;
 }
+
+// Vite bundles stylesheets imported for their side effects (web/main.ts).
+declare module "*.css";
