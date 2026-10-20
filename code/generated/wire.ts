@@ -6,6 +6,7 @@ import type { applicationConceptSet as ApplicationConceptSet } from "../src/conc
 type AtPath<T, P extends readonly string[]> = P extends readonly [infer H extends string, ...infer R extends string[]] ? H extends keyof T ? AtPath<T[H], R> : H extends `${number}` ? T extends readonly (infer Item)[] ? AtPath<Item, R> : never : never : T;
 type QueryRow<T> = T extends readonly (infer Row)[] ? Row : T;
 type AllOf<T extends readonly unknown[]> = T extends readonly [infer Head, ...infer Rest] ? Head & AllOf<Rest> : unknown;
+type OneOf<T extends readonly unknown[]> = T[number];
 type Jsonify<T> = T extends Date ? string : T extends null | boolean | number | string ? T : T extends (...args: never[]) => unknown ? never : T extends readonly (infer Item)[] ? Jsonify<Item>[] : T extends object ? { [K in keyof T]: Jsonify<T[K]> } : never;
 
 export type Json = null | boolean | number | string | Json[] | { [key: string]: Json };
@@ -13,92 +14,247 @@ export type Json = null | boolean | number | string | Json[] | { [key: string]: 
 export type AppWideError = never;
 
 export type BFSThisMessWire = {
-  "/bfsthismess/addElectiveBlock": {
+  "/bfsthismess/addBlock": {
     input: {
-      "options": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addElectiveBlock"]>[0], ["options"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addElectiveBlock"]>[0], ["road"]>>;
+      "count": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["count"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
-    output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    output: {
+      "block": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>>, ["block"]>>;
+    };
+    error: { error: AppWideError | "BAD_COUNT" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
-  "/bfsthismess/addRequirement": {
+  "/bfsthismess/addOption": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addRequirement"]>[0], ["road"]>>;
-      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addRequirement"]>[0], ["subject"]>>;
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addOption"]>[0], ["block"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addOption"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_BLOCK" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/addPrior": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addPrior"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addPrior"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/checkPlan": {
+    input: {
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "verdict": {
+        "satisfied": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_satisfies"]>>>, ["satisfied"]>>;
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/clearCap": {
+    input: {
+      "capType": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["capType"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_CAP_TYPE" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/deleteRoad": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["deleteRoad"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/findPaths": {
     input: {
+      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
       "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: {
       "paths": {
-        "catalogs": {
-          "paths": {
-            "paths": {
-              "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
-            }[];
-          };
+        "plans": {
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
     };
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/loadCatalog": {
     input: {
-      "ratingsURL": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["ratingsURL"]>>;
-      "subjectListingURL": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["subjectListingURL"]>>;
+      "ratingsURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["ratingsURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["ratingsURL"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subjectListingURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["subjectListingURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["subjectListingURL"]>]>>;
     };
     output: {
       "count": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>>, ["count"]>>;
     };
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "BAD_SOURCE" | "INVALID_INPUT" | "LOAD_FAILED" | "NO_SUCH_SESSION" };
   };
-  "/bfsthismess/lockThroughSemester": {
+  "/bfsthismess/logIn": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["lockThroughSemester"]>[0], ["road"]>>;
-      "semester": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["lockThroughSemester"]>[0], ["semester"]>>;
+      "password": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["login"]>[0], ["password"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["login"]>[0], ["username"]>>;
+    };
+    output: {
+      "session": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Authentication"]["login"]>>, ["session"]>>;
+    };
+    error: { error: AppWideError | "INVALID_CREDENTIALS" | "INVALID_INPUT" };
+  };
+  "/bfsthismess/logOut": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["logout"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/myRoads": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "roads": {
+        "owned": {
+          "major": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["name"]>>;
+          "road": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>[0], ["road"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Share"]["_roadsOwnedBy"]>>>, ["road"]>]>>;
+        }[];
+        "shared": {
+          "major": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["name"]>>;
+          "road": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>[0], ["road"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Share"]["_roadsSharedWith"]>>>, ["road"]>]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/newRoad": {
     input: {
       "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["major"]>>;
       "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["name"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "startTerm": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startTerm"]>>;
+      "startYear": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startYear"]>>;
     };
     output: {
-      "road": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>>, ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["claim"]>[0], ["road"]>>;
     };
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "BAD_START" | "EMPTY_NAME" | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "ROAD_ALREADY_OWNED" };
   };
   "/bfsthismess/pin": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["road"]>>;
-      "semester": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["semester"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["subject"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "ALREADY_PRIOR" | "INVALID_INPUT" | "LOCKED_SEASON" | "NOT_AN_OWNER" | "NO_LISTING" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "OUT_OF_SPAN" };
   };
-  "/bfsthismess/removeElectiveBlock": {
+  "/bfsthismess/previewEndChange": {
     input: {
-      "options": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeElectiveBlock"]>[0], ["options"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeElectiveBlock"]>[0], ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>[0], ["year"]>>;
     };
-    output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    output: {
+      "lost": {
+        "pins": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>>>, ["year"]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
-  "/bfsthismess/removeRequirement": {
+  "/bfsthismess/previewStartChange": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeRequirement"]>[0], ["road"]>>;
-      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeRequirement"]>[0], ["subject"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>[0], ["year"]>>;
+    };
+    output: {
+      "lost": {
+        "pins": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>>>, ["year"]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/register": {
+    input: {
+      "password": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["register"]>[0], ["password"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["register"]>[0], ["username"]>>;
+    };
+    output: {
+      "user": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Authentication"]["register"]>>, ["user"]>>;
+    };
+    error: { error: AppWideError | "EMPTY_CREDENTIALS" | "INVALID_INPUT" | "USERNAME_TAKEN" };
+  };
+  "/bfsthismess/removeBlock": {
+    input: {
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeBlock"]>[0], ["block"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_BLOCK" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/removeOption": {
+    input: {
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeOption"]>[0], ["block"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeOption"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OPTION" | "NOT_AN_OWNER" | "NO_SUCH_BLOCK" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/removePrior": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removePrior"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removePrior"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NOT_PRIOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/renameRoad": {
+    input: {
+      "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["renameRoad"]>[0], ["name"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["renameRoad"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "EMPTY_NAME" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/resetSemester": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SEMESTER" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/searchSubjects": {
     input: {
@@ -117,26 +273,107 @@ export type BFSThisMessWire = {
     input: {
       "capType": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["capType"]>>;
       "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["limit"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "BAD_CAP_TYPE" | "INVALID_INPUT" | "NEGATIVE_LIMIT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/setCount": {
+    input: {
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCount"]>[0], ["block"]>]>>;
+      "count": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCount"]>[0], ["count"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_COUNT" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_BLOCK" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/setEnd": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setEnd"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setEnd"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setEnd"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "END_BEFORE_START" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/setLocked": {
+    input: {
+      "locked": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["locked"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/setMajor": {
     input: {
       "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["major"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "EMPTY_MAJOR" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/setStart": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_START" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/shareRoad": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["share"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_lookup"]>[0], ["username"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "NO_SUCH_USER" | "SHARE_WITH_OWNER" };
   };
   "/bfsthismess/unPin": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "INVALID_INPUT" | "LOCKED_SEASON" | "NOT_AN_OWNER" | "NOT_PINNED" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/unshareRoad": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["unshare"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_lookup"]>[0], ["username"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NOT_SHARED" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "NO_SUCH_USER" };
+  };
+  "/bfsthismess/viewOptions": {
+    input: {
+      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>[0], ["includeIAPAndSummer"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "options": {
+        "options": {
+          "fitsByEnd": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["fitsByEnd"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["year"]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/viewRatings": {
     input: {
@@ -156,31 +393,50 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/viewRoad": {
     input: {
+      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
       "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
-      "road": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["road"]>]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: {
       "constraints": {
-        "constraints": {
-          "elective_blocks": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["elective_blocks"]>>;
-          "lockedThrough": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["lockedThrough"]>>;
-          "maxPerSemester": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["maxPerSemester"]>>;
-          "maxTechnicalPerSemester": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["maxTechnicalPerSemester"]>>;
-          "pins": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["pins"]>>;
-          "required": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["required"]>>;
+        "blocks": {
+          "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["block"]>>;
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["count"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["subject"]>>;
         }[];
+        "endTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endTerm"]>>;
+        "endYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endYear"]>>;
+        "major": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>>;
+        "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["name"]>>;
+        "pins": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pins"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pins"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pins"]>>>, ["year"]>>;
+        }[];
+        "prior": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_prior"]>>>, ["subject"]>>;
+        }[];
+        "semesters": {
+          "locked": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["locked"]>>;
+          "maxTechnicalUnits": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["maxTechnicalUnits"]>>;
+          "maxUnits": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["maxUnits"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["year"]>>;
+        }[];
+        "startTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["startTerm"]>>;
+        "startYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["startYear"]>>;
       };
       "paths": {
-        "catalogs": {
-          "paths": {
-            "paths": {
-              "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
-            }[];
-          };
+        "plans": {
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
     };
-    error: { error: AppWideError | "INVALID_INPUT" };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/viewSchedule": {
     input: {
@@ -197,98 +453,267 @@ export type BFSThisMessWire = {
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" };
+  };
+  "/bfsthismess/viewSharing": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_viewers"]>[0], ["road"]>]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "viewers": {
+        "viewers": {
+          "username": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Authentication"]["_username"]>>>, ["username"]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
 };
 
 export type HttpAppWideError = never;
 
 export type BFSThisMessWireHttp = {
-  "/bfsthismess/addElectiveBlock": {
+  "/bfsthismess/addBlock": {
     input: {
-      "options": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addElectiveBlock"]>[0], ["options"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addElectiveBlock"]>[0], ["road"]>>;
+      "count": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["count"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
-    output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    output: {
+      "block": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>>, ["block"]>>;
+    };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
-  "/bfsthismess/addRequirement": {
+  "/bfsthismess/addOption": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addRequirement"]>[0], ["road"]>>;
-      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addRequirement"]>[0], ["subject"]>>;
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addOption"]>[0], ["block"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addOption"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/addPrior": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addPrior"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addPrior"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/checkPlan": {
+    input: {
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "verdict": {
+        "satisfied": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_satisfies"]>>>, ["satisfied"]>>;
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/clearCap": {
+    input: {
+      "capType": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["capType"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["clearCap"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/deleteRoad": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["deleteRoad"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/findPaths": {
     input: {
+      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
       "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: {
       "paths": {
-        "catalogs": {
-          "paths": {
-            "paths": {
-              "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
-            }[];
-          };
+        "plans": {
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
     };
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/loadCatalog": {
     input: {
-      "ratingsURL": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["ratingsURL"]>>;
-      "subjectListingURL": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["subjectListingURL"]>>;
+      "ratingsURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["ratingsURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["ratingsURL"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subjectListingURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["subjectListingURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["subjectListingURL"]>]>>;
     };
     output: {
       "count": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>>, ["count"]>>;
     };
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
-  "/bfsthismess/lockThroughSemester": {
+  "/bfsthismess/logIn": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["lockThroughSemester"]>[0], ["road"]>>;
-      "semester": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["lockThroughSemester"]>[0], ["semester"]>>;
+      "password": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["login"]>[0], ["password"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["login"]>[0], ["username"]>>;
+    };
+    output: {
+      "session": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Authentication"]["login"]>>, ["session"]>>;
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/logOut": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["logout"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/myRoads": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "roads": {
+        "owned": {
+          "major": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["name"]>>;
+          "road": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>[0], ["road"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Share"]["_roadsOwnedBy"]>>>, ["road"]>]>>;
+        }[];
+        "shared": {
+          "major": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["name"]>>;
+          "road": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>[0], ["road"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Share"]["_roadsSharedWith"]>>>, ["road"]>]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/newRoad": {
     input: {
       "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["major"]>>;
       "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["name"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "startTerm": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startTerm"]>>;
+      "startYear": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startYear"]>>;
     };
     output: {
-      "road": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>>, ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["claim"]>[0], ["road"]>>;
     };
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "CONFLICT" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/pin": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["road"]>>;
-      "semester": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["semester"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["subject"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
-  "/bfsthismess/removeElectiveBlock": {
+  "/bfsthismess/previewEndChange": {
     input: {
-      "options": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeElectiveBlock"]>[0], ["options"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeElectiveBlock"]>[0], ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>[0], ["year"]>>;
     };
-    output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    output: {
+      "lost": {
+        "pins": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetEnd"]>>>, ["year"]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
-  "/bfsthismess/removeRequirement": {
+  "/bfsthismess/previewStartChange": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeRequirement"]>[0], ["road"]>>;
-      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeRequirement"]>[0], ["subject"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>[0], ["year"]>>;
+    };
+    output: {
+      "lost": {
+        "pins": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pinsLostBySetStart"]>>>, ["year"]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/register": {
+    input: {
+      "password": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["register"]>[0], ["password"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["register"]>[0], ["username"]>>;
+    };
+    output: {
+      "user": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Authentication"]["register"]>>, ["user"]>>;
+    };
+    error: { error: HttpAppWideError | "CONFLICT" | "INVALID_REQUEST" };
+  };
+  "/bfsthismess/removeBlock": {
+    input: {
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeBlock"]>[0], ["block"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/removeOption": {
+    input: {
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeOption"]>[0], ["block"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeOption"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/removePrior": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removePrior"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removePrior"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/renameRoad": {
+    input: {
+      "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["renameRoad"]>[0], ["name"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["renameRoad"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/resetSemester": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/searchSubjects": {
     input: {
@@ -307,26 +732,107 @@ export type BFSThisMessWireHttp = {
     input: {
       "capType": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["capType"]>>;
       "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["limit"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCap"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/setCount": {
+    input: {
+      "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCount"]>[0], ["block"]>]>>;
+      "count": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setCount"]>[0], ["count"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/setEnd": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setEnd"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setEnd"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setEnd"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/setLocked": {
+    input: {
+      "locked": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["locked"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/setMajor": {
     input: {
       "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["major"]>>;
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/setStart": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/shareRoad": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["share"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_lookup"]>[0], ["username"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/unPin": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/unshareRoad": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["unshare"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "username": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_lookup"]>[0], ["username"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/viewOptions": {
+    input: {
+      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>[0], ["includeIAPAndSummer"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "options": {
+        "options": {
+          "fitsByEnd": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["fitsByEnd"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_options"]>>>, ["year"]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/viewRatings": {
     input: {
@@ -346,31 +852,50 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/viewRoad": {
     input: {
+      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
       "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
-      "road": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["road"]>]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: {
       "constraints": {
-        "constraints": {
-          "elective_blocks": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["elective_blocks"]>>;
-          "lockedThrough": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["lockedThrough"]>>;
-          "maxPerSemester": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["maxPerSemester"]>>;
-          "maxTechnicalPerSemester": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["maxTechnicalPerSemester"]>>;
-          "pins": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["pins"]>>;
-          "required": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_constraints"]>>>, ["required"]>>;
+        "blocks": {
+          "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["block"]>>;
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["count"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["subject"]>>;
         }[];
+        "endTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endTerm"]>>;
+        "endYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endYear"]>>;
+        "major": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>>;
+        "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["name"]>>;
+        "pins": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pins"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pins"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_pins"]>>>, ["year"]>>;
+        }[];
+        "prior": {
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_prior"]>>>, ["subject"]>>;
+        }[];
+        "semesters": {
+          "locked": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["locked"]>>;
+          "maxTechnicalUnits": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["maxTechnicalUnits"]>>;
+          "maxUnits": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["maxUnits"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_semesters"]>>>, ["year"]>>;
+        }[];
+        "startTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["startTerm"]>>;
+        "startYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["startYear"]>>;
       };
       "paths": {
-        "catalogs": {
-          "paths": {
-            "paths": {
-              "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
-            }[];
-          };
+        "plans": {
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
     };
-    error: { error: HttpAppWideError | "INVALID_REQUEST" };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/viewSchedule": {
     input: {
@@ -387,5 +912,19 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" };
+  };
+  "/bfsthismess/viewSharing": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_viewers"]>[0], ["road"]>]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "viewers": {
+        "viewers": {
+          "username": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Authentication"]["_username"]>>>, ["username"]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
 };
