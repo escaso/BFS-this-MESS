@@ -11,6 +11,12 @@ const academicYear = (startYear: number) => [
   { year: startYear + 1, term: "SUMMER" },
 ];
 
+export class LoadFailed extends Error {
+  constructor(message = "The subject listing or the ratings could not be retrieved.") {
+    super(message);
+  }
+}
+
 export class CourseOfferingConcept {
   private readonly courses: Collection<any>;
   private readonly dependencies: Collection<any>;
@@ -38,24 +44,24 @@ export class CourseOfferingConcept {
       const responses = await Promise.all([fetch(subjectListingURL), fetch(ratingsURL)]);
       if (responses.some((r) => !r.ok)) throw new Error("fetch failed");
       // Parsing/fetching logic integration point to populate:
-      // - this.courses       (use this.mergeTerms for `terms`)
+      // - this.courses       (use this.#mergeTerms for `terms`)
       // - this.dependencies  (delete the course's old ones, insert {course, kind, options, count})
-      // - this.cancellations (call this.replaceCancellations for each subject)
+      // - this.cancellations (call this.#replaceCancellations for each subject)
       // - this.ratings
     } catch {
-      return { error: "LOAD_FAILED", message: "The subject listing or the ratings could not be retrieved." };
+      throw new LoadFailed();
     }
     return { count: 0 };
   }
 
   // Loading a listing replaces the terms it covers and keeps the others.
-  mergeTerms(existing: string[], coveredByListing: string[], fromListing: string[]) {
+  #mergeTerms(existing: string[], coveredByListing: string[], fromListing: string[]) {
     const kept = existing.filter((t) => !coveredByListing.includes(t));
     return TERM_ORDER.filter((t) => kept.includes(t) || fromListing.includes(t));
   }
 
   // startYear is the FALL year of the listing's academic year.
-  async replaceCancellations(subject: string, startYear: number, offering: string) {
+  async #replaceCancellations(subject: string, startYear: number, offering: string) {
     const thisYear = academicYear(startYear);
     const nextYear = academicYear(startYear + 1);
     await this.cancellations.deleteMany({ subject, $or: [...thisYear, ...nextYear] });
@@ -68,14 +74,18 @@ export class CourseOfferingConcept {
     }
   }
 
-  async _prerequisites({ course }: { course: string }) {
+  async _prerequisites(
+    { course }: { course: string },
+  ): Promise<{ dependency: string; count: number; prerequisite: string }[]> {
     const deps = await this.dependencies.find({ course, kind: "PREREQUISITE" }).sort({ _id: 1 }).toArray();
     return deps.flatMap((d) =>
       d.options.map((prerequisite: string) => ({ dependency: String(d._id), count: d.count, prerequisite })),
     );
   }
 
-  async _corequisites({ course }: { course: string }) {
+  async _corequisites(
+    { course }: { course: string },
+  ): Promise<{ dependency: string; count: number; corequisite: string }[]> {
     const deps = await this.dependencies.find({ course, kind: "COREQUISITE" }).sort({ _id: 1 }).toArray();
     return deps.flatMap((d) =>
       d.options.map((corequisite: string) => ({ dependency: String(d._id), count: d.count, corequisite })),
@@ -127,29 +137,9 @@ export class CourseOfferingConcept {
     }));
   }
 
-  async _terms({ course }: { course: string }) {
+  async _terms({ course }: { course: string }): Promise<{ term: string }[]> {
     const record = await this.courses.findOne({ subject: course });
     return (record?.terms ?? []).map((term: string) => ({ term }));
-  }
-
-  async _catalog(_input: Record<string, never>) {
-    const allCourses = await this.courses.find().toArray();
-    const catalogMap: Record<string, any> = {};
-
-    for (const c of allCourses) {
-      const deps = await this.dependencies.find({ course: c.subject }).toArray();
-      const optionsOf = (kind: string) =>
-        deps.filter((d) => d.kind === kind).flatMap((d) => d.options as string[]);
-
-      catalogMap[c.subject] = {
-        prerequisites: optionsOf("PREREQUISITE"),
-        corequisites: optionsOf("COREQUISITE"),
-        terms: c.terms || [],
-        offering: c.offering || "",
-        technical: c.technical || false,
-      };
-    }
-    return { catalog: catalogMap };
   }
 
   async _schedule({ course }: { course: string }) {
