@@ -52,10 +52,7 @@ release(road: Road) : returns ()
     returns
 
 share(road: Road, requester: User, user: User) : returns ()
-  where road has no owner
-  then
-    refuses NO_SUCH_ROAD "There is no such road."
-  where road has an owner and requester is neither the owner of road nor in the accessList of road
+  where road has no owner, or requester is neither the owner of road nor in the accessList of road
   then
     refuses NO_SUCH_ROAD "There is no such road."
   where requester is in the accessList of road
@@ -70,10 +67,7 @@ share(road: Road, requester: User, user: User) : returns ()
     returns
 
 unshare(road: Road, requester: User, user: User) : returns ()
-  where road has no owner
-  then
-    refuses NO_SUCH_ROAD "There is no such road."
-  where road has an owner and requester is neither the owner of road nor in the accessList of road
+  where road has no owner, or requester is neither the owner of road nor in the accessList of road
   then
     refuses NO_SUCH_ROAD "There is no such road."
   where requester is in the accessList of road

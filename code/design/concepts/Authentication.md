@@ -62,8 +62,8 @@ logout(session: String) : returns ()
 ## Queries
 
 ```queries
-_authenticate(session: String) : one (user: User)
-  where session exists. Answers the user of session.
+_authenticate(session: String) : optional (user: User)
+  Answers the user of session, or no row if session does not exist.
 
 _lookup(username: String) : optional (user: User)
   Answers the user with this username, or no row if there is none.
