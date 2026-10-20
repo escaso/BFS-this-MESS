@@ -8,7 +8,13 @@ BFSThisMess composes Authentication, Share, CourseOffering and Constrain. Every 
 | Someone it is shared with (Share._canView) | yes | no | no |
 | Anyone else | no | no | no |
 
-A request that fails its check changes nothing and is refused. No valid session is refused with NO_SUCH_SESSION, a change by someone who is not the owner with NOT_AN_OWNER, and a view by someone who may not view the road with NO_SUCH_ROAD, so that a person cannot find out which roads other people have.
+A request that fails its check changes nothing and is refused. The checks run in this order, and the first to fail decides the refusal:
+
+1. No valid session is refused with NO_SUCH_SESSION.
+2. A road that does not exist, or that the requester may not view (not its owner and not someone it is shared with), is refused with NO_SUCH_ROAD, whatever the request was. The two cases are indistinguishable, so that a person cannot find out which roads other people have.
+3. A change, share, unshare or sharing list requested by someone who may view the road but is not its owner is refused with NOT_AN_OWNER.
+
+The same rule holds for blocks: a block that does not exist, or whose road the requester may not view, is refused with NO_SUCH_BLOCK.
 
 The catalog is public MIT data. Searching it and looking up ratings and schedules need no session.
 
@@ -24,7 +30,7 @@ BFSThisMess.LogOut at /bfsthismess/logOut
 
 ## Catalog
 
-A signed-in person [loads the catalog](reaction:BFSThisMess.LoadCatalog) from the MIT Subject Listing and the Subject Evaluation Reports by giving both URLs (CourseOffering.load). Any signed-in person may do this; an administrator role is left for later.
+A signed-in person [loads the catalog](reaction:BFSThisMess.LoadCatalog) from the MIT Subject Listing and the Subject Evaluation Reports by giving both URLs (CourseOffering.load). Any signed-in person may do this; an administrator role is left for later. Because the catalog is shared by everyone and the server fetches the URLs it is given, the listing URL must be on student.mit.edu and the ratings URL on eduapps.mit.edu, both over https. A request with any other URL is refused with BAD_SOURCE "Catalog sources must be the MIT Subject Listing and Subject Evaluation Reports sites." and nothing is loaded.
 
 Anyone can [search subjects](reaction:BFSThisMess.SearchSubjects) (CourseOffering._search), which answers [the matching courses](former:BFSThisMess.MatchingCourses). For a subject they can [see its ratings](reaction:BFSThisMess.ViewRatings) (CourseOffering._ratings), shown as [the ratings of a course](former:BFSThisMess.CourseRatings), and [its schedule](reaction:BFSThisMess.ViewSchedule) (CourseOffering._schedule), shown as [the schedule of a course](former:BFSThisMess.CourseSchedule).
 
@@ -37,7 +43,7 @@ BFSThisMess.ViewSchedule at /bfsthismess/viewSchedule
 
 ## Roads
 
-A signed-in student [creates a road](reaction:BFSThisMess.NewRoad) with a name, major and start (Constrain.newRoad). Once the road exists, the student [becomes its owner](reaction:BFSThisMess.ClaimRoad) (Share.claim). A request without a valid session does not create a road.
+A signed-in student [creates a road](reaction:BFSThisMess.NewRoad) with a name, major and start (Constrain.newRoad). Once the road exists, the student [becomes its owner](reaction:BFSThisMess.ClaimRoad) (Share.claim). A request without a valid session does not create a road. Creating and claiming are one request: if the claim is refused, the new road is deleted (Constrain.deleteRoad) and the request is refused with the reason of the claim, so a road never exists without an owner. ClaimRoad and ReleaseRoad are steps of NewRoad and DeleteRoad. They have no endpoints of their own, so nobody can claim or release a road directly.
 
 Only the owner can change a road. They can [rename it](reaction:BFSThisMess.RenameRoad), [move its start](reaction:BFSThisMess.SetStart) or [its end](reaction:BFSThisMess.SetEnd), [change its major](reaction:BFSThisMess.SetMajor), [add](reaction:BFSThisMess.AddPrior) or [remove](reaction:BFSThisMess.RemovePrior) prior credit, [pin](reaction:BFSThisMess.Pin) or [unpin](reaction:BFSThisMess.UnPin) a subject to a semester, [lock or unlock a semester](reaction:BFSThisMess.SetLocked) so the past is recorded, [set](reaction:BFSThisMess.SetCap) or [clear](reaction:BFSThisMess.ClearCap) a cap on units in a semester, and [reset a semester](reaction:BFSThisMess.ResetSemester). Each of these checks Share._isOwner for the road and then calls the Constrain action of the same name.
 
@@ -89,10 +95,14 @@ Someone who may view a road (Share._canView) can [find the shortest paths](react
 
 They can [view a road](reaction:BFSThisMess.ViewRoad) to see [its constraints](former:BFSThisMess.RoadConstraints), put together from Constrain._road, _prior, _blocks, _pins and _semesters, together with its paths, found the same way as in FindPaths. A person it is shared with sees exactly what the owner sees, as the road is now, but none of the requests that change it are open to them.
 
-Every other request that only reads a road (Constrain._options, _satisfies, _pinsLostBySetStart and _pinsLostBySetEnd) passes the same Share._canView check.
+Four more requests only read a road, and each passes the same Share._canView check: they [list the options that still fit](reaction:BFSThisMess.ViewOptions), giving whether to include IAP and summer semesters (Constrain._options, shown as [the options of a road](former:BFSThisMess.RoadOptions)); [check the plan chosen so far](reaction:BFSThisMess.CheckPlan) (Constrain._satisfies, shown as [the verdict on a plan](former:BFSThisMess.PlanVerdict)); and [preview the pins lost](reaction:BFSThisMess.PreviewStartChange) by moving the start, or [by moving the end](reaction:BFSThisMess.PreviewEndChange), so that the student can be warned before they change it (Constrain._pinsLostBySetStart and _pinsLostBySetEnd, shown as [the pins that would be lost](former:BFSThisMess.LostPins)). Previews change nothing, so they are open to anyone who may view the road.
 
 ```endpoints
 BFSThisMess.MyRoads at /bfsthismess/myRoads
 BFSThisMess.FindPaths at /bfsthismess/findPaths
 BFSThisMess.ViewRoad at /bfsthismess/viewRoad
+BFSThisMess.ViewOptions at /bfsthismess/viewOptions
+BFSThisMess.CheckPlan at /bfsthismess/checkPlan
+BFSThisMess.PreviewStartChange at /bfsthismess/previewStartChange
+BFSThisMess.PreviewEndChange at /bfsthismess/previewEndChange
 ```
