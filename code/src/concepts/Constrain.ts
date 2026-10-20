@@ -340,6 +340,31 @@ function blockOptions(ctx: Ctx): string[] {
   return [...new Set(ctx.blocks.flatMap((b) => b.options))].sort();
 }
 
+/** Options of every dependency of the given subjects, followed transitively. */
+function dependencyClosure(ctx: Ctx, from: Iterable<string>): Set<string> {
+  const found = new Set<string>();
+  const queue = [...from];
+  while (queue.length > 0) {
+    const s = queue.pop()!;
+    for (const d of ctx.deps.get(s) ?? []) {
+      for (const o of d.options) {
+        if (!found.has(o)) {
+          found.add(o);
+          queue.push(o);
+        }
+      }
+    }
+  }
+  return found;
+}
+
+/** candidates(road): block options, plus the dependency closure of those and of the pins. */
+function candidates(ctx: Ctx): string[] {
+  const options = blockOptions(ctx);
+  const deps = dependencyClosure(ctx, [...options, ...ctx.pins.keys()]);
+  return [...new Set([...options, ...deps])].sort();
+}
+
 function seasonKeys(a: number, b: number, includeAll: boolean): number[] {
   const out: number[] = [];
   for (let k = a; k <= b; k++) if (includeAll || k % 4 === 1 || k % 4 === 3) out.push(k);
@@ -351,7 +376,7 @@ function reachable(ctx: Ctx, placed: Placed): Set<string> {
   const reach = takenSet(ctx, placed);
   const virtual: Placed = new Map(placed);
   for (const k of seasonKeys(ctx.startKey, ctx.endKey, true)) {
-    const newly = blockOptions(ctx).filter((o) => !reach.has(o) && canGoIn(ctx, virtual, o, k));
+    const newly = candidates(ctx).filter((o) => !reach.has(o) && canGoIn(ctx, virtual, o, k));
     for (const o of newly) {
       virtual.set(o, k);
       reach.add(o);
@@ -380,12 +405,9 @@ const MAX_EXPANSIONS = 20000; // candidate checks per season
 /** Breadth-first, season by season; the first season with a complete plan is the earliest finish. */
 function findPlans(ctx: Ctx, includeIAPAndSummer: boolean, limit: number): Placed[] {
   const horizon = ctx.endKey + HORIZON_YEARS * 4;
-  const options = blockOptions(ctx);
-  // Prerequisites of needed subjects may be worth taking even if they add no block coverage.
-  const depTargets = new Set<string>();
-  for (const s of [...options, ...ctx.pins.keys()]) {
-    for (const d of ctx.deps.get(s) ?? []) for (const o of d.options) depTargets.add(o);
-  }
+  const options = candidates(ctx);
+  // A dependency of a needed subject is worth taking even if it adds no block coverage.
+  const depTargets = dependencyClosure(ctx, [...blockOptions(ctx), ...ctx.pins.keys()]);
 
   const start: Placed = new Map(ctx.pins);
   if (satisfies(ctx, start)) return [start];
@@ -480,11 +502,29 @@ export class ConstrainConcept {
 
   async #loadCtx(record: RoadRecord): Promise<Ctx> {
     const blocks = record.blocks.filter((b) => b.options.length > 0);
-    const relevant = [...new Set([...record.pins.map((p) => p.subject), ...blocks.flatMap((b) => b.options)])];
-    const [listings, deps, cancelled] = await Promise.all([
-      this.listings.find({ _id: { $in: relevant } }).toArray(),
-      this.dependencies.find({ course: { $in: relevant } }).toArray(),
-      this.cancellations.find({ subject: { $in: relevant } }).toArray(),
+    // The relevant subjects are the pins, the block options, and everything they
+    // depend on, followed transitively (candidates(road) in the spec), so load
+    // dependencies level by level until no new subject appears.
+    const relevant = new Set([...record.pins.map((p) => p.subject), ...blocks.flatMap((b) => b.options)]);
+    const deps: DependencyRecord[] = [];
+    let frontier = [...relevant];
+    while (frontier.length > 0) {
+      const level = await this.dependencies.find({ course: { $in: frontier } }).toArray();
+      deps.push(...level);
+      frontier = [];
+      for (const d of level) {
+        for (const o of d.options) {
+          if (!relevant.has(o)) {
+            relevant.add(o);
+            frontier.push(o);
+          }
+        }
+      }
+    }
+    const subjects = [...relevant];
+    const [listings, cancelled] = await Promise.all([
+      this.listings.find({ _id: { $in: subjects } }).toArray(),
+      this.cancellations.find({ subject: { $in: subjects } }).toArray(),
     ]);
     const depMap = new Map<string, DependencyRecord[]>();
     for (const d of deps) depMap.set(d.course, [...(depMap.get(d.course) ?? []), d]);
@@ -833,8 +873,9 @@ export class ConstrainConcept {
   async _options({ road, includeIAPAndSummer }: { road: string; includeIAPAndSummer: boolean }) {
     const ctx = await this.#loadCtx(await this.#requireRoad(road));
     const rows: { year: number; term: Term; subject: string; fitsByEnd: boolean }[] = [];
+    const subjects = candidates(ctx);
     for (const k of seasonKeys(ctx.startKey, ctx.endKey, includeIAPAndSummer)) {
-      for (const subject of blockOptions(ctx)) {
+      for (const subject of subjects) {
         if (!canGoIn(ctx, ctx.pins, subject, k)) continue;
         const withIt: Placed = new Map(ctx.pins).set(subject, k);
         rows.push({ ...seasonOf(k), subject, fitsByEnd: covered(ctx, reachable(ctx, withIt)) });
