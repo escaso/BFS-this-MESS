@@ -1,39 +1,92 @@
 <script setup lang="ts">
-// Make a new road, or open an existing one by id.
-import { ref } from "vue";
-import { api, message, unwrap } from "../api.ts";
+// Your roads (owned, and shared with you) to reopen by name, and a form to
+// make a new road.
+import { onMounted, ref } from "vue";
+import { call, message, type Output, type Term } from "../api.ts";
 
-const emit = defineEmits<{ open: [road: string]; error: [message: string] }>();
+const emit = defineEmits<{ open: [road: string] }>();
 
-const newRoad = ref({ name: "", major: "" });
-const openId = ref("");
+type Roads = Output<"myRoads">["roads"];
+const roads = ref<Roads | null>(null);
+const listError = ref("");
+
+onMounted(async () => {
+  try {
+    roads.value = (await call("myRoads", {})).roads;
+  } catch (e) {
+    listError.value = message(e);
+  }
+});
+
+const form = ref({ name: "", major: "", startYear: new Date().getFullYear(), startTerm: "FALL" as Term });
+const error = ref("");
+const busy = ref(false);
 
 async function createRoad() {
+  const name = form.value.name.trim();
+  const major = form.value.major.trim();
+  const startYear = Number(form.value.startYear);
+  if (!name || !major) {
+    error.value = "A road needs a name and a major.";
+    return;
+  }
+  if (!Number.isInteger(startYear) || startYear < 1900 || startYear > 2200) {
+    error.value = "The start year must be a year, such as 2026.";
+    return;
+  }
+  error.value = "";
+  busy.value = true;
   try {
-    const { road } = await unwrap(api.newRoad(newRoad.value));
+    const { road } = await call("newRoad", { name, major, startYear, startTerm: form.value.startTerm });
     emit("open", road);
   } catch (e) {
-    emit("error", `Could not create road: ${message(e)}`);
+    error.value = message(e);
+  } finally {
+    busy.value = false;
   }
-}
-
-function openExisting() {
-  const id = openId.value.trim();
-  if (id) emit("open", id);
 }
 </script>
 
 <template>
   <main>
-    <h1>Your road</h1>
-    <form @submit.prevent="createRoad">
-      <input v-model="newRoad.name" placeholder="Road name" required />
-      <input v-model="newRoad.major" placeholder="Major, e.g. 6-3" required />
-      <button>New road</button>
+    <h1>Your roads</h1>
+    <p v-if="listError" class="error" role="alert">{{ listError }}</p>
+    <p v-else-if="!roads" class="hint">Loading…</p>
+    <template v-else>
+      <ul>
+        <li v-for="r in roads.owned" :key="r.road">
+          <a :href="`#road=${r.road}`" @click.prevent="emit('open', r.road)">{{ r.name }}</a>
+          <span class="hint"> · {{ r.major }}</span>
+        </li>
+        <li v-if="!roads.owned.length" class="hint">You have no roads yet. Create one below.</li>
+      </ul>
+      <template v-if="roads.shared.length">
+        <h2>Shared with you</h2>
+        <ul>
+          <li v-for="r in roads.shared" :key="r.road">
+            <a :href="`#road=${r.road}`" @click.prevent="emit('open', r.road)">{{ r.name }}</a>
+            <span class="hint"> · {{ r.major }} · view only</span>
+          </li>
+        </ul>
+      </template>
+    </template>
+
+    <h2>New road</h2>
+    <form class="grid" @submit.prevent="createRoad">
+      <label>Name <input v-model="form.name" placeholder="My 6-3 road" required /></label>
+      <label>Major <input v-model="form.major" placeholder="6-3" required /></label>
+      <label>
+        First semester
+        <span class="inline">
+          <select v-model="form.startTerm">
+            <option value="FALL">Fall</option>
+            <option value="SPRING">Spring</option>
+          </select>
+          <input v-model.number="form.startYear" type="number" min="1900" max="2200" required />
+        </span>
+      </label>
+      <button :disabled="busy">{{ busy ? "Creating…" : "Create road" }}</button>
     </form>
-    <form @submit.prevent="openExisting">
-      <input v-model="openId" placeholder="Existing road id" required />
-      <button>Open</button>
-    </form>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
   </main>
 </template>
