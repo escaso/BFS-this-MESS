@@ -20,6 +20,7 @@
   },
   "scripts": {
     "generate": "sync-engine artifacts pin",
+    "test": "bun test",
     "check": "sync-engine check && sync-engine artifacts check && tsc --noEmit",
     "build": "bunx --bun vite build",
     "start": "bunx --bun vite build && bun run --parallel start:backend start:frontend",
