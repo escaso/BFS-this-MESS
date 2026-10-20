@@ -100,7 +100,8 @@ Rule: room(road, season) is the units still free in season after its pins: maxUn
 Rule: withinCaps(road, season) holds when neither room of season is negative. fitsRoom(road, subject, season) holds when the units of subject fit in the total room of season, and if subject is technical, in its technical room.
 Rule: canGoIn(road, subject, season) is the one test for adding a subject: season is unlocked and between the start and end of road, subject is not in taken(road), canRun(subject, season), dependenciesMet(road, subject, season), and fitsRoom(road, subject, season) all hold.
 Rule: covered(road, subjects) holds when the subjects can be assigned to the blocks of road so that every block with options gets at least count distinct options, and no subject is assigned to two blocks.
-Rule: reachable(road) is the subjects in taken(road), plus every option of a block that canGoIn some season up to the end of road, working through the seasons in order and treating subjects reachable in earlier seasons as taken. Each subject is checked on its own, so two reachable subjects may not fit in the same season together.
+Rule: candidates(road) is the subjects a plan may add: every option of a block of road, plus every option of a dependency of a candidate or of a pinned subject, repeated until nothing new is added. A candidate that is only a prerequisite or corequisite is taken to meet that dependency; it counts toward a block only if it is also an option of that block.
+Rule: reachable(road) is the subjects in taken(road), plus every candidate that canGoIn some season up to the end of road, working through the seasons in order and treating subjects reachable in earlier seasons as taken. Each subject is checked on its own, so two reachable subjects may not fit in the same season together.
 ```
 
 ## Actions
@@ -466,14 +467,14 @@ _satisfies(road: Road) : one (satisfied: Flag)
 _options(road: Road, includeIAPAndSummer: Flag) : many (year: Number, term: Term, subject: Subject, fitsByEnd: Flag)
   where road exists. Answers one row for each season and subject such that:
     - the season is from the start of road through its end (FALL and SPRING always; IAP and SUMMER only if includeIAPAndSummer is true)
-    - the subject is an option of some block of road
+    - the subject is in candidates(road)
     - canGoIn(road, subject, season)
   fitsByEnd is true if, with subject pinned to season, covered(road, reachable(road)) still holds. It is false when taking the option would push some block past the end of road: the student should move the end later (setEnd) before choosing it. Because reachable checks each subject on its own, fitsByEnd can be true when the subjects only fit one at a time; _findPath catches that case.
 
 _findPath(road: Road, includeIAPAndSummer: Flag, limit: Number) : many (plan: Number, year: Number, term: Term, subject: Subject)
   where road exists and limit is at least 1. Answers up to limit plans, numbered from 1, with one row for each subject in each season of each plan (prior credit is in every plan but has no rows; see _prior). Each plan satisfies _satisfies and finishes in the earliest possible season. Locked semesters appear exactly as pinned. The search is breadth-first:
     1. Start from the pins of road, beginning at the first unlocked season (counting from the start) that has room left after its pins.
-    2. Extend a plan by taking a row of _options whose subject is an option of some block, and treating it as a pin.
+    2. Extend a plan by taking a row of _options, and treating it as a pin.
     3. A plan is complete when covered(road, taken(road)) holds.
     4. Keep the complete plans that finish earliest.
   FALL and SPRING seasons are always used; IAP and SUMMER only if includeIAPAndSummer is true (pins and locks in them are respected either way). Plans may finish after the end of road if none finishes by it; the student can compare a plan's last season with the end to see this. If no valid plan exists, answers no rows.
