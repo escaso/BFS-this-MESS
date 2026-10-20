@@ -55,7 +55,10 @@ share(road: Road, requester: User, user: User) : returns ()
   where road has no owner
   then
     refuses NO_SUCH_ROAD "There is no such road."
-  where road has an owner and requester is not the owner of road
+  where road has an owner and requester is neither the owner of road nor in the accessList of road
+  then
+    refuses NO_SUCH_ROAD "There is no such road."
+  where requester is in the accessList of road
   then
     refuses NOT_AN_OWNER "Only the owner can share this road."
   where requester is the owner of road and user is the owner of road
@@ -70,7 +73,10 @@ unshare(road: Road, requester: User, user: User) : returns ()
   where road has no owner
   then
     refuses NO_SUCH_ROAD "There is no such road."
-  where road has an owner and requester is not the owner of road
+  where road has an owner and requester is neither the owner of road nor in the accessList of road
+  then
+    refuses NO_SUCH_ROAD "There is no such road."
+  where requester is in the accessList of road
   then
     refuses NOT_AN_OWNER "Only the owner can change who a road is shared with."
   where requester is the owner of road and user is not in the accessList of road
