@@ -21,7 +21,7 @@ export class ShareConcept {
   }
 
   /** Create the indexes that back the owner/accessList queries (the _id index is built in). */
-  private async ensureIndexes() {
+  async #ensureIndexes() {
     if (this.indexed) return;
     await this.accesses.createIndex({ owner: 1 });
     await this.accesses.createIndex({ accessList: 1 });
@@ -29,7 +29,7 @@ export class ShareConcept {
   }
 
   async claim({ road, user }: { road: string; user: string }) {
-    await this.ensureIndexes();
+    await this.#ensureIndexes();
     try {
       await this.accesses.insertOne({
         _id: road,
@@ -57,7 +57,7 @@ export class ShareConcept {
   async share(
     { road, requester, user }: { road: string; requester: string; user: string },
   ) {
-    const record = await this.requireParticipant(road, requester);
+    const record = await this.#requireParticipant(road, requester);
     if (record.owner !== requester) {
       throw new NotAnOwner("Only the owner can share this road.");
     }
@@ -75,7 +75,7 @@ export class ShareConcept {
   async unshare(
     { road, requester, user }: { road: string; requester: string; user: string },
   ) {
-    const record = await this.requireParticipant(road, requester);
+    const record = await this.#requireParticipant(road, requester);
     if (record.owner !== requester) {
       throw new NotAnOwner(
         "Only the owner can change who a road is shared with.",
@@ -97,7 +97,7 @@ export class ShareConcept {
    * accessList. Otherwise throws NoSuchRoad, so that a road the requester cannot
    * see looks the same as a road that does not exist.
    */
-  private async requireParticipant(road: string, requester: string) {
+  async #requireParticipant(road: string, requester: string) {
     const record = await this.accesses.findOne({ _id: road });
     if (
       !record ||
@@ -126,13 +126,13 @@ export class ShareConcept {
   }
 
   async _roadsOwnedBy({ user }: { user: string }) {
-    await this.ensureIndexes();
+    await this.#ensureIndexes();
     const records = await this.accesses.find({ owner: user }).toArray();
     return records.map((r) => ({ road: r._id }));
   }
 
   async _roadsSharedWith({ user }: { user: string }) {
-    await this.ensureIndexes();
+    await this.#ensureIndexes();
     const records = await this.accesses.find({ accessList: user }).toArray();
     return records.map((r) => ({ road: r._id }));
   }

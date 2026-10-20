@@ -31,7 +31,7 @@ export class AuthenticationConcept {
     this.sessions = db.collection("authentication.sessions");
   }
 
-  private async ensureIndexes() {
+  async #ensureIndexes() {
     if (this.indexed) return;
     await this.users.createIndex({ username: 1 }, { unique: true });
     await this.sessions.createIndex({ token: 1 }, { unique: true });
@@ -43,7 +43,7 @@ export class AuthenticationConcept {
       throw new EmptyCredentials("A username and a password are needed.");
     }
 
-    await this.ensureIndexes();
+    await this.#ensureIndexes();
 
     const userId = crypto.randomUUID();
     const passwordHash = hashPassword(password);
@@ -59,7 +59,7 @@ export class AuthenticationConcept {
   }
 
   async login({ username, password }: { username: string; password: string }) {
-    await this.ensureIndexes();
+    await this.#ensureIndexes();
 
     const user = await this.users.findOne({ username });
     if (!user || !verifyPassword(password, user.passwordHash)) {
@@ -81,13 +81,12 @@ export class AuthenticationConcept {
 
   async _authenticate({ session }: { session: string }) {
     const sessionRecord = await this.sessions.findOne({ token: session });
-    if (!sessionRecord) throw new NoSuchSession("Session does not exist.");
-    return { user: sessionRecord.user as string };
+    return sessionRecord ? [{ user: sessionRecord.user as string }] : [];
   }
 
   async _lookup({ username }: { username: string }) {
     const user = await this.users.findOne({ username });
-    return user ? { user: user._id as string } : null;
+    return user ? [{ user: user._id as string }] : [];
   }
 
   async _username({ user }: { user: string }) {
