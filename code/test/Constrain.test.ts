@@ -91,7 +91,8 @@ import { refusalsOf, useFreshDb } from "./support.ts";
  * _options(road, includeIAPAndSummer)
  *   partition on includeIAPAndSummer: true, false
  *   partition on subject: in block / not in block, taken (pinned or prior), runs / does not run,
- *                         cancelled, dependency met / not met (prereq, coreq, via prior credit)
+ *                         cancelled, dependency met / not met (prereq, coreq, via prior credit),
+ *                         candidate only as a (transitive) dependency of a block option
  *   partition on season: locked, unlocked, inside span, past the end
  *   partition on caps: no cap, would exceed total, would exceed technical, cap of 0, IAP default
  *   partition on fitsByEnd: true, false
@@ -105,6 +106,8 @@ import { refusalsOf, useFreshDb } from "./support.ts";
  *   partition on caps: none, binding
  *   partition on includeIAPAndSummer: true, false
  *   partition on finish: by the end of the road, only after the end
+ *   partition on dependencies outside every block: none, a chain behind a block option,
+ *                         a prerequisite of a pin, one that cannot fit before its pin
  *   partition on result: plans exist, no plan exists
  *   cover: each part; every returned plan passes _satisfies once pinned
  *
@@ -794,8 +797,10 @@ describe("dependencies and cancellations", () => {
     await addSubject("A", 6);
     const dependency = await prerequisite("A", ["P"]);
     await addBlock(road, 1, ["A"]);
-    expect(await c._options({ road, includeIAPAndSummer: false })).toEqual([]);
+    // While A needs P, only P can be taken now (P is a candidate as A's prerequisite).
+    expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual(["2026-FALL-P", "2027-SPRING-P"]);
     await c.removeDependency({ dependency });
+    // A is free to take, and P is no longer a candidate.
     expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual(["2026-FALL-A", "2027-SPRING-A"]);
   });
 
@@ -1031,7 +1036,13 @@ describe("_options", () => {
     await prerequisite("B", ["C"], 1, "COREQUISITE");
     await addBlock(road, 2, ["A", "B"]);
 
-    expect(await c._options({ road, includeIAPAndSummer: false })).toEqual([]);
+    // A and B wait for P and C; P and C are candidates as their dependencies.
+    expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual([
+      "2026-FALL-C",
+      "2026-FALL-P",
+      "2027-SPRING-C",
+      "2027-SPRING-P",
+    ]);
     await c.pin({ road, subject: "P", year: 2026, term: "FALL" });
     await c.pin({ road, subject: "C", year: 2026, term: "FALL" });
     expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual([
@@ -1039,6 +1050,16 @@ describe("_options", () => {
       "2027-SPRING-A",
       "2027-SPRING-B",
     ]);
+  });
+
+  it("covers a transitive prerequisite outside every block: only the first link is available", async () => {
+    const road = await makeRoad();
+    await c.setEnd({ road, year: 2027, term: "SPRING" });
+    for (const s of ["X", "Y", "Z"]) await addSubject(s, 6);
+    await prerequisite("Y", ["X"]);
+    await prerequisite("Z", ["Y"]);
+    await addBlock(road, 1, ["Z"]);
+    expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual(["2026-FALL-X", "2027-SPRING-X"]);
   });
 
   it("covers a prerequisite met by prior credit, available from the first season", async () => {
@@ -1116,6 +1137,55 @@ describe("_options", () => {
 // ---------------------------------------------------------------------------
 
 describe("_findPath", () => {
+  it("covers a prerequisite chain outside every block: the plan adds it in order", async () => {
+    const road = await makeRoad();
+    for (const s of ["X", "Y", "Z"]) await addSubject(s, 6);
+    await prerequisite("Y", ["X"]);
+    await prerequisite("Z", ["Y"]);
+    await addBlock(road, 1, ["Z"]);
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 }));
+    expect(plans).toHaveLength(1);
+    expect(sorted(keys(plans[0]))).toEqual(["2026-FALL-X", "2027-FALL-Z", "2027-SPRING-Y"]);
+    await pinPlan(road, plans[0]);
+    expect(await satisfied(road)).toBe(true);
+  });
+
+  it("covers a prerequisite that is not a block option: it is added but does not count toward the block", async () => {
+    const road = await makeRoad();
+    for (const s of ["A", "B", "P"]) await addSubject(s, 6);
+    await prerequisite("A", ["P"]);
+    await addBlock(road, 2, ["A", "B"]);
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 5 }));
+    expect(plans.length).toBeGreaterThanOrEqual(1);
+    for (const p of plans) {
+      // P alone with B would not meet "2 of A, B": A must be there too.
+      expect(sorted(p.map((r) => r.subject))).toEqual(["A", "B", "P"]);
+      expect(lastSeason(p)).toBe(rank(2027, "SPRING"));
+    }
+  });
+
+  it("covers a pin whose prerequisite is in no block: the plan adds it before the pin", async () => {
+    const road = await makeRoad();
+    await addSubject("P", 6);
+    await addSubject("A", 6);
+    await prerequisite("A", ["P"]);
+    await c.pin({ road, subject: "A", year: 2027, term: "SPRING" });
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 }));
+    expect(plans).toHaveLength(1);
+    expect(sorted(keys(plans[0]))).toEqual(["2026-FALL-P", "2027-SPRING-A"]);
+  });
+
+  it("covers a pin in the first semester whose prerequisite is not prior credit: no plan", async () => {
+    const road = await makeRoad();
+    await addSubject("P", 6);
+    await addSubject("A", 6);
+    await prerequisite("A", ["P"]);
+    await c.pin({ road, subject: "A", year: 2026, term: "FALL" });
+    expect(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 })).toEqual([]);
+    await c.addPrior({ road, subject: "P" });
+    expect(groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 }))).toHaveLength(1);
+  });
+
   it("covers no cap: everything fits in the first semester", async () => {
     const road = await makeRoad();
     await addSubject("A", 6);
