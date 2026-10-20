@@ -1,95 +1,122 @@
 <script setup lang="ts">
-// Edit a road's caps, pins, required subjects and elective blocks. Each edit
-// calls the backend, then tells the parent to reload the road.
-import { ref, watch } from "vue";
-import { api, message, unwrap, type Constraints } from "../api.ts";
+// Edit a road's major, the settings of one semester (caps and lock) and its
+// pins. Requirement blocks are edited in BlocksEditor. Each edit calls the
+// backend, then tells App to reload the road, so every view stays in sync
+// without a page refresh.
+import { computed, ref, watch } from "vue";
+import { call, message, type Constraints } from "../api.ts";
+import { key, label, sameSeason, seasonsOf, type Season } from "../util.ts";
+import BlocksEditor from "./BlocksEditor.vue";
 
-const props = defineProps<{ road: string; constraints: Constraints | null }>();
+const props = defineProps<{ road: string; constraints: Constraints }>();
 const emit = defineEmits<{ back: []; changed: [note?: string]; error: [message: string] }>();
 
-const caps = ref({ total: 0, technical: 0, locked: 0, major: "" });
-const pinForm = ref({ subject: "", semester: "" });
-const reqSubject = ref("");
-const blockOptions = ref("");
+const busy = ref(false);
 
-// Keep the caps form filled in with the road's current values.
-watch(
-  () => props.constraints,
-  (c) => {
-    if (!c) return;
-    caps.value = {
-      total: c.maxPerSemester,
-      technical: c.maxTechnicalPerSemester,
-      locked: c.lockedThrough,
-      major: "",
-    };
-  },
-  { immediate: true },
-);
-
-// Run some calls; on success ask the parent to reload, on failure report why.
-async function attempt(what: string, run: () => Promise<unknown>, note?: string) {
+// Run one edit; on success ask App to reload, on failure report why.
+async function attempt(run: () => Promise<unknown>, note?: string): Promise<boolean> {
+  busy.value = true;
   try {
     await run();
     emit("changed", note);
     return true;
   } catch (e) {
-    emit("error", `Could not ${what}: ${message(e)}`);
+    emit("error", message(e));
     return false;
+  } finally {
+    busy.value = false;
   }
 }
 
-const road = () => props.road;
+// Every season of the road, including IAP and summer, so any of them can be set up.
+const seasons = computed(() => seasonsOf(props.constraints, true));
+const seasonOf = (k: string): Season | undefined => seasons.value.find((s) => key(s) === k);
 
-function saveCaps() {
-  const c = caps.value;
-  return attempt(
-    "save",
-    async () => {
-      await unwrap(api.setCap({ road: road(), capType: "total", limit: Number(c.total) }));
-      await unwrap(api.setCap({ road: road(), capType: "technical", limit: Number(c.technical) }));
-      await unwrap(api.lockThroughSemester({ road: road(), semester: Number(c.locked) }));
-      const major = c.major.trim();
-      if (major) await unwrap(api.setMajor({ road: road(), major }));
-    },
-    "Saved.",
-  );
+// ---------- Major ----------
+
+const major = ref(props.constraints.major);
+watch(() => props.constraints.major, (m) => (major.value = m));
+
+function saveMajor() {
+  const value = major.value.trim();
+  if (!value) return emit("error", "A major cannot be empty.");
+  return attempt(() => call("setMajor", { road: props.road, major: value }), "Major saved.");
 }
+
+// ---------- One semester's settings ----------
+
+const chosen = ref(key(seasons.value[0]));
+const settings = ref({ total: "", technical: "", locked: false });
+
+// What the road says now for a season. A season with no Semester takes the
+// defaults: unlocked, no caps, except IAP whose total cap is 12. A cap of 0
+// from _semesters means "no cap".
+function current(s: Season) {
+  const row = props.constraints.semesters.find((r) => sameSeason(r, s));
+  if (!row) return { total: s.term === "IAP" ? "12" : "", technical: "", locked: false };
+  return {
+    total: row.maxUnits ? String(row.maxUnits) : "",
+    technical: row.maxTechnicalUnits ? String(row.maxTechnicalUnits) : "",
+    locked: row.locked,
+  };
+}
+
+watch(
+  [chosen, () => props.constraints],
+  () => {
+    const s = seasonOf(chosen.value);
+    if (s) settings.value = current(s);
+  },
+  { immediate: true },
+);
+
+function parseCap(text: string): number | null | "bad" {
+  const t = text.trim();
+  if (t === "") return null;
+  const n = Number(t);
+  return Number.isInteger(n) && n >= 0 ? n : "bad";
+}
+
+async function saveSemester() {
+  const s = seasonOf(chosen.value);
+  if (!s) return;
+  const before = current(s);
+  const caps = { total: parseCap(settings.value.total), technical: parseCap(settings.value.technical) };
+  if (caps.total === "bad" || caps.technical === "bad") {
+    return emit("error", "A cap must be a whole number of units, at least 0, or empty for no cap.");
+  }
+  const where = { road: props.road, year: s.year, term: s.term };
+  // Only send what changed, so that saving IAP untouched keeps its default cap.
+  await attempt(async () => {
+    for (const capType of ["total", "technical"] as const) {
+      const limit = caps[capType];
+      if (settings.value[capType].trim() === before[capType]) continue;
+      if (limit === null) await call("clearCap", { ...where, capType });
+      else await call("setCap", { ...where, capType, limit: limit as number });
+    }
+    if (settings.value.locked !== before.locked) {
+      await call("setLocked", { ...where, locked: settings.value.locked });
+    }
+  }, `${label(s)} saved.`);
+}
+
+// ---------- Pins ----------
+
+const pinForm = ref({ subject: "", season: key(seasons.value[0]) });
 
 async function addPin() {
   const subject = pinForm.value.subject.trim();
-  const semester = Number(pinForm.value.semester);
-  if (await attempt("pin", () => unwrap(api.pin({ road: road(), subject, semester })))) {
-    pinForm.value = { subject: "", semester: "" };
-  }
+  const s = seasonOf(pinForm.value.season);
+  if (!subject || !s) return emit("error", "Give a subject and a semester to pin it to.");
+  const ok = await attempt(
+    () => call("pin", { road: props.road, subject, year: s.year, term: s.term }),
+    `${subject} pinned to ${label(s)}.`,
+  );
+  if (ok) pinForm.value.subject = "";
 }
 
 function unPin(subject: string) {
-  return attempt("unpin", () => unwrap(api.unPin({ road: road(), subject })));
-}
-
-async function addReq() {
-  const subject = reqSubject.value.trim();
-  if (await attempt("add requirement", () => unwrap(api.addRequirement({ road: road(), subject })))) {
-    reqSubject.value = "";
-  }
-}
-
-function removeReq(subject: string) {
-  return attempt("remove requirement", () => unwrap(api.removeRequirement({ road: road(), subject })));
-}
-
-async function addBlock() {
-  const options = blockOptions.value.split(",").map((s) => s.trim()).filter(Boolean);
-  if (await attempt("add elective block", () => unwrap(api.addElectiveBlock({ road: road(), options })))) {
-    blockOptions.value = "";
-  }
-}
-
-function removeBlock(options: string[]) {
-  return attempt("remove elective block", () =>
-    unwrap(api.removeElectiveBlock({ road: road(), options })),
-  );
+  return attempt(() => call("unPin", { road: props.road, subject }), `${subject} unpinned.`);
 }
 </script>
 
@@ -100,50 +127,53 @@ function removeBlock(options: string[]) {
       <button @click="emit('back')">Back to paths</button>
     </div>
 
-    <form class="grid" @submit.prevent="saveCaps">
-      <label>Max subjects per semester <input v-model.number="caps.total" type="number" min="0" /></label>
-      <label>Max technicals per semester <input v-model.number="caps.technical" type="number" min="0" /></label>
-      <label>Locked through semester <input v-model.number="caps.locked" type="number" min="0" max="8" /></label>
-      <label>Major <input v-model="caps.major" placeholder="unchanged" /></label>
-      <button>Save</button>
+    <h2>Major</h2>
+    <form @submit.prevent="saveMajor">
+      <input v-model="major" placeholder="6-3" required />
+      <button :disabled="busy">Save major</button>
+    </form>
+
+    <h2>Semester settings</h2>
+    <form class="grid" @submit.prevent="saveSemester">
+      <label>
+        Semester
+        <select v-model="chosen">
+          <option v-for="s in seasons" :key="key(s)" :value="key(s)">{{ label(s) }}</option>
+        </select>
+      </label>
+      <label>Max units <input v-model="settings.total" inputmode="numeric" placeholder="no cap" /></label>
+      <label>
+        Max technical units
+        <input v-model="settings.technical" inputmode="numeric" placeholder="no cap" />
+      </label>
+      <label>
+        Locked (taken already: only its pins, nothing added)
+        <input v-model="settings.locked" type="checkbox" />
+      </label>
+      <button :disabled="busy">Save semester</button>
     </form>
 
     <h2>Pinned subjects</h2>
     <ul>
-      <li v-for="p in constraints?.pins ?? []" :key="p.semester + ':' + p.subject">
-        {{ p.subject }} on semester {{ p.semester }}
-        <button @click="unPin(p.subject)">remove</button>
+      <li v-for="p in constraints.pins" :key="p.subject">
+        {{ p.subject }} in {{ label(p) }}
+        <button :disabled="busy" @click="unPin(p.subject)">Unpin</button>
       </li>
-      <li v-if="!constraints?.pins.length" class="hint">None</li>
+      <li v-if="!constraints.pins.length" class="hint">None</li>
     </ul>
     <form @submit.prevent="addPin">
-      <input v-model="pinForm.subject" placeholder="6.1220" required />
-      <input v-model="pinForm.semester" type="number" min="1" max="8" placeholder="Semester" required />
-      <button>Pin</button>
+      <input v-model="pinForm.subject" placeholder="6.1010" required />
+      <select v-model="pinForm.season">
+        <option v-for="s in seasons" :key="key(s)" :value="key(s)">{{ label(s) }}</option>
+      </select>
+      <button :disabled="busy">Pin</button>
     </form>
 
-    <h2>Required subjects</h2>
-    <ul>
-      <li v-for="s in constraints?.required ?? []" :key="s">
-        {{ s }} <button @click="removeReq(s)">remove</button>
-      </li>
-      <li v-if="!constraints?.required.length" class="hint">None</li>
-    </ul>
-    <form @submit.prevent="addReq">
-      <input v-model="reqSubject" placeholder="6.1010" required />
-      <button>Add</button>
-    </form>
-
-    <h2>Elective blocks (take one of)</h2>
-    <ul>
-      <li v-for="(b, i) in constraints?.elective_blocks ?? []" :key="i">
-        {{ b.join(" / ") }} <button @click="removeBlock(b)">remove</button>
-      </li>
-      <li v-if="!constraints?.elective_blocks.length" class="hint">None</li>
-    </ul>
-    <form @submit.prevent="addBlock">
-      <input v-model="blockOptions" placeholder="6.1800, 6.1850, 6.1810" required />
-      <button>Add</button>
-    </form>
+    <BlocksEditor
+      :road="road"
+      :blocks="constraints.blocks"
+      @changed="emit('changed', $event)"
+      @error="emit('error', $event)"
+    />
   </main>
 </template>
