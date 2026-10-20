@@ -30,7 +30,12 @@ BFSThisMess.LogOut at /bfsthismess/logOut
 
 ## Catalog
 
-A signed-in person [loads the catalog](reaction:BFSThisMess.LoadCatalog) from the MIT Subject Listing and the Subject Evaluation Reports by giving both URLs (CourseOffering.load). Any signed-in person may do this; an administrator role is left for later. Because the catalog is shared by everyone and the server fetches the URLs it is given, the listing URL must be on student.mit.edu and the ratings URL on eduapps.mit.edu, both over https. A request with any other URL is refused with BAD_SOURCE "Catalog sources must be the MIT Subject Listing and Subject Evaluation Reports sites." and nothing is loaded.
+A signed-in person [loads the catalog](reaction:BFSThisMess.LoadCatalog) from the MIT Subject Listing and the Subject Evaluation Reports by giving both URLs (CourseOffering.load). Any signed-in person may do this; an administrator role is left for later. Because the catalog is shared by everyone and the server fetches the URLs it is given, the listing URL must be on student.mit.edu and the ratings URL on eduapps.mit.edu, both over https. A request with any other URL is refused with BAD_SOURCE "Catalog sources must be the MIT Subject Listing and Subject Evaluation Reports sites." and nothing is loaded. The URLs are checked with [catalogSources](computation:catalogSources).
+
+```computations
+catalogSources(subjectListingURL: String, ratingsURL: String) : Record
+  Answers trusted = true when subjectListingURL is an https URL on student.mit.edu and ratingsURL is an https URL on eduapps.mit.edu, and trusted = false otherwise, including when either is not a valid URL.
+```
 
 Anyone can [search subjects](reaction:BFSThisMess.SearchSubjects) (CourseOffering._search), which answers [the matching courses](former:BFSThisMess.MatchingCourses). For a subject they can [see its ratings](reaction:BFSThisMess.ViewRatings) (CourseOffering._ratings), shown as [the ratings of a course](former:BFSThisMess.CourseRatings), and [its schedule](reaction:BFSThisMess.ViewSchedule) (CourseOffering._schedule), shown as [the schedule of a course](former:BFSThisMess.CourseSchedule).
 
@@ -43,7 +48,7 @@ BFSThisMess.ViewSchedule at /bfsthismess/viewSchedule
 
 ## Roads
 
-A signed-in student [creates a road](reaction:BFSThisMess.NewRoad) with a name, major and start (Constrain.newRoad). Once the road exists, the student [becomes its owner](reaction:BFSThisMess.ClaimRoad) (Share.claim). A request without a valid session does not create a road. Creating and claiming are one request: if the claim is refused, the new road is deleted (Constrain.deleteRoad) and the request is refused with the reason of the claim, so a road never exists without an owner. ClaimRoad and ReleaseRoad are steps of NewRoad and DeleteRoad. They have no endpoints of their own, so nobody can claim or release a road directly.
+A signed-in student [creates a road](reaction:BFSThisMess.NewRoad) with a name, major and start (Constrain.newRoad), and in the same request becomes its owner (Share.claim). A request without a valid session [does not create a road](reaction:BFSThisMess.NewRoadWithoutSession) and is refused with NO_SUCH_SESSION. If the claim is refused, the request is refused with the reason of the claim and [the new road is deleted](reaction:BFSThisMess.DeleteUnclaimedRoad) (Constrain.deleteRoad), so a road never exists without an owner. Claiming and releasing are steps of NewRoad and DeleteRoad. They have no endpoints of their own, so nobody can claim or release a road directly.
 
 Only the owner can change a road. They can [rename it](reaction:BFSThisMess.RenameRoad), [move its start](reaction:BFSThisMess.SetStart) or [its end](reaction:BFSThisMess.SetEnd), [change its major](reaction:BFSThisMess.SetMajor), [add](reaction:BFSThisMess.AddPrior) or [remove](reaction:BFSThisMess.RemovePrior) prior credit, [pin](reaction:BFSThisMess.Pin) or [unpin](reaction:BFSThisMess.UnPin) a subject to a semester, [lock or unlock a semester](reaction:BFSThisMess.SetLocked) so the past is recorded, [set](reaction:BFSThisMess.SetCap) or [clear](reaction:BFSThisMess.ClearCap) a cap on units in a semester, and [reset a semester](reaction:BFSThisMess.ResetSemester). Each of these checks Share._isOwner for the road and then calls the Constrain action of the same name.
 
@@ -55,6 +60,7 @@ The Constrain actions that keep subject facts up to date (setListing, addListing
 
 ```endpoints
 BFSThisMess.NewRoad at /bfsthismess/newRoad
+BFSThisMess.NewRoadWithoutSession at /bfsthismess/newRoad
 BFSThisMess.RenameRoad at /bfsthismess/renameRoad
 BFSThisMess.DeleteRoad at /bfsthismess/deleteRoad
 BFSThisMess.SetStart at /bfsthismess/setStart
@@ -95,7 +101,7 @@ Someone who may view a road (Share._canView) can [find the shortest paths](react
 
 They can [view a road](reaction:BFSThisMess.ViewRoad) to see [its constraints](former:BFSThisMess.RoadConstraints), put together from Constrain._road, _prior, _blocks, _pins and _semesters, together with its paths, found the same way as in FindPaths. A person it is shared with sees exactly what the owner sees, as the road is now, but none of the requests that change it are open to them.
 
-Four more requests only read a road, and each passes the same Share._canView check: they [list the options that still fit](reaction:BFSThisMess.ViewOptions), giving whether to include IAP and summer semesters (Constrain._options, shown as [the options of a road](former:BFSThisMess.RoadOptions)); [check the plan chosen so far](reaction:BFSThisMess.CheckPlan) (Constrain._satisfies, shown as [the verdict on a plan](former:BFSThisMess.PlanVerdict)); and [preview the pins lost](reaction:BFSThisMess.PreviewStartChange) by moving the start, or [by moving the end](reaction:BFSThisMess.PreviewEndChange), so that the student can be warned before they change it (Constrain._pinsLostBySetStart and _pinsLostBySetEnd, shown as [the pins that would be lost](former:BFSThisMess.LostPins)). Previews change nothing, so they are open to anyone who may view the road.
+Four more requests only read a road, and each passes the same Share._canView check: they [list the options that still fit](reaction:BFSThisMess.ViewOptions), giving whether to include IAP and summer semesters (Constrain._options, shown as [the options of a road](former:BFSThisMess.RoadOptions)); [check the plan chosen so far](reaction:BFSThisMess.CheckPlan) (Constrain._satisfies, shown as [the verdict on a plan](former:BFSThisMess.PlanVerdict)); and [preview the pins lost](reaction:BFSThisMess.PreviewStartChange) by moving the start, or [by moving the end](reaction:BFSThisMess.PreviewEndChange), so that the student can be warned before they change it (Constrain._pinsLostBySetStart and _pinsLostBySetEnd, shown as [the pins lost by moving the start](former:BFSThisMess.PinsLostByStart) and [the pins lost by moving the end](former:BFSThisMess.PinsLostByEnd)). Previews change nothing, so they are open to anyone who may view the road.
 
 ```endpoints
 BFSThisMess.MyRoads at /bfsthismess/myRoads
