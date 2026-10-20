@@ -52,3 +52,20 @@ th, td { border-bottom: 1px solid #ccc; padding: 0.3rem 0.8rem; text-align: left
 .hint { color: #777; }
 
 
+
+/* Phase 1 additions: only what the new screens need to be usable. */
+#status.ok, .ok { color: #2e7d32; }
+#status.error, .error { color: #c62828; }
+#status:empty { display: none; }
+header .spacer { flex: 1; }
+.inline { display: inline-flex; align-items: center; gap: 0.5rem; }
+.narrow { max-width: 28rem; }
+.padded { padding: 0 1rem; }
+.road-summary { margin: 0.5rem 1rem; }
+.link { background: none; border: none; padding: 0; color: #37474f; text-decoration: underline; }
+.link.light { color: white; }
+input.count { width: 3.5rem; }
+.chip { display: inline-flex; gap: 0.25rem; padding: 0.1rem 0.4rem; margin: 0 0.15rem; background: #eceff1; border-radius: 0.6rem; }
+li.block { margin-bottom: 0.5rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
+li.block form { margin: 0; }
+.sem.extra { border-style: dashed; }
