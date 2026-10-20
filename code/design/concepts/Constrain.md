@@ -93,6 +93,14 @@ a set of Cancellations with
   Rule: A cancellation says a subject is not offered in that season even though its terms allow it. A subject with no cancellation is assumed to be available.
 
 Rule: Listings, Dependencies and Cancellations are this concept's copy of the facts it needs about subjects. They are kept up to date by synchronizations with the concept that owns subject information, and by no other means.
+Rule: taken(road) is the prior credit of road plus every pinned subject. takenBefore(road, season) is the prior credit plus the subjects pinned to earlier seasons. takenBy(road, season) is the prior credit plus the subjects pinned to that season or an earlier one.
+Rule: canRun(subject, season) holds when the subject has a Listing, its terms include the term of season, and it has no Cancellation for season.
+Rule: dependenciesMet(road, subject, season) holds when every PREREQUISITE dependency of subject has at least count of its options in takenBefore(road, season), and every COREQUISITE dependency has at least count of its options in takenBy(road, season).
+Rule: room(road, season) is the units still free in season after its pins: maxUnits minus the units pinned, and maxTechnicalUnits minus the technical units pinned. An absent cap leaves unlimited room. A season with no Semester uses the defaults in the rules above.
+Rule: withinCaps(road, season) holds when neither room of season is negative. fitsRoom(road, subject, season) holds when the units of subject fit in the total room of season, and if subject is technical, in its technical room.
+Rule: canGoIn(road, subject, season) is the one test for adding a subject: season is unlocked and between the start and end of road, subject is not in taken(road), canRun(subject, season), dependenciesMet(road, subject, season), and fitsRoom(road, subject, season) all hold.
+Rule: covered(road, subjects) holds when the subjects can be assigned to the blocks of road so that every block with options gets at least count distinct options, and no subject is assigned to two blocks.
+Rule: reachable(road) is the subjects in taken(road), plus every option of a block that canGoIn some season up to the end of road, working through the seasons in order and treating subjects reachable in earlier seasons as taken. Each subject is checked on its own, so two reachable subjects may not fit in the same season together.
 ```
 
 ## Actions
@@ -334,9 +342,35 @@ resetSemester(road: Road, year: Number, term: Term) : returns ()
     delete that Semester, so the season takes the defaults in the state rules (its pins are unaffected)
     returns
 
-setListing(subject: Subject, units: Number, technical: Flag, terms: set of Term) : returns ()
+setListing(subject: Subject, units: Number, technical: Flag) : returns ()
+  where subject has a Listing
   then
-    if subject has a Listing, replace its units, technical and terms, otherwise create one
+    replace the units and technical of its Listing and keep its terms
+    returns
+  where subject has no Listing
+  then
+    create a Listing for subject with this units and technical and no terms
+    returns
+
+addListingTerm(subject: Subject, term: Term) : returns ()
+  where subject has no Listing
+  then
+    refuses NO_LISTING "That subject is not known."
+  where subject has a Listing
+  then
+    add term to the terms of the Listing of subject if it is not already there
+    returns
+
+removeListingTerm(subject: Subject, term: Term) : returns ()
+  where subject has no Listing
+  then
+    refuses NO_LISTING "That subject is not known."
+  where subject has a Listing and term is not in the terms of its Listing
+  then
+    refuses NOT_A_TERM "That subject does not run in that term."
+  where subject has a Listing and term is in the terms of its Listing
+  then
+    remove term from the terms of the Listing of subject
     returns
 
 removeListing(subject: Subject) : returns ()
@@ -397,47 +431,6 @@ unmarkCancelled(subject: Subject, year: Number, term: Term) : returns ()
     returns
 ```
 
-## Definitions
-
-Shorthand used by the queries below. These are not state; each is computed from the state of a road.
-
-```definitions
-Who has been taken
-  taken(road)               the prior credit of road plus every pinned subject
-  takenBefore(road, season) the prior credit plus the subjects pinned to earlier seasons
-  takenBy(road, season)     the prior credit plus the subjects pinned to that season or an earlier one
-
-Can a subject be taken in a season?
-  canRun(subject, season)
-    the subject has a Listing, its terms include the term of season, and it has no Cancellation for season
-  dependenciesMet(road, subject, season)
-    every PREREQUISITE dependency of subject has at least count of its options in takenBefore(road, season),
-    and every COREQUISITE dependency has at least count of its options in takenBy(road, season)
-
-Units
-  room(road, season)
-    the units still free in season after its pins: maxUnits minus the units pinned, and maxTechnicalUnits minus the technical units pinned.
-    An absent cap leaves unlimited room. A season with no Semester uses the defaults in the state rules.
-  withinCaps(road, season)
-    neither room is negative
-  fitsRoom(road, subject, season)
-    the units of subject fit in the total room of season, and if subject is technical, in its technical room
-
-The one test for adding a subject
-  canGoIn(road, subject, season)
-    season is unlocked and between the start and end of road, subject is not in taken(road),
-    canRun(subject, season), dependenciesMet(road, subject, season), and fitsRoom(road, subject, season)
-
-Blocks
-  covered(road, subjects)
-    the subjects can be assigned to the blocks of road so that every block with options gets at least count distinct options,
-    and no subject is assigned to two blocks
-  reachable(road)
-    the subjects in taken(road), plus every option of a block that canGoIn some season up to the end of road,
-    working through the seasons in order and treating subjects reachable in earlier seasons as taken.
-    Each subject is checked on its own, so two reachable subjects may not fit in the same season together
-```
-
 ## Queries
 
 ```queries
@@ -484,14 +477,7 @@ _findPath(road: Road, includeIAPAndSummer: Flag, limit: Number) : many (plan: Nu
     3. A plan is complete when covered(road, taken(road)) holds.
     4. Keep the complete plans that finish earliest.
   FALL and SPRING seasons are always used; IAP and SUMMER only if includeIAPAndSummer is true (pins and locks in them are respected either way). Plans may finish after the end of road if none finishes by it; the student can compare a plan's last season with the end to see this. If no valid plan exists, answers no rows.
+
+_roadOfBlock(block: Block) : optional (road: Road)
+  Answers the road that block belongs to, or no row if block does not exist.
 ```
-
-## Notes
-
-Design notes (not part of the concept's behavior):
-
-- Subject facts are mirrored here on purpose. Constrain keeps its own Listings, Dependencies and Cancellations so that it never reads another concept's state. CourseOffering stays the owner of subject information; a synchronization copies the facts across whenever CourseOffering loads. When CourseOffering is updated it should hold units as a number (summed from e.g. "3-0-9") and represent a subject's prerequisite "or" groups as blocks, as here.
-- Requirements were previously a separate "required" set plus elective blocks. A required subject is now a block with a single option and a count of 1, which removes a special case from every query. The old _placements query (the required-only view) is dropped for now because that distinction no longer exists in the state.
-- The requirements of a major are produced outside this concept (e.g. a MajorRequirements concept loaded from the web, versioned by catalog year). A synchronization on setMajor replaces all blocks of the road with the new major's: it removes every existing block and adds the new ones with addBlock and addOption.
-- fitsByEnd now checks all blocks together: it asks whether the blocks can still be covered if every reachable subject were taken, so it accounts for a subject not counting toward two blocks. Previously each block was checked on its own.
-- Known gap: _options and _findPath only consider subjects that appear in a block. A prerequisite that is not prior credit, not pinned and not in any block can never be satisfied by the search.

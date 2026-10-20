@@ -29,18 +29,30 @@ a set of Sessions with
 
 ```actions
 register(username: String, password: String) : returns (user: User)
+  where username or password is empty
+  then
+    refuses EMPTY_CREDENTIALS "A username and a password are needed."
+  where username and password are not empty and username is taken
+  then
+    refuses USERNAME_TAKEN "Username is already taken."
   where username and password are not empty and username is not taken
   then
     create a user with this username and the hash of the password
     returns user
 
 login(username: String, password: String) : returns (session: String)
+  where no user with this username exists, or the password does not match
+  then
+    refuses INVALID_CREDENTIALS "Invalid username or password."
   where a user with this username exists and the password matches
   then
     create a new session for that user
     returns session
 
 logout(session: String) : returns ()
+  where session does not exist
+  then
+    refuses NO_SUCH_SESSION "Session does not exist."
   where session exists
   then
     remove session
@@ -52,4 +64,10 @@ logout(session: String) : returns ()
 ```queries
 _authenticate(session: String) : one (user: User)
   where session exists. Answers the user of session.
+
+_lookup(username: String) : optional (user: User)
+  Answers the user with this username, or no row if there is none.
+
+_username(user: User) : one (username: String)
+  where user exists. Answers the username of user.
 ```

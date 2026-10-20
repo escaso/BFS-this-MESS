@@ -104,18 +104,12 @@ _cancellations(course: Subject) : many (year: Number, term: Term)
 _ratings(course: Subject) : one (found: Flag, classRating: Number, professorRating: Number, url: String)
   where course is in Courses. If course is in Ratings, answers found = true with the class rating, professor rating, and source URL associated with course; otherwise answers found = false.
 
-_search(query?: String, level?: String, term?: Term) : many (course: Subject, name: String, courseId: String, level: String, terms: set of Term, units: String, unitsKnown: Flag)
-  Answers every course that satisfies each filter that is given, or every course if none is given. query matches courses whose name, description or course Id contains it, ignoring case (an empty query is treated as not given); level matches courses of that level, ignoring case; term matches courses whose terms include it. units is empty if the course has none. unitsKnown is false when units is absent or has no numeric total (e.g. "Arrange"); other concepts then assume 12 units (see Notes), so an interface can show that these units are an assumption.
+_search(query?: String, level?: String, term?: Term) : many (course: Subject, name: String, courseId: String, level: String, units: String, unitsKnown: Flag)
+  Answers every course that satisfies each filter that is given, or every course if none is given. query matches courses whose name, description or course Id contains it, ignoring case (an empty query is treated as not given); level matches courses of that level, ignoring case; term matches courses whose terms include it. units is empty if the course has none. unitsKnown is false when units is absent or has no numeric total (e.g. "Arrange"); other concepts then assume 12 units, so an interface can show that these units are an assumption.
+
+_terms(course: Subject) : many (term: Term)
+  where course is in Courses. Answers each term in the terms of course, or no rows if there are none.
 
 _schedule(course: Subject) : one (found: Flag, units: String, meetingTimes: String, location: String)
   where course is in Courses. If course has meetingTimes (is not empty/null), answers found = true with its units, meeting times, and location; otherwise answers found = false.
 ```
-
-## Notes
-
-Design notes (not part of the concept's behavior):
-
-- Subject facts are mirrored by the Constrain concept, which keeps its own Listings, Dependencies and Cancellations so that it never reads another concept's state. CourseOffering stays the owner of subject information; a synchronization copies the facts across whenever CourseOffering loads, using _search, _prerequisites, _corequisites and _cancellations. That synchronization is also where units is translated into a number (summing e.g. "3-0-9" to 12).
-- Disclaimer on units: when a subject has no units, or units with no numeric total such as "Arrange", the translation assumes 12 units. This is an assumption and not catalog data. unitsKnown in _search lets an interface say so.
-- Whether a subject is technical is not stored here: it depends on the road's major (e.g. 21M subjects for Theatre Arts, 18.700 or 6.120 for 6-3) and so belongs with the road and its requirements.
-- The subject listing is released ahead of time and in halves, so a load in the fall only knows about the Fall terms. Cancellations are therefore derived for whole academic years, and a later load of the IAP and Spring listing adds its terms without discarding the Fall ones.
