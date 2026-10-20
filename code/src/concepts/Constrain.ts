@@ -1,106 +1,574 @@
 import { MongoServerError, type Collection, type Db } from "mongodb";
 
-export class NoSuchRoad extends Error {}
-export class RequirementNotMet extends Error {}
-export class ElectiveBlockNotFound extends Error {}
-export class PinNotFound extends Error {}
+export class Refusal extends Error {
+  constructor(public readonly code: string, message: string) {
+    super(message);
+  }
+}
+export class NoSuchRoad extends Refusal {
+  constructor(message = "There is no such road.") {
+    super("NO_SUCH_ROAD", message);
+  }
+}
+export class PinNotFound extends Refusal {
+  constructor(message = "That subject is not pinned in this road.") {
+    super("NOT_PINNED", message);
+  }
+}
+
+export type Term = "IAP" | "SPRING" | "SUMMER" | "FALL";
+export type DependencyKind = "PREREQUISITE" | "COREQUISITE";
 
 interface Pin {
   subject: string;
-  semester: number;
+  year: number;
+  term: Term;
+}
+
+interface Block {
+  id: string;
+  options: string[];
+  count: number;
+}
+
+interface Semester {
+  year: number;
+  term: Term;
+  locked: boolean;
+  maxUnits: number | null; // null = no cap
+  maxTechnicalUnits: number | null;
 }
 
 interface RoadRecord {
   _id: string; // road ID
   name: string;
   major: string;
-  required: string[];
-  maxPerSemester: number;
-  maxTechnicalPerSemester: number;
-  lockedThrough: number;
-  electiveBlocks: string[][]; // stored as list of subject arrays
+  startYear: number;
+  startTerm: Term;
+  endYear: number;
+  endTerm: Term;
+  prior: string[];
+  blocks: Block[];
   pins: Pin[];
+  semesters: Semester[];
+}
+
+interface Listing {
+  _id: string; // subject
+  units: number;
+  technical: boolean;
+  terms: Term[];
+}
+
+interface DependencyRecord {
+  _id: string;
+  course: string;
+  kind: DependencyKind;
+  options: string[];
+  count: number;
+}
+
+interface Cancellation {
+  _id: string; // `${subject}|${year}|${term}`
+  subject: string;
+  year: number;
+  term: Term;
+}
+
+// ---------------------------------------------------------------------------
+// Seasons: ordered by year, then term (IAP < SPRING < SUMMER < FALL).
+// ---------------------------------------------------------------------------
+
+interface Season {
+  year: number;
+  term: Term;
+}
+
+const TERMS: Term[] = ["IAP", "SPRING", "SUMMER", "FALL"];
+const keyOf = (year: number, term: Term): number => year * 4 + TERMS.indexOf(term);
+const seasonOf = (key: number): Season => ({ year: Math.floor(key / 4), term: TERMS[((key % 4) + 4) % 4] });
+const isFallOrSpring = (term: string): term is "FALL" | "SPRING" => term === "FALL" || term === "SPRING";
+// SPRING Y = 2Y, FALL Y = 2Y + 1
+const semesterIndex = (year: number, term: "FALL" | "SPRING") => year * 2 + (term === "FALL" ? 1 : 0);
+
+function defaultEnd(startYear: number, startTerm: "FALL" | "SPRING"): Season {
+  return startTerm === "FALL" ? { year: startYear + 4, term: "SPRING" } : { year: startYear + 3, term: "FALL" };
+}
+
+function shiftSeason(s: Season, delta: number): Season {
+  if (isFallOrSpring(s.term)) {
+    const idx = semesterIndex(s.year, s.term) + delta;
+    return { year: Math.floor(idx / 2), term: ((idx % 2) + 2) % 2 === 1 ? "FALL" : "SPRING" };
+  }
+  // An IAP/SUMMER end has no FALL/SPRING index, so it moves by whole years.
+  return { year: s.year + Math.round(delta / 2), term: s.term };
+}
+
+/** The end of the road moves by as many FALL/SPRING semesters as the start moves. */
+function movedSpan(road: RoadRecord, year: number, term: "FALL" | "SPRING") {
+  const delta = semesterIndex(year, term) - semesterIndex(road.startYear, road.startTerm as "FALL" | "SPRING");
+  const end = shiftSeason({ year: road.endYear, term: road.endTerm }, delta);
+  return { startKey: keyOf(year, term), endKey: keyOf(end.year, end.term), end };
+}
+
+const pinKey = (p: Pin) => keyOf(p.year, p.term);
+const pinsOutside = (pins: Pin[], startKey: number, endKey: number) =>
+  pins.filter((p) => pinKey(p) < startKey || pinKey(p) > endKey);
+const sortPins = (pins: Pin[]) =>
+  [...pins].sort((a, b) => pinKey(a) - pinKey(b) || (a.subject < b.subject ? -1 : 1));
+
+function isLocked(record: RoadRecord, year: number, term: Term): boolean {
+  return record.semesters.some((s) => s.year === year && s.term === term && s.locked);
+}
+
+/** Set fields of the Semester for a season, creating it (as in setLocked) if there is none. */
+function upsertSemester(record: RoadRecord, year: number, term: Term, patch: Partial<Semester>): Semester[] {
+  const semesters = record.semesters.map((s) => ({ ...s }));
+  let sem = semesters.find((s) => s.year === year && s.term === term);
+  if (!sem) {
+    sem = { year, term, locked: false, maxUnits: term === "IAP" ? 12 : null, maxTechnicalUnits: null };
+    semesters.push(sem);
+  }
+  Object.assign(sem, patch);
+  return semesters;
+}
+
+// ---------------------------------------------------------------------------
+// Planning engine: taken, canRun, dependenciesMet, room, canGoIn, covered, reachable
+// ---------------------------------------------------------------------------
+
+/** subject -> key of the season it is placed in (pins, plus extensions during _findPath). */
+type Placed = Map<string, number>;
+
+interface Ctx {
+  startKey: number;
+  endKey: number;
+  prior: Set<string>;
+  blocks: Block[]; // only blocks with options
+  pins: Placed;
+  semesters: Map<number, Semester>;
+  listings: Map<string, Listing>;
+  deps: Map<string, DependencyRecord[]>;
+  cancelled: Set<string>; // `${subject}|${seasonKey}`
+}
+
+function semesterOf(ctx: Ctx, k: number): Pick<Semester, "locked" | "maxUnits" | "maxTechnicalUnits"> {
+  return (
+    ctx.semesters.get(k) ?? { locked: false, maxUnits: seasonOf(k).term === "IAP" ? 12 : null, maxTechnicalUnits: null }
+  );
+}
+
+function takenSet(ctx: Ctx, placed: Placed): Set<string> {
+  return new Set([...ctx.prior, ...placed.keys()]);
+}
+
+function canRun(ctx: Ctx, subject: string, k: number): boolean {
+  const l = ctx.listings.get(subject);
+  return !!l && l.terms.includes(seasonOf(k).term) && !ctx.cancelled.has(`${subject}|${k}`);
+}
+
+function dependenciesMet(ctx: Ctx, placed: Placed, subject: string, k: number, includeCoreq = true): boolean {
+  for (const d of ctx.deps.get(subject) ?? []) {
+    if (d.kind === "COREQUISITE" && !includeCoreq) continue;
+    let n = 0;
+    for (const o of d.options) {
+      const at = placed.get(o);
+      if (ctx.prior.has(o) || (at !== undefined && (d.kind === "PREREQUISITE" ? at < k : at <= k))) n++;
+    }
+    if (n < d.count) return false;
+  }
+  return true;
+}
+
+function room(ctx: Ctx, placed: Placed, k: number) {
+  const sem = semesterOf(ctx, k);
+  let total = 0;
+  let tech = 0;
+  for (const [s, at] of placed) {
+    const l = ctx.listings.get(s);
+    if (at !== k || !l) continue;
+    total += l.units;
+    if (l.technical) tech += l.units;
+  }
+  return {
+    total: sem.maxUnits === null ? Infinity : sem.maxUnits - total,
+    tech: sem.maxTechnicalUnits === null ? Infinity : sem.maxTechnicalUnits - tech,
+  };
+}
+
+function fitsRoom(ctx: Ctx, placed: Placed, subject: string, k: number): boolean {
+  const l = ctx.listings.get(subject);
+  if (!l) return false;
+  const r = room(ctx, placed, k);
+  return l.units <= r.total && (!l.technical || l.units <= r.tech);
+}
+
+function canGoIn(
+  ctx: Ctx,
+  placed: Placed,
+  subject: string,
+  k: number,
+  opts: { endKey?: number; coreqs?: boolean } = {},
+): boolean {
+  if (semesterOf(ctx, k).locked) return false;
+  if (k < ctx.startKey || k > (opts.endKey ?? ctx.endKey)) return false;
+  if (ctx.prior.has(subject) || placed.has(subject)) return false;
+  return (
+    canRun(ctx, subject, k) &&
+    dependenciesMet(ctx, placed, subject, k, opts.coreqs ?? true) &&
+    fitsRoom(ctx, placed, subject, k)
+  );
+}
+
+/** Largest assignment of distinct subjects to block slots (bipartite matching). */
+function maxMatching(blocks: Block[], subjects: Set<string>): number {
+  const slots: Block[] = [];
+  for (const b of blocks) for (let i = 0; i < Math.min(b.count, b.options.length); i++) slots.push(b);
+  const slotOf = new Map<string, number>();
+  const assign = (slot: number, seen: Set<string>): boolean => {
+    for (const s of slots[slot].options) {
+      if (!subjects.has(s) || seen.has(s)) continue;
+      seen.add(s);
+      const cur = slotOf.get(s);
+      if (cur === undefined || assign(cur, seen)) {
+        slotOf.set(s, slot);
+        return true;
+      }
+    }
+    return false;
+  };
+  let size = 0;
+  for (let i = 0; i < slots.length; i++) if (assign(i, new Set())) size++;
+  return size;
+}
+
+function covered(ctx: Ctx, subjects: Set<string>): boolean {
+  return maxMatching(ctx.blocks, subjects) === ctx.blocks.reduce((n, b) => n + b.count, 0);
+}
+
+function blockOptions(ctx: Ctx): string[] {
+  return [...new Set(ctx.blocks.flatMap((b) => b.options))].sort();
+}
+
+function seasonKeys(a: number, b: number, includeAll: boolean): number[] {
+  const out: number[] = [];
+  for (let k = a; k <= b; k++) if (includeAll || k % 4 === 1 || k % 4 === 3) out.push(k);
+  return out;
+}
+
+/** taken plus every block option that canGoIn some season up to the end (each checked on its own). */
+function reachable(ctx: Ctx, placed: Placed): Set<string> {
+  const reach = takenSet(ctx, placed);
+  const virtual: Placed = new Map(placed);
+  for (const k of seasonKeys(ctx.startKey, ctx.endKey, true)) {
+    const newly = blockOptions(ctx).filter((o) => !reach.has(o) && canGoIn(ctx, virtual, o, k));
+    for (const o of newly) {
+      virtual.set(o, k);
+      reach.add(o);
+    }
+  }
+  return reach;
+}
+
+function satisfies(ctx: Ctx, placed: Placed): boolean {
+  if (!covered(ctx, takenSet(ctx, placed))) return false;
+  for (const [subject, k] of placed) {
+    if (!canRun(ctx, subject, k) || !dependenciesMet(ctx, placed, subject, k)) return false;
+    const r = room(ctx, placed, k);
+    if (!semesterOf(ctx, k).locked && (r.total < 0 || r.tech < 0)) return false; // locked semesters are exempt
+  }
+  return true;
+}
+
+const signature = (placed: Placed) =>
+  [...placed.entries()].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).map(([s, k]) => `${s}@${k}`).join(",");
+
+const HORIZON_YEARS = 4; // how far past the end of the road _findPath may look
+const MAX_STATES = 2000; // states kept after each season
+const MAX_EXPANSIONS = 20000; // candidate checks per season
+
+/** Breadth-first, season by season; the first season with a complete plan is the earliest finish. */
+function findPlans(ctx: Ctx, includeIAPAndSummer: boolean, limit: number): Placed[] {
+  const horizon = ctx.endKey + HORIZON_YEARS * 4;
+  const options = blockOptions(ctx);
+  // Prerequisites of needed subjects may be worth taking even if they add no block coverage.
+  const depTargets = new Set<string>();
+  for (const s of [...options, ...ctx.pins.keys()]) {
+    for (const d of ctx.deps.get(s) ?? []) for (const o of d.options) depTargets.add(o);
+  }
+
+  const start: Placed = new Map(ctx.pins);
+  if (satisfies(ctx, start)) return [start];
+
+  // Begin at the first unlocked season that has room left after its pins.
+  const seasons = seasonKeys(ctx.startKey, horizon, includeIAPAndSummer).filter((k) => !semesterOf(ctx, k).locked);
+  const first = seasons.findIndex((k) => room(ctx, start, k).total > 0);
+  if (first < 0) return [];
+
+  let frontier: Placed[] = [start];
+  for (const k of seasons.slice(first)) {
+    const next = new Map<string, Placed>();
+    const fresh: Placed[] = [];
+    let budget = MAX_EXPANSIONS;
+
+    for (const state of frontier) {
+      next.set(signature(state), state); // take nothing this season
+      const taken = takenSet(ctx, state);
+      const cands = options.filter((o) => !taken.has(o));
+      const cur: Placed = new Map(state);
+      const added: string[] = [];
+      const dfs = (from: number): void => {
+        for (let i = from; i < cands.length; i++) {
+          if (budget-- <= 0) return;
+          const s = cands[i];
+          // corequisites are checked once the subset for the season is known
+          if (!canGoIn(ctx, cur, s, k, { endKey: horizon, coreqs: false })) continue;
+          const have = takenSet(ctx, cur);
+          const grows = maxMatching(ctx.blocks, new Set([...have, s])) > maxMatching(ctx.blocks, have);
+          if (!grows && !depTargets.has(s)) continue;
+          cur.set(s, k);
+          added.push(s);
+          const sig = signature(cur);
+          if (!next.has(sig) && added.every((a) => dependenciesMet(ctx, cur, a, k))) {
+            const copy: Placed = new Map(cur);
+            next.set(sig, copy);
+            fresh.push(copy);
+          }
+          dfs(i + 1);
+          cur.delete(s);
+          added.pop();
+        }
+      };
+      dfs(0);
+    }
+
+    const done = fresh.filter((p) => satisfies(ctx, p));
+    if (done.length > 0) return done.slice(0, limit);
+
+    frontier = [...next.values()];
+    if (frontier.length > MAX_STATES) {
+      frontier = frontier
+        .map((p) => ({ p, r: maxMatching(ctx.blocks, takenSet(ctx, p)) }))
+        .sort((a, b) => b.r - a.r)
+        .slice(0, MAX_STATES)
+        .map((x) => x.p);
+    }
+  }
+  return [];
 }
 
 export class ConstrainConcept {
   private readonly roads: Collection<RoadRecord>;
+  private readonly listings: Collection<Listing>;
+  private readonly dependencies: Collection<DependencyRecord>;
+  private readonly cancellations: Collection<Cancellation>;
   private indexed = false;
 
   constructor(db: Db) {
     this.roads = db.collection<RoadRecord>("constrain.roads");
+    this.listings = db.collection<Listing>("constrain.listings");
+    this.dependencies = db.collection<DependencyRecord>("constrain.dependencies");
+    this.cancellations = db.collection<Cancellation>("constrain.cancellations");
   }
 
-  async newRoad({ name, major }: { name: string; major: string }) {
+  private async requireRoad(road: string): Promise<RoadRecord> {
+    const record = await this.roads.findOne({ _id: road });
+    if (!record) throw new NoSuchRoad();
+    return record;
+  }
+
+  private async requireBlock(block: string): Promise<RoadRecord> {
+    const record = await this.roads.findOne({ "blocks.id": block });
+    if (!record) throw new Refusal("NO_SUCH_BLOCK", "There is no such block.");
+    return record;
+  }
+
+  private async requireListing(subject: string): Promise<Listing> {
+    const listing = await this.listings.findOne({ _id: subject });
+    if (!listing) throw new Refusal("NO_LISTING", "That subject is not known.");
+    return listing;
+  }
+
+  private async loadCtx(record: RoadRecord): Promise<Ctx> {
+    const blocks = record.blocks.filter((b) => b.options.length > 0);
+    const relevant = [...new Set([...record.pins.map((p) => p.subject), ...blocks.flatMap((b) => b.options)])];
+    const [listings, deps, cancelled] = await Promise.all([
+      this.listings.find({ _id: { $in: relevant } }).toArray(),
+      this.dependencies.find({ course: { $in: relevant } }).toArray(),
+      this.cancellations.find({ subject: { $in: relevant } }).toArray(),
+    ]);
+    const depMap = new Map<string, DependencyRecord[]>();
+    for (const d of deps) depMap.set(d.course, [...(depMap.get(d.course) ?? []), d]);
+    return {
+      startKey: keyOf(record.startYear, record.startTerm),
+      endKey: keyOf(record.endYear, record.endTerm),
+      prior: new Set(record.prior),
+      blocks,
+      pins: new Map(record.pins.map((p) => [p.subject, pinKey(p)])),
+      semesters: new Map(record.semesters.map((s) => [keyOf(s.year, s.term), s])),
+      listings: new Map(listings.map((l) => [l._id, l])),
+      deps: depMap,
+      cancelled: new Set(cancelled.map((c) => `${c.subject}|${keyOf(c.year, c.term)}`)),
+    };
+  }
+
+  async newRoad(
+    { name, major, startYear, startTerm }: { name: string; major: string; startYear: number; startTerm: Term },
+  ) {
+    if (!name) throw new Refusal("EMPTY_NAME", "A road needs a name.");
+    if (!isFallOrSpring(startTerm)) throw new Refusal("BAD_START", "A road must start in a Fall or Spring semester.");
     if (!this.indexed) {
       await this.roads.createIndex({ _id: 1 }, { unique: true });
       this.indexed = true;
     }
+    const end = defaultEnd(startYear, startTerm);
     const road = crypto.randomUUID();
     await this.roads.insertOne({
       _id: road,
       name,
       major,
-      required: [],
-      maxPerSemester: 0,
-      maxTechnicalPerSemester: 0,
-      lockedThrough: 0,
-      electiveBlocks: [],
+      startYear,
+      startTerm,
+      endYear: end.year,
+      endTerm: end.term,
+      prior: [],
+      blocks: [],
       pins: [],
+      semesters: [],
     });
     return { road };
   }
 
-  async setMajor({ road, major }: { road: string; major: string }) {
-    const result = await this.roads.updateOne({ _id: road }, { $set: { major } });
-    if (result.matchedCount === 0) throw new NoSuchRoad("No such road.");
+  async renameRoad({ road, name }: { road: string; name: string }) {
+    await this.requireRoad(road);
+    if (!name) throw new Refusal("EMPTY_NAME", "A road needs a name.");
+    await this.roads.updateOne({ _id: road }, { $set: { name } });
     return {};
   }
 
-  async addRequirement({ road, subject }: { road: string; subject: string }) {
-    const result = await this.roads.updateOne({ _id: road }, { $addToSet: { required: subject } });
-    if (result.matchedCount === 0) throw new NoSuchRoad("No such road.");
+  async deleteRoad({ road }: { road: string }) {
+    const result = await this.roads.deleteOne({ _id: road });
+    if (result.deletedCount === 0) throw new NoSuchRoad();
     return {};
   }
 
-  async removeRequirement({ road, subject }: { road: string; subject: string }) {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) throw new NoSuchRoad("No such road.");
-    if (!record.required.includes(subject)) throw new RequirementNotMet("Subject is not a requirement.");
-    
-    await this.roads.updateOne({ _id: road }, { $pull: { required: subject } });
-    return {};
-  }
-
-  async addElectiveBlock({ road, options }: { road: string; options: string[] }) {
-    const result = await this.roads.updateOne({ _id: road }, { $push: { electiveBlocks: options } });
-    if (result.matchedCount === 0) throw new NoSuchRoad("No such road.");
-    return {};
-  }
-
-  async removeElectiveBlock({ road, options }: { road: string; options: string[] }) {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) throw new NoSuchRoad("No such road.");
-    
-    // Check existence of the specific option block
-    const exists = record.electiveBlocks.some(block => 
-      block.length === options.length && block.every(s => options.includes(s))
+  async setStart({ road, year, term }: { road: string; year: number; term: Term }) {
+    const record = await this.requireRoad(road);
+    if (!isFallOrSpring(term)) throw new Refusal("BAD_START", "A road must start in a Fall or Spring semester.");
+    const moved = movedSpan(record, year, term);
+    const lost = pinsOutside(record.pins, moved.startKey, moved.endKey);
+    await this.roads.updateOne(
+      { _id: road },
+      {
+        $set: {
+          startYear: year,
+          startTerm: term,
+          endYear: moved.end.year,
+          endTerm: moved.end.term,
+          pins: record.pins.filter((p) => !lost.includes(p)),
+        },
+      },
     );
-    if (!exists) throw new ElectiveBlockNotFound("Elective block not found.");
-
-    await this.roads.updateOne({ _id: road }, { $set: { electiveBlocks: record.electiveBlocks.filter(b => !(b.length === options.length && b.every(s => options.includes(s)))) } });
     return {};
   }
 
-  async pin({ road, subject, semester }: { road: string; subject: string; semester: number }) {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) throw new NoSuchRoad("No such road.");
+  async setEnd({ road, year, term }: { road: string; year: number; term: Term }) {
+    const record = await this.requireRoad(road);
+    const endKey = keyOf(year, term);
+    if (endKey <= keyOf(record.startYear, record.startTerm)) {
+      throw new Refusal("END_BEFORE_START", "The end must come after the start.");
+    }
+    await this.roads.updateOne(
+      { _id: road },
+      { $set: { endYear: year, endTerm: term, pins: record.pins.filter((p) => pinKey(p) <= endKey) } },
+    );
+    return {};
+  }
+
+  async setMajor({ road, major }: { road: string; major: string }) {
+    await this.requireRoad(road);
+    if (!major) throw new Refusal("EMPTY_MAJOR", "A major cannot be empty.");
+    await this.roads.updateOne({ _id: road }, { $set: { major } });
+    return {};
+  }
+
+  async addPrior({ road, subject }: { road: string; subject: string }) {
+    const record = await this.requireRoad(road);
+    await this.roads.updateOne(
+      { _id: road },
+      { $addToSet: { prior: subject }, $set: { pins: record.pins.filter((p) => p.subject !== subject) } },
+    );
+    return {};
+  }
+
+  async removePrior({ road, subject }: { road: string; subject: string }) {
+    const record = await this.requireRoad(road);
+    if (!record.prior.includes(subject)) throw new Refusal("NOT_PRIOR", "That subject is not prior credit for this road.");
+    await this.roads.updateOne({ _id: road }, { $pull: { prior: subject } });
+    return {};
+  }
+
+  async addBlock({ road, count }: { road: string; count: number }) {
+    await this.requireRoad(road);
+    if (!(count >= 1)) throw new Refusal("BAD_COUNT", "A block must require at least one subject.");
+    const block = crypto.randomUUID();
+    await this.roads.updateOne({ _id: road }, { $push: { blocks: { id: block, options: [], count } } });
+    return { block };
+  }
+
+  /** Apply a change to one block of whichever road owns it. */
+  private async editBlock(block: string, edit: (b: Block) => Block) {
+    const record = await this.requireBlock(block);
+    await this.roads.updateOne(
+      { _id: record._id },
+      { $set: { blocks: record.blocks.map((b) => (b.id === block ? edit(b) : b)) } },
+    );
+    return {};
+  }
+
+  async setCount({ block, count }: { block: string; count: number }) {
+    await this.requireBlock(block);
+    if (!(count >= 1)) throw new Refusal("BAD_COUNT", "A block must require at least one subject.");
+    return this.editBlock(block, (b) => ({ ...b, count }));
+  }
+
+  async addOption({ block, subject }: { block: string; subject: string }) {
+    return this.editBlock(block, (b) => ({ ...b, options: [...new Set([...b.options, subject])] }));
+  }
+
+  async removeOption({ block, subject }: { block: string; subject: string }) {
+    const record = await this.requireBlock(block);
+    if (!record.blocks.find((b) => b.id === block)!.options.includes(subject)) {
+      throw new Refusal("NOT_AN_OPTION", "That subject is not an option of this block.");
+    }
+    return this.editBlock(block, (b) => ({ ...b, options: b.options.filter((o) => o !== subject) }));
+  }
+
+  async removeBlock({ block }: { block: string }) {
+    const record = await this.requireBlock(block);
+    await this.roads.updateOne({ _id: record._id }, { $set: { blocks: record.blocks.filter((b) => b.id !== block) } });
+    return {};
+  }
+
+  async pin({ road, subject, year, term }: { road: string; subject: string; year: number; term: Term }) {
+    const record = await this.requireRoad(road);
+    await this.requireListing(subject);
+    if (record.prior.includes(subject)) throw new Refusal("ALREADY_PRIOR", "That subject is already prior credit.");
+    const k = keyOf(year, term);
+    if (k < keyOf(record.startYear, record.startTerm) || k > keyOf(record.endYear, record.endTerm)) {
+      throw new Refusal("OUT_OF_SPAN", "That semester is outside the road.");
+    }
 
     const existingPinIndex = record.pins.findIndex(p => p.subject === subject);
+    const existing = record.pins[existingPinIndex];
+    if (isLocked(record, year, term) || (existing && isLocked(record, existing.year, existing.term))) {
+      throw new Refusal("LOCKED_SEASON", "That semester is locked.");
+    }
     let updatedPins = [...record.pins];
     if (existingPinIndex >= 0) {
-      updatedPins[existingPinIndex].semester = semester;
+      updatedPins[existingPinIndex] = { subject, year, term };
     } else {
-      updatedPins.push({ subject, semester });
+      updatedPins.push({ subject, year, term });
     }
 
     await this.roads.updateOne({ _id: road }, { $set: { pins: updatedPins } });
@@ -108,111 +576,203 @@ export class ConstrainConcept {
   }
 
   async unPin({ road, subject }: { road: string; subject: string }) {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) throw new NoSuchRoad("No such road.");
+    const record = await this.requireRoad(road);
 
-    const exists = record.pins.some(p => p.subject === subject);
-    if (!exists) throw new PinNotFound("Pin not found.");
+    const existing = record.pins.find(p => p.subject === subject);
+    if (!existing) throw new PinNotFound("Pin not found.");
+    if (isLocked(record, existing.year, existing.term)) throw new Refusal("LOCKED_SEASON", "That semester is locked.");
 
     await this.roads.updateOne({ _id: road }, { $set: { pins: record.pins.filter(p => p.subject !== subject) } });
     return {};
   }
 
-  async setCap({ road, capType, limit }: { road: string; capType: string; limit: number }) {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) throw new NoSuchRoad("No such road.");
+  async setCap(
+    { road, year, term, capType, limit }: { road: string; year: number; term: Term; capType: string; limit: number },
+  ) {
+    const record = await this.requireRoad(road);
+    if (capType !== "total" && capType !== "technical") {
+      throw new Refusal("BAD_CAP_TYPE", "The cap type must be total or technical.");
+    }
+    if (limit < 0) throw new Refusal("NEGATIVE_LIMIT", "A cap cannot be negative.");
 
-    const update = capType === "total" ? { maxPerSemester: limit } : { maxTechnicalPerSemester: limit };
-    await this.roads.updateOne({ _id: road }, { $set: update });
+    const patch = capType === "total" ? { maxUnits: limit } : { maxTechnicalUnits: limit };
+    await this.roads.updateOne({ _id: road }, { $set: { semesters: upsertSemester(record, year, term, patch) } });
     return {};
   }
 
-  async lockThroughSemester({ road, semester }: { road: string; semester: number }) {
-    const result = await this.roads.updateOne({ _id: road }, { $set: { lockedThrough: semester } });
-    if (result.matchedCount === 0) throw new NoSuchRoad("No such road.");
+  async clearCap({ road, year, term, capType }: { road: string; year: number; term: Term; capType: string }) {
+    const record = await this.requireRoad(road);
+    if (capType !== "total" && capType !== "technical") {
+      throw new Refusal("BAD_CAP_TYPE", "The cap type must be total or technical.");
+    }
+    const patch = capType === "total" ? { maxUnits: null } : { maxTechnicalUnits: null };
+    await this.roads.updateOne({ _id: road }, { $set: { semesters: upsertSemester(record, year, term, patch) } });
     return {};
   }
 
-  async _constraints({ road }: { road: string }) {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) throw new NoSuchRoad("No such road.");
-    return {
-      required: record.required,
-      elective_blocks: record.electiveBlocks,
-      pins: record.pins,
-      maxPerSemester: record.maxPerSemester,
-      maxTechnicalPerSemester: record.maxTechnicalPerSemester,
-      lockedThrough: record.lockedThrough,
-    };
+  async resetSemester({ road, year, term }: { road: string; year: number; term: Term }) {
+    const record = await this.requireRoad(road);
+    if (!record.semesters.some((s) => s.year === year && s.term === term)) {
+      throw new Refusal("NO_SUCH_SEMESTER", "That semester has no settings.");
+    }
+    await this.roads.updateOne(
+      { _id: road },
+      { $set: { semesters: record.semesters.filter((s) => !(s.year === year && s.term === term)) } },
+    );
+    return {};
   }
 
-  async _satisfies({ road, plan, technical }: { road: string; plan: string[][]; technical: string[] }) {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) return { satisfied: false };
-
-    // Check required subjects
-    for (const req of record.required) {
-      if (!plan.some(semesterSet => semesterSet.includes(req))) return { satisfied: false };
-    }
-
-    // Check elective blocks
-    for (const block of record.electiveBlocks) {
-      const satisfiedBlock = block.some(opt => plan.some(semesterSet => semesterSet.includes(opt)));
-      if (!satisfiedBlock) return { satisfied: false };
-    }
-
-    // Check pins and locked semesters
-    for (const pin of record.pins) {
-      const targetSem = plan[pin.semester];
-      if (!targetSem || !targetSem.includes(pin.subject)) return { satisfied: false };
-    }
-
-    for (let i = 0; i <= record.lockedThrough; i++) {
-      const semSet = plan[i] || [];
-      const pinnedInSem = record.pins.filter(p => p.semester === i).map(p => p.subject);
-      if (semSet.length !== pinnedInSem.length || !semSet.every(s => pinnedInSem.includes(s))) {
-        return { satisfied: false };
-      }
-    }
-
-    // Check caps for semesters after lockedThrough
-    for (let i = record.lockedThrough + 1; i < plan.length; i++) {
-      const semSet = plan[i] || [];
-      if (record.maxPerSemester > 0 && semSet.length > record.maxPerSemester) return { satisfied: false };
-      if (record.maxTechnicalPerSemester > 0) {
-        const techCount = semSet.filter(s => technical.includes(s)).length;
-        if (techCount > record.maxTechnicalPerSemester) return { satisfied: false };
-      }
-    }
-
-    return { satisfied: true };
+  async setLocked({ road, year, term, locked }: { road: string; year: number; term: Term; locked: boolean }) {
+    const record = await this.requireRoad(road);
+    await this.roads.updateOne({ _id: road }, { $set: { semesters: upsertSemester(record, year, term, { locked }) } });
+    return {};
   }
 
-  // TODO: replace with real BFS over the prerequisite graph.
+  // Listings, dependencies and cancellations: this concept's copy of subject facts.
+
+  async setListing({ subject, units, technical }: { subject: string; units: number; technical: boolean }) {
+    await this.listings.updateOne({ _id: subject }, { $set: { units, technical }, $setOnInsert: { terms: [] } }, { upsert: true });
+    return {};
+  }
+
+  async addListingTerm({ subject, term }: { subject: string; term: Term }) {
+    await this.requireListing(subject);
+    await this.listings.updateOne({ _id: subject }, { $addToSet: { terms: term } });
+    return {};
+  }
+
+  async removeListingTerm({ subject, term }: { subject: string; term: Term }) {
+    const listing = await this.requireListing(subject);
+    if (!listing.terms.includes(term)) throw new Refusal("NOT_A_TERM", "That subject does not run in that term.");
+    await this.listings.updateOne({ _id: subject }, { $pull: { terms: term } });
+    return {};
+  }
+
+  async removeListing({ subject }: { subject: string }) {
+    await this.requireListing(subject);
+    await this.listings.deleteOne({ _id: subject });
+    await this.dependencies.deleteMany({ course: subject });
+    await this.cancellations.deleteMany({ subject });
+    return {};
+  }
+
+  async addDependency({ course, kind, count }: { course: string; kind: DependencyKind; count: number }) {
+    await this.requireListing(course);
+    if (!(count >= 1)) throw new Refusal("BAD_COUNT", "A dependency must require at least one subject.");
+    const dependency = crypto.randomUUID();
+    await this.dependencies.insertOne({ _id: dependency, course, kind, options: [], count });
+    return { dependency };
+  }
+
+  async addDependencyOption({ dependency, subject }: { dependency: string; subject: string }) {
+    const result = await this.dependencies.updateOne({ _id: dependency }, { $addToSet: { options: subject } });
+    if (result.matchedCount === 0) throw new Refusal("NO_SUCH_DEPENDENCY", "There is no such dependency.");
+    return {};
+  }
+
+  async removeDependency({ dependency }: { dependency: string }) {
+    const result = await this.dependencies.deleteOne({ _id: dependency });
+    if (result.deletedCount === 0) throw new Refusal("NO_SUCH_DEPENDENCY", "There is no such dependency.");
+    return {};
+  }
+
+  async markCancelled({ subject, year, term }: { subject: string; year: number; term: Term }) {
+    await this.requireListing(subject);
+    await this.cancellations.updateOne(
+      { _id: `${subject}|${year}|${term}` },
+      { $setOnInsert: { subject, year, term } },
+      { upsert: true },
+    );
+    return {};
+  }
+
+  async unmarkCancelled({ subject, year, term }: { subject: string; year: number; term: Term }) {
+    const result = await this.cancellations.deleteOne({ _id: `${subject}|${year}|${term}` });
+    if (result.deletedCount === 0) {
+      throw new Refusal("NOT_CANCELLED", "That subject is not marked as cancelled in that semester.");
+    }
+    return {};
+  }
+
+  // Queries
+
+  async _road({ road }: { road: string }) {
+    const r = await this.requireRoad(road);
+    return { name: r.name, major: r.major, startYear: r.startYear, startTerm: r.startTerm, endYear: r.endYear, endTerm: r.endTerm };
+  }
+
+  async _prior({ road }: { road: string }) {
+    return (await this.requireRoad(road)).prior.map((subject) => ({ subject }));
+  }
+
+  async _blocks({ road }: { road: string }) {
+    const record = await this.requireRoad(road);
+    return [...record.blocks]
+      .sort((a, b) => (a.id < b.id ? -1 : 1))
+      .flatMap((b) => b.options.map((subject) => ({ block: b.id, count: b.count, subject })));
+  }
+
+  async _pins({ road }: { road: string }) {
+    const record = await this.requireRoad(road);
+    return sortPins(record.pins).map(({ subject, year, term }) => ({ subject, year, term }));
+  }
+
+  async _semesters({ road }: { road: string }) {
+    const record = await this.requireRoad(road);
+    return [...record.semesters]
+      .sort((a, b) => keyOf(a.year, a.term) - keyOf(b.year, b.term))
+      .map((s) => ({ ...s, maxUnits: s.maxUnits ?? 0, maxTechnicalUnits: s.maxTechnicalUnits ?? 0 })); // 0 = no cap
+  }
+
+  async _pinsLostBySetStart({ road, year, term }: { road: string; year: number; term: Term }) {
+    const record = await this.requireRoad(road);
+    if (!isFallOrSpring(term)) throw new Refusal("BAD_START", "A road must start in a Fall or Spring semester.");
+    const moved = movedSpan(record, year, term);
+    return sortPins(pinsOutside(record.pins, moved.startKey, moved.endKey));
+  }
+
+  async _pinsLostBySetEnd({ road, year, term }: { road: string; year: number; term: Term }) {
+    const record = await this.requireRoad(road);
+    const endKey = keyOf(year, term);
+    if (endKey <= keyOf(record.startYear, record.startTerm)) {
+      throw new Refusal("END_BEFORE_START", "The end must come after the start.");
+    }
+    return sortPins(record.pins.filter((p) => pinKey(p) > endKey));
+  }
+
+  async _satisfies({ road }: { road: string }) {
+    const ctx = await this.loadCtx(await this.requireRoad(road));
+    return { satisfied: satisfies(ctx, ctx.pins) };
+  }
+
+  async _options({ road, includeIAPAndSummer }: { road: string; includeIAPAndSummer: boolean }) {
+    const ctx = await this.loadCtx(await this.requireRoad(road));
+    const rows: { year: number; term: Term; subject: string; fitsByEnd: boolean }[] = [];
+    for (const k of seasonKeys(ctx.startKey, ctx.endKey, includeIAPAndSummer)) {
+      for (const subject of blockOptions(ctx)) {
+        if (!canGoIn(ctx, ctx.pins, subject, k)) continue;
+        const withIt: Placed = new Map(ctx.pins).set(subject, k);
+        rows.push({ ...seasonOf(k), subject, fitsByEnd: covered(ctx, reachable(ctx, withIt)) });
+      }
+    }
+    return rows;
+  }
+
   async _findPath(
-    { road, catalog, limit }: { road: string; catalog: unknown; limit: number },
-  ): Promise<{ plan: string[][] }[]> {
-    const record = await this.roads.findOne({ _id: road });
-    if (!record) return [];
+    { road, includeIAPAndSummer, limit }: { road: string; includeIAPAndSummer: boolean; limit: number },
+  ) {
+    const record = await this.requireRoad(road);
+    if (!(limit >= 1)) throw new Refusal("BAD_LIMIT", "The limit must be at least 1.");
+    const ctx = await this.loadCtx(record);
+    return findPlans(ctx, includeIAPAndSummer, limit).flatMap((placed, i) =>
+      [...placed.entries()]
+        .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
+        .map(([subject, k]) => ({ plan: i + 1, ...seasonOf(k), subject })),
+    );
+  }
 
-    const SEMESTERS = 8;
-    const firstFree = record.lockedThrough + 1;
-    const free = Math.max(1, SEMESTERS - firstFree + 1);
-    const pinned = new Set(record.pins.map((p) => p.subject));
-    const unpinned = [
-      ...record.required.filter((s) => !pinned.has(s)),
-      // one placeholder pick per elective block
-      ...record.electiveBlocks.map((b) => b[0]).filter((s) => s && !pinned.has(s)),
-    ];
-
-    return Array.from({ length: Math.max(1, limit) }, (_, k) => {
-      const length = Math.max(SEMESTERS + 1, ...record.pins.map((p) => p.semester + 1));
-      const plan: string[][] = Array.from({ length }, () => []);
-      for (const p of record.pins) plan[p.semester].push(p.subject);
-      unpinned.forEach((subject, i) => {
-        plan[firstFree + ((i + k) % free)].push(subject);
-      });
-      return { plan };
-    });
+  async _roadOfBlock({ block }: { block: string }) {
+    const record = await this.roads.findOne({ "blocks.id": block });
+    return record ? { road: record._id } : null;
   }
 }

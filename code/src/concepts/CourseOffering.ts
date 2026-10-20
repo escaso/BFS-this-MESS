@@ -1,52 +1,99 @@
 import { type Collection, type Db } from "mongodb";
 
+// IAP < SPRING < SUMMER < FALL
+const TERM_ORDER = ["IAP", "SPRING", "SUMMER", "FALL"];
+
+// The seasons of the academic year that starts in the FALL of startYear.
+const academicYear = (startYear: number) => [
+  { year: startYear, term: "FALL" },
+  { year: startYear + 1, term: "IAP" },
+  { year: startYear + 1, term: "SPRING" },
+  { year: startYear + 1, term: "SUMMER" },
+];
+
 export class CourseOfferingConcept {
   private readonly courses: Collection<any>;
-  private readonly prerequisites: Collection<any>;
-  private readonly corequisites: Collection<any>;
+  private readonly dependencies: Collection<any>;
+  private readonly cancellations: Collection<any>;
   private readonly ratings: Collection<any>;
   private indexed = false;
 
   constructor(db: Db) {
     this.courses = db.collection("courseOffering.courses");
-    this.prerequisites = db.collection("courseOffering.prerequisites");
-    this.corequisites = db.collection("courseOffering.corequisites");
+    this.dependencies = db.collection("courseOffering.dependencies");
+    this.cancellations = db.collection("courseOffering.cancellations");
     this.ratings = db.collection("courseOffering.ratings");
   }
 
   async load({ subjectListingURL, ratingsURL }: { subjectListingURL: string; ratingsURL: string }) {
     if (!this.indexed) {
       await this.courses.createIndex({ subject: 1 }, { unique: true });
-      await this.prerequisites.createIndex({ course: 1, prerequisite: 1 }, { unique: true });
-      await this.corequisites.createIndex({ course: 1, corequisite: 1 }, { unique: true });
+      await this.dependencies.createIndex({ course: 1, kind: 1 });
+      await this.cancellations.createIndex({ subject: 1, year: 1, term: 1 }, { unique: true });
       await this.ratings.createIndex({ course: 1 }, { unique: true });
       this.indexed = true;
     }
-    // Parsing/fetching logic integration point to populate:
-    // - this.courses
-    // - this.prerequisites
-    // - this.corequisites
-    // - this.ratings
+
+    try {
+      const responses = await Promise.all([fetch(subjectListingURL), fetch(ratingsURL)]);
+      if (responses.some((r) => !r.ok)) throw new Error("fetch failed");
+      // Parsing/fetching logic integration point to populate:
+      // - this.courses       (use this.mergeTerms for `terms`)
+      // - this.dependencies  (delete the course's old ones, insert {course, kind, options, count})
+      // - this.cancellations (call this.replaceCancellations for each subject)
+      // - this.ratings
+    } catch {
+      return { error: "LOAD_FAILED", message: "The subject listing or the ratings could not be retrieved." };
+    }
     return { count: 0 };
   }
 
+  // Loading a listing replaces the terms it covers and keeps the others.
+  mergeTerms(existing: string[], coveredByListing: string[], fromListing: string[]) {
+    const kept = existing.filter((t) => !coveredByListing.includes(t));
+    return TERM_ORDER.filter((t) => kept.includes(t) || fromListing.includes(t));
+  }
+
+  // startYear is the FALL year of the listing's academic year.
+  async replaceCancellations(subject: string, startYear: number, offering: string) {
+    const thisYear = academicYear(startYear);
+    const nextYear = academicYear(startYear + 1);
+    await this.cancellations.deleteMany({ subject, $or: [...thisYear, ...nextYear] });
+    const toAdd =
+      offering === "Not offered THIS year" ? thisYear :
+      offering === "Not offered NEXT year" ? nextYear :
+      offering === "Not currently listed" ? [...thisYear, ...nextYear] : [];
+    if (toAdd.length > 0) {
+      await this.cancellations.insertMany(toAdd.map((s) => ({ subject, ...s })));
+    }
+  }
+
   async _prerequisites({ course }: { course: string }) {
-    const records = await this.prerequisites.find({ course }).toArray();
-    if (!records || records.length === 0) return [];
-    return records.map((r) => ({ prerequisite: r.prerequisite }));
+    const deps = await this.dependencies.find({ course, kind: "PREREQUISITE" }).sort({ _id: 1 }).toArray();
+    return deps.flatMap((d) =>
+      d.options.map((prerequisite: string) => ({ dependency: String(d._id), count: d.count, prerequisite })),
+    );
   }
 
   async _corequisites({ course }: { course: string }) {
-    const records = await this.corequisites.find({ course }).toArray();
-    if (!records || records.length === 0) return [];
-    return records.map((r) => ({ corequisite: r.corequisite }));
+    const deps = await this.dependencies.find({ course, kind: "COREQUISITE" }).sort({ _id: 1 }).toArray();
+    return deps.flatMap((d) =>
+      d.options.map((corequisite: string) => ({ dependency: String(d._id), count: d.count, corequisite })),
+    );
   }
 
-  async _isOffered({ course, semester }: { course: string; semester: string }) {
+  async _isOffered({ course, year, term }: { course: string; year: number; term: string }) {
     const record = await this.courses.findOne({ subject: course });
     if (!record) return { offered: false };
-    const offered = record.terms?.includes(semester) && record.offering !== "Not offered THIS year";
-    return { offered };
+    const cancelled = await this.cancellations.findOne({ subject: course, year, term });
+    return { offered: !!record.terms?.includes(term) && !cancelled };
+  }
+
+  async _cancellations({ course }: { course: string }) {
+    const records = await this.cancellations.find({ subject: course }).toArray();
+    return records
+      .map((r) => ({ year: r.year, term: r.term }))
+      .sort((a, b) => a.year - b.year || TERM_ORDER.indexOf(a.term) - TERM_ORDER.indexOf(b.term));
   }
 
   async _ratings({ course }: { course: string }) {
@@ -60,25 +107,43 @@ export class CourseOfferingConcept {
     };
   }
 
-  async _search({ query }: { query: string }) {
-    const regex = new RegExp(query, "i");
-    const matches = await this.courses.find({
-      $or: [{ name: regex }, { description: regex }, { courseId: regex }]
-    }).toArray();
-    return matches.map(m => ({ course: m.subject }));
+  async _search({ query, level, term }: { query?: string; level?: string; term?: string }) {
+    const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const filter: Record<string, any> = {};
+    if (query) {
+      const regex = new RegExp(esc(query), "i");
+      filter.$or = [{ name: regex }, { description: regex }, { courseId: regex }];
+    }
+    if (level) filter.level = new RegExp(`^${esc(level)}$`, "i");
+    if (term) filter.terms = term;
+    const matches = await this.courses.find(filter).toArray();
+    return matches.map((m) => ({
+      course: m.subject,
+      name: m.name,
+      courseId: m.courseId,
+      level: m.level,
+      units: m.units ?? "",
+      unitsKnown: /^\d+(\.\d+)?(-\d+(\.\d+)?)*$/.test(m.units ?? ""),
+    }));
+  }
+
+  async _terms({ course }: { course: string }) {
+    const record = await this.courses.findOne({ subject: course });
+    return (record?.terms ?? []).map((term: string) => ({ term }));
   }
 
   async _catalog(_input: Record<string, never>) {
     const allCourses = await this.courses.find().toArray();
     const catalogMap: Record<string, any> = {};
-    
+
     for (const c of allCourses) {
-      const prereqs = await this.prerequisites.find({ course: c.subject }).toArray();
-      const coreqs = await this.corequisites.find({ course: c.subject }).toArray();
+      const deps = await this.dependencies.find({ course: c.subject }).toArray();
+      const optionsOf = (kind: string) =>
+        deps.filter((d) => d.kind === kind).flatMap((d) => d.options as string[]);
 
       catalogMap[c.subject] = {
-        prerequisites: prereqs.map(p => p.prerequisite),
-        corequisites: coreqs.map(co => co.corequisite),
+        prerequisites: optionsOf("PREREQUISITE"),
+        corequisites: optionsOf("COREQUISITE"),
         terms: c.terms || [],
         offering: c.offering || "",
         technical: c.technical || false,
