@@ -15,6 +15,96 @@ export class PinNotFound extends Refusal {
     super("NOT_PINNED", message);
   }
 }
+export class EmptyName extends Refusal {
+  constructor(message = "A road needs a name.") {
+    super("EMPTY_NAME", message);
+  }
+}
+export class BadStart extends Refusal {
+  constructor(message = "A road must start in a Fall or Spring semester.") {
+    super("BAD_START", message);
+  }
+}
+export class EndBeforeStart extends Refusal {
+  constructor(message = "The end must come after the start.") {
+    super("END_BEFORE_START", message);
+  }
+}
+export class EmptyMajor extends Refusal {
+  constructor(message = "A major cannot be empty.") {
+    super("EMPTY_MAJOR", message);
+  }
+}
+export class NotPrior extends Refusal {
+  constructor(message = "That subject is not prior credit for this road.") {
+    super("NOT_PRIOR", message);
+  }
+}
+export class BadCount extends Refusal {
+  constructor(message = "A block must require at least one subject.") {
+    super("BAD_COUNT", message);
+  }
+}
+export class NoSuchBlock extends Refusal {
+  constructor(message = "There is no such block.") {
+    super("NO_SUCH_BLOCK", message);
+  }
+}
+export class NotAnOption extends Refusal {
+  constructor(message = "That subject is not an option of this block.") {
+    super("NOT_AN_OPTION", message);
+  }
+}
+export class NoListing extends Refusal {
+  constructor(message = "That subject is not known.") {
+    super("NO_LISTING", message);
+  }
+}
+export class AlreadyPrior extends Refusal {
+  constructor(message = "That subject is already prior credit.") {
+    super("ALREADY_PRIOR", message);
+  }
+}
+export class OutOfSpan extends Refusal {
+  constructor(message = "That semester is outside the road.") {
+    super("OUT_OF_SPAN", message);
+  }
+}
+export class LockedSeason extends Refusal {
+  constructor(message = "That semester is locked.") {
+    super("LOCKED_SEASON", message);
+  }
+}
+export class BadCapType extends Refusal {
+  constructor(message = "The cap type must be total or technical.") {
+    super("BAD_CAP_TYPE", message);
+  }
+}
+export class NegativeLimit extends Refusal {
+  constructor(message = "A cap cannot be negative.") {
+    super("NEGATIVE_LIMIT", message);
+  }
+}
+export class NoSuchSemester extends Refusal {
+  constructor(message = "That semester has no settings.") {
+    super("NO_SUCH_SEMESTER", message);
+  }
+}
+export class NotATerm extends Refusal {
+  constructor(message = "That subject does not run in that term.") {
+    super("NOT_A_TERM", message);
+  }
+}
+export class NoSuchDependency extends Refusal {
+  constructor(message = "There is no such dependency.") {
+    super("NO_SUCH_DEPENDENCY", message);
+  }
+}
+export class NotCancelled extends Refusal {
+  constructor(message = "That subject is not marked as cancelled in that semester.") {
+    super("NOT_CANCELLED", message);
+  }
+}
 
 export type Term = "IAP" | "SPRING" | "SUMMER" | "FALL";
 export type DependencyKind = "PREREQUISITE" | "COREQUISITE";
@@ -362,7 +452,6 @@ export class ConstrainConcept {
   private readonly listings: Collection<Listing>;
   private readonly dependencies: Collection<DependencyRecord>;
   private readonly cancellations: Collection<Cancellation>;
-  private indexed = false;
 
   constructor(db: Db) {
     this.roads = db.collection<RoadRecord>("constrain.roads");
@@ -371,25 +460,25 @@ export class ConstrainConcept {
     this.cancellations = db.collection<Cancellation>("constrain.cancellations");
   }
 
-  private async requireRoad(road: string): Promise<RoadRecord> {
+  async #requireRoad(road: string): Promise<RoadRecord> {
     const record = await this.roads.findOne({ _id: road });
     if (!record) throw new NoSuchRoad();
     return record;
   }
 
-  private async requireBlock(block: string): Promise<RoadRecord> {
+  async #requireBlock(block: string): Promise<RoadRecord> {
     const record = await this.roads.findOne({ "blocks.id": block });
-    if (!record) throw new Refusal("NO_SUCH_BLOCK", "There is no such block.");
+    if (!record) throw new NoSuchBlock();
     return record;
   }
 
-  private async requireListing(subject: string): Promise<Listing> {
+  async #requireListing(subject: string): Promise<Listing> {
     const listing = await this.listings.findOne({ _id: subject });
-    if (!listing) throw new Refusal("NO_LISTING", "That subject is not known.");
+    if (!listing) throw new NoListing();
     return listing;
   }
 
-  private async loadCtx(record: RoadRecord): Promise<Ctx> {
+  async #loadCtx(record: RoadRecord): Promise<Ctx> {
     const blocks = record.blocks.filter((b) => b.options.length > 0);
     const relevant = [...new Set([...record.pins.map((p) => p.subject), ...blocks.flatMap((b) => b.options)])];
     const [listings, deps, cancelled] = await Promise.all([
@@ -415,12 +504,8 @@ export class ConstrainConcept {
   async newRoad(
     { name, major, startYear, startTerm }: { name: string; major: string; startYear: number; startTerm: Term },
   ) {
-    if (!name) throw new Refusal("EMPTY_NAME", "A road needs a name.");
-    if (!isFallOrSpring(startTerm)) throw new Refusal("BAD_START", "A road must start in a Fall or Spring semester.");
-    if (!this.indexed) {
-      await this.roads.createIndex({ _id: 1 }, { unique: true });
-      this.indexed = true;
-    }
+    if (!name) throw new EmptyName();
+    if (!isFallOrSpring(startTerm)) throw new BadStart();
     const end = defaultEnd(startYear, startTerm);
     const road = crypto.randomUUID();
     await this.roads.insertOne({
@@ -440,8 +525,8 @@ export class ConstrainConcept {
   }
 
   async renameRoad({ road, name }: { road: string; name: string }) {
-    await this.requireRoad(road);
-    if (!name) throw new Refusal("EMPTY_NAME", "A road needs a name.");
+    await this.#requireRoad(road);
+    if (!name) throw new EmptyName();
     await this.roads.updateOne({ _id: road }, { $set: { name } });
     return {};
   }
@@ -453,8 +538,8 @@ export class ConstrainConcept {
   }
 
   async setStart({ road, year, term }: { road: string; year: number; term: Term }) {
-    const record = await this.requireRoad(road);
-    if (!isFallOrSpring(term)) throw new Refusal("BAD_START", "A road must start in a Fall or Spring semester.");
+    const record = await this.#requireRoad(road);
+    if (!isFallOrSpring(term)) throw new BadStart();
     const moved = movedSpan(record, year, term);
     const lost = pinsOutside(record.pins, moved.startKey, moved.endKey);
     await this.roads.updateOne(
@@ -473,10 +558,10 @@ export class ConstrainConcept {
   }
 
   async setEnd({ road, year, term }: { road: string; year: number; term: Term }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     const endKey = keyOf(year, term);
     if (endKey <= keyOf(record.startYear, record.startTerm)) {
-      throw new Refusal("END_BEFORE_START", "The end must come after the start.");
+      throw new EndBeforeStart();
     }
     await this.roads.updateOne(
       { _id: road },
@@ -486,14 +571,14 @@ export class ConstrainConcept {
   }
 
   async setMajor({ road, major }: { road: string; major: string }) {
-    await this.requireRoad(road);
-    if (!major) throw new Refusal("EMPTY_MAJOR", "A major cannot be empty.");
+    await this.#requireRoad(road);
+    if (!major) throw new EmptyMajor();
     await this.roads.updateOne({ _id: road }, { $set: { major } });
     return {};
   }
 
   async addPrior({ road, subject }: { road: string; subject: string }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     await this.roads.updateOne(
       { _id: road },
       { $addToSet: { prior: subject }, $set: { pins: record.pins.filter((p) => p.subject !== subject) } },
@@ -502,23 +587,23 @@ export class ConstrainConcept {
   }
 
   async removePrior({ road, subject }: { road: string; subject: string }) {
-    const record = await this.requireRoad(road);
-    if (!record.prior.includes(subject)) throw new Refusal("NOT_PRIOR", "That subject is not prior credit for this road.");
+    const record = await this.#requireRoad(road);
+    if (!record.prior.includes(subject)) throw new NotPrior();
     await this.roads.updateOne({ _id: road }, { $pull: { prior: subject } });
     return {};
   }
 
   async addBlock({ road, count }: { road: string; count: number }) {
-    await this.requireRoad(road);
-    if (!(count >= 1)) throw new Refusal("BAD_COUNT", "A block must require at least one subject.");
+    await this.#requireRoad(road);
+    if (!(count >= 1)) throw new BadCount();
     const block = crypto.randomUUID();
     await this.roads.updateOne({ _id: road }, { $push: { blocks: { id: block, options: [], count } } });
     return { block };
   }
 
   /** Apply a change to one block of whichever road owns it. */
-  private async editBlock(block: string, edit: (b: Block) => Block) {
-    const record = await this.requireBlock(block);
+  async #editBlock(block: string, edit: (b: Block) => Block) {
+    const record = await this.#requireBlock(block);
     await this.roads.updateOne(
       { _id: record._id },
       { $set: { blocks: record.blocks.map((b) => (b.id === block ? edit(b) : b)) } },
@@ -527,42 +612,42 @@ export class ConstrainConcept {
   }
 
   async setCount({ block, count }: { block: string; count: number }) {
-    await this.requireBlock(block);
-    if (!(count >= 1)) throw new Refusal("BAD_COUNT", "A block must require at least one subject.");
-    return this.editBlock(block, (b) => ({ ...b, count }));
+    await this.#requireBlock(block);
+    if (!(count >= 1)) throw new BadCount();
+    return this.#editBlock(block, (b) => ({ ...b, count }));
   }
 
   async addOption({ block, subject }: { block: string; subject: string }) {
-    return this.editBlock(block, (b) => ({ ...b, options: [...new Set([...b.options, subject])] }));
+    return this.#editBlock(block, (b) => ({ ...b, options: [...new Set([...b.options, subject])] }));
   }
 
   async removeOption({ block, subject }: { block: string; subject: string }) {
-    const record = await this.requireBlock(block);
+    const record = await this.#requireBlock(block);
     if (!record.blocks.find((b) => b.id === block)!.options.includes(subject)) {
-      throw new Refusal("NOT_AN_OPTION", "That subject is not an option of this block.");
+      throw new NotAnOption();
     }
-    return this.editBlock(block, (b) => ({ ...b, options: b.options.filter((o) => o !== subject) }));
+    return this.#editBlock(block, (b) => ({ ...b, options: b.options.filter((o) => o !== subject) }));
   }
 
   async removeBlock({ block }: { block: string }) {
-    const record = await this.requireBlock(block);
+    const record = await this.#requireBlock(block);
     await this.roads.updateOne({ _id: record._id }, { $set: { blocks: record.blocks.filter((b) => b.id !== block) } });
     return {};
   }
 
   async pin({ road, subject, year, term }: { road: string; subject: string; year: number; term: Term }) {
-    const record = await this.requireRoad(road);
-    await this.requireListing(subject);
-    if (record.prior.includes(subject)) throw new Refusal("ALREADY_PRIOR", "That subject is already prior credit.");
+    const record = await this.#requireRoad(road);
+    await this.#requireListing(subject);
+    if (record.prior.includes(subject)) throw new AlreadyPrior();
     const k = keyOf(year, term);
     if (k < keyOf(record.startYear, record.startTerm) || k > keyOf(record.endYear, record.endTerm)) {
-      throw new Refusal("OUT_OF_SPAN", "That semester is outside the road.");
+      throw new OutOfSpan();
     }
 
     const existingPinIndex = record.pins.findIndex(p => p.subject === subject);
     const existing = record.pins[existingPinIndex];
     if (isLocked(record, year, term) || (existing && isLocked(record, existing.year, existing.term))) {
-      throw new Refusal("LOCKED_SEASON", "That semester is locked.");
+      throw new LockedSeason();
     }
     let updatedPins = [...record.pins];
     if (existingPinIndex >= 0) {
@@ -576,11 +661,11 @@ export class ConstrainConcept {
   }
 
   async unPin({ road, subject }: { road: string; subject: string }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
 
     const existing = record.pins.find(p => p.subject === subject);
     if (!existing) throw new PinNotFound("Pin not found.");
-    if (isLocked(record, existing.year, existing.term)) throw new Refusal("LOCKED_SEASON", "That semester is locked.");
+    if (isLocked(record, existing.year, existing.term)) throw new LockedSeason();
 
     await this.roads.updateOne({ _id: road }, { $set: { pins: record.pins.filter(p => p.subject !== subject) } });
     return {};
@@ -589,11 +674,11 @@ export class ConstrainConcept {
   async setCap(
     { road, year, term, capType, limit }: { road: string; year: number; term: Term; capType: string; limit: number },
   ) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     if (capType !== "total" && capType !== "technical") {
-      throw new Refusal("BAD_CAP_TYPE", "The cap type must be total or technical.");
+      throw new BadCapType();
     }
-    if (limit < 0) throw new Refusal("NEGATIVE_LIMIT", "A cap cannot be negative.");
+    if (limit < 0) throw new NegativeLimit();
 
     const patch = capType === "total" ? { maxUnits: limit } : { maxTechnicalUnits: limit };
     await this.roads.updateOne({ _id: road }, { $set: { semesters: upsertSemester(record, year, term, patch) } });
@@ -601,9 +686,9 @@ export class ConstrainConcept {
   }
 
   async clearCap({ road, year, term, capType }: { road: string; year: number; term: Term; capType: string }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     if (capType !== "total" && capType !== "technical") {
-      throw new Refusal("BAD_CAP_TYPE", "The cap type must be total or technical.");
+      throw new BadCapType();
     }
     const patch = capType === "total" ? { maxUnits: null } : { maxTechnicalUnits: null };
     await this.roads.updateOne({ _id: road }, { $set: { semesters: upsertSemester(record, year, term, patch) } });
@@ -611,9 +696,9 @@ export class ConstrainConcept {
   }
 
   async resetSemester({ road, year, term }: { road: string; year: number; term: Term }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     if (!record.semesters.some((s) => s.year === year && s.term === term)) {
-      throw new Refusal("NO_SUCH_SEMESTER", "That semester has no settings.");
+      throw new NoSuchSemester();
     }
     await this.roads.updateOne(
       { _id: road },
@@ -623,7 +708,7 @@ export class ConstrainConcept {
   }
 
   async setLocked({ road, year, term, locked }: { road: string; year: number; term: Term; locked: boolean }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     await this.roads.updateOne({ _id: road }, { $set: { semesters: upsertSemester(record, year, term, { locked }) } });
     return {};
   }
@@ -636,20 +721,20 @@ export class ConstrainConcept {
   }
 
   async addListingTerm({ subject, term }: { subject: string; term: Term }) {
-    await this.requireListing(subject);
+    await this.#requireListing(subject);
     await this.listings.updateOne({ _id: subject }, { $addToSet: { terms: term } });
     return {};
   }
 
   async removeListingTerm({ subject, term }: { subject: string; term: Term }) {
-    const listing = await this.requireListing(subject);
-    if (!listing.terms.includes(term)) throw new Refusal("NOT_A_TERM", "That subject does not run in that term.");
+    const listing = await this.#requireListing(subject);
+    if (!listing.terms.includes(term)) throw new NotATerm();
     await this.listings.updateOne({ _id: subject }, { $pull: { terms: term } });
     return {};
   }
 
   async removeListing({ subject }: { subject: string }) {
-    await this.requireListing(subject);
+    await this.#requireListing(subject);
     await this.listings.deleteOne({ _id: subject });
     await this.dependencies.deleteMany({ course: subject });
     await this.cancellations.deleteMany({ subject });
@@ -657,8 +742,8 @@ export class ConstrainConcept {
   }
 
   async addDependency({ course, kind, count }: { course: string; kind: DependencyKind; count: number }) {
-    await this.requireListing(course);
-    if (!(count >= 1)) throw new Refusal("BAD_COUNT", "A dependency must require at least one subject.");
+    await this.#requireListing(course);
+    if (!(count >= 1)) throw new BadCount("A dependency must require at least one subject.");
     const dependency = crypto.randomUUID();
     await this.dependencies.insertOne({ _id: dependency, course, kind, options: [], count });
     return { dependency };
@@ -666,18 +751,18 @@ export class ConstrainConcept {
 
   async addDependencyOption({ dependency, subject }: { dependency: string; subject: string }) {
     const result = await this.dependencies.updateOne({ _id: dependency }, { $addToSet: { options: subject } });
-    if (result.matchedCount === 0) throw new Refusal("NO_SUCH_DEPENDENCY", "There is no such dependency.");
+    if (result.matchedCount === 0) throw new NoSuchDependency();
     return {};
   }
 
   async removeDependency({ dependency }: { dependency: string }) {
     const result = await this.dependencies.deleteOne({ _id: dependency });
-    if (result.deletedCount === 0) throw new Refusal("NO_SUCH_DEPENDENCY", "There is no such dependency.");
+    if (result.deletedCount === 0) throw new NoSuchDependency();
     return {};
   }
 
   async markCancelled({ subject, year, term }: { subject: string; year: number; term: Term }) {
-    await this.requireListing(subject);
+    await this.#requireListing(subject);
     await this.cancellations.updateOne(
       { _id: `${subject}|${year}|${term}` },
       { $setOnInsert: { subject, year, term } },
@@ -689,7 +774,7 @@ export class ConstrainConcept {
   async unmarkCancelled({ subject, year, term }: { subject: string; year: number; term: Term }) {
     const result = await this.cancellations.deleteOne({ _id: `${subject}|${year}|${term}` });
     if (result.deletedCount === 0) {
-      throw new Refusal("NOT_CANCELLED", "That subject is not marked as cancelled in that semester.");
+      throw new NotCancelled();
     }
     return {};
   }
@@ -697,56 +782,56 @@ export class ConstrainConcept {
   // Queries
 
   async _road({ road }: { road: string }) {
-    const r = await this.requireRoad(road);
+    const r = await this.#requireRoad(road);
     return { name: r.name, major: r.major, startYear: r.startYear, startTerm: r.startTerm, endYear: r.endYear, endTerm: r.endTerm };
   }
 
   async _prior({ road }: { road: string }) {
-    return (await this.requireRoad(road)).prior.map((subject) => ({ subject }));
+    return (await this.#requireRoad(road)).prior.map((subject) => ({ subject }));
   }
 
   async _blocks({ road }: { road: string }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     return [...record.blocks]
       .sort((a, b) => (a.id < b.id ? -1 : 1))
       .flatMap((b) => b.options.map((subject) => ({ block: b.id, count: b.count, subject })));
   }
 
   async _pins({ road }: { road: string }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     return sortPins(record.pins).map(({ subject, year, term }) => ({ subject, year, term }));
   }
 
   async _semesters({ road }: { road: string }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     return [...record.semesters]
       .sort((a, b) => keyOf(a.year, a.term) - keyOf(b.year, b.term))
       .map((s) => ({ ...s, maxUnits: s.maxUnits ?? 0, maxTechnicalUnits: s.maxTechnicalUnits ?? 0 })); // 0 = no cap
   }
 
   async _pinsLostBySetStart({ road, year, term }: { road: string; year: number; term: Term }) {
-    const record = await this.requireRoad(road);
-    if (!isFallOrSpring(term)) throw new Refusal("BAD_START", "A road must start in a Fall or Spring semester.");
+    const record = await this.#requireRoad(road);
+    if (!isFallOrSpring(term)) throw new BadStart();
     const moved = movedSpan(record, year, term);
     return sortPins(pinsOutside(record.pins, moved.startKey, moved.endKey));
   }
 
   async _pinsLostBySetEnd({ road, year, term }: { road: string; year: number; term: Term }) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     const endKey = keyOf(year, term);
     if (endKey <= keyOf(record.startYear, record.startTerm)) {
-      throw new Refusal("END_BEFORE_START", "The end must come after the start.");
+      throw new EndBeforeStart();
     }
     return sortPins(record.pins.filter((p) => pinKey(p) > endKey));
   }
 
   async _satisfies({ road }: { road: string }) {
-    const ctx = await this.loadCtx(await this.requireRoad(road));
+    const ctx = await this.#loadCtx(await this.#requireRoad(road));
     return { satisfied: satisfies(ctx, ctx.pins) };
   }
 
   async _options({ road, includeIAPAndSummer }: { road: string; includeIAPAndSummer: boolean }) {
-    const ctx = await this.loadCtx(await this.requireRoad(road));
+    const ctx = await this.#loadCtx(await this.#requireRoad(road));
     const rows: { year: number; term: Term; subject: string; fitsByEnd: boolean }[] = [];
     for (const k of seasonKeys(ctx.startKey, ctx.endKey, includeIAPAndSummer)) {
       for (const subject of blockOptions(ctx)) {
@@ -761,9 +846,9 @@ export class ConstrainConcept {
   async _findPath(
     { road, includeIAPAndSummer, limit }: { road: string; includeIAPAndSummer: boolean; limit: number },
   ) {
-    const record = await this.requireRoad(road);
+    const record = await this.#requireRoad(road);
     if (!(limit >= 1)) throw new Refusal("BAD_LIMIT", "The limit must be at least 1.");
-    const ctx = await this.loadCtx(record);
+    const ctx = await this.#loadCtx(record);
     return findPlans(ctx, includeIAPAndSummer, limit).flatMap((placed, i) =>
       [...placed.entries()]
         .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
@@ -773,6 +858,6 @@ export class ConstrainConcept {
 
   async _roadOfBlock({ block }: { block: string }) {
     const record = await this.roads.findOne({ "blocks.id": block });
-    return record ? { road: record._id } : null;
+    return record ? [{ road: record._id }] : [];
   }
 }
