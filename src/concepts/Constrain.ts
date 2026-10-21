@@ -119,6 +119,11 @@ interface Block {
   id: string;
   options: string[];
   count: number;
+  // Absent on blocks made before these fields existed: those were the student's own, and technical.
+  title?: string;
+  technical?: boolean;
+  group?: string;
+  origin?: string;
 }
 
 interface Semester {
@@ -146,7 +151,6 @@ interface RoadRecord {
 interface Listing {
   _id: string; // subject
   units: number;
-  technical: boolean;
   terms: Term[];
 }
 
@@ -235,6 +239,7 @@ interface Ctx {
   endKey: number;
   prior: Set<string>;
   blocks: Block[]; // only blocks with options
+  technical: Set<string>; // technical(road, subject): options of technical blocks
   pins: Placed;
   semesters: Map<number, Semester>;
   listings: Map<string, Listing>;
@@ -278,7 +283,7 @@ function room(ctx: Ctx, placed: Placed, k: number) {
     const l = ctx.listings.get(s);
     if (at !== k || !l) continue;
     total += l.units;
-    if (l.technical) tech += l.units;
+    if (ctx.technical.has(s)) tech += l.units;
   }
   return {
     total: sem.maxUnits === null ? Infinity : sem.maxUnits - total,
@@ -290,7 +295,7 @@ function fitsRoom(ctx: Ctx, placed: Placed, subject: string, k: number): boolean
   const l = ctx.listings.get(subject);
   if (!l) return false;
   const r = room(ctx, placed, k);
-  return l.units <= r.total && (!l.technical || l.units <= r.tech);
+  return l.units <= r.total && (!ctx.technical.has(subject) || l.units <= r.tech);
 }
 
 function canGoIn(
@@ -310,13 +315,20 @@ function canGoIn(
   );
 }
 
-/** Largest assignment of distinct subjects to block slots (bipartite matching). */
-function maxMatching(blocks: Block[], subjects: Set<string>): number {
-  const slots: Block[] = [];
-  for (const b of blocks) for (let i = 0; i < Math.min(b.count, b.options.length); i++) slots.push(b);
+/**
+ * Largest assignment of distinct subjects to block slots (bipartite matching). The options
+ * of each slot are tried in order, so an earlier option is preferred when there is a choice.
+ * Answers the size of the matching and the subjects matched.
+ */
+function matching(blocks: Block[], subjects: Set<string>, prefer?: (options: string[]) => string[]) {
+  const slots: string[][] = [];
+  for (const b of blocks) {
+    const options = prefer ? prefer(b.options) : b.options;
+    for (let i = 0; i < Math.min(b.count, b.options.length); i++) slots.push(options);
+  }
   const slotOf = new Map<string, number>();
   const assign = (slot: number, seen: Set<string>): boolean => {
-    for (const s of slots[slot].options) {
+    for (const s of slots[slot]) {
       if (!subjects.has(s) || seen.has(s)) continue;
       seen.add(s);
       const cur = slotOf.get(s);
@@ -329,11 +341,25 @@ function maxMatching(blocks: Block[], subjects: Set<string>): number {
   };
   let size = 0;
   for (let i = 0; i < slots.length; i++) if (assign(i, new Set())) size++;
-  return size;
+  return { size, matched: new Set(slotOf.keys()) };
+}
+
+const groupOf = (b: Block) => b.group ?? "";
+
+function byGroup(blocks: Block[]): Block[][] {
+  const groups = new Map<string, Block[]>();
+  for (const b of blocks) groups.set(groupOf(b), [...(groups.get(groupOf(b)) ?? []), b]);
+  return [...groups.values()];
+}
+
+/** Within each group a subject counts toward one block; across groups it may count again. */
+function coverage(ctx: Ctx, subjects: Set<string>): number {
+  return byGroup(ctx.blocks).reduce((n, blocks) => n + matching(blocks, subjects).size, 0);
 }
 
 function covered(ctx: Ctx, subjects: Set<string>): boolean {
-  return maxMatching(ctx.blocks, subjects) === ctx.blocks.reduce((n, b) => n + b.count, 0);
+  return coverage(ctx, subjects) === ctx.blocks.reduce((n, b) => n + Math.min(b.count, b.options.length), 0) &&
+    ctx.blocks.every((b) => b.options.length >= b.count);
 }
 
 function blockOptions(ctx: Ctx): string[] {
@@ -399,74 +425,183 @@ const signature = (placed: Placed) =>
   [...placed.entries()].sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1)).map(([s, k]) => `${s}@${k}`).join(",");
 
 const HORIZON_YEARS = 4; // how far past the end of the road _findPath may look
-const MAX_STATES = 2000; // states kept after each season
-const MAX_EXPANSIONS = 20000; // candidate checks per season
+const MAX_ATTEMPTS = 40; // plans built before choosing the best
 
-/** Breadth-first, season by season; the first season with a complete plan is the earliest finish. */
-function findPlans(ctx: Ctx, includeIAPAndSummer: boolean, limit: number): Placed[] {
+/**
+ * cost(s): about how many subjects not yet taken a plan needs in order to take s, s included:
+ * 1 plus the cheapest options of each of its dependencies, followed down. Infinity when s
+ * cannot be taken (no listing, or a dependency that cannot be met).
+ */
+function costs(ctx: Ctx, given: Set<string>) {
+  const memo = new Map<string, number>();
+  const visiting = new Set<string>();
+  const cost = (s: string): number => {
+    if (given.has(s)) return 0;
+    if (memo.has(s)) return memo.get(s)!;
+    if (!ctx.listings.has(s)) return Infinity;
+    // A cycle is corequisites taken together (a prerequisite cycle fails when scheduled).
+    if (visiting.has(s)) return 0;
+    visiting.add(s);
+    let total = 1;
+    for (const d of ctx.deps.get(s) ?? []) {
+      const cheapest = d.options.map(cost).sort((a, b) => a - b).slice(0, d.count);
+      total += cheapest.length < d.count ? Infinity : cheapest.reduce((a, b) => a + b, 0);
+    }
+    visiting.delete(s);
+    memo.set(s, total);
+    return total;
+  };
+  return cost;
+}
+
+type Attempt = { banned: Set<string>; reverse: boolean };
+
+/** Steps 1 and 2 of _findPath: the subjects a plan takes, or null if the blocks cannot be met. */
+function chooseSubjects(ctx: Ctx, cost: (s: string) => number, banned: Set<string>): Set<string> | null {
+  const taken = takenSet(ctx, ctx.pins);
+  const chosen = new Set<string>();
+  // Groups with the fewest options to spare go first, so that their picks can be shared.
+  const groups = byGroup(ctx.blocks).sort(
+    (a, b) => a.reduce((n, x) => n + x.options.length - x.count, 0) - b.reduce((n, x) => n + x.options.length - x.count, 0),
+  );
+  for (const blocks of groups) {
+    const usable = new Set(blocks.flatMap((b) => b.options).filter((o) => taken.has(o) || (!banned.has(o) && cost(o) < Infinity)));
+    const prefer = (options: string[]) =>
+      [...options].sort((a, b) => {
+        const have = (s: string) => (taken.has(s) ? 0 : chosen.has(s) ? 1 : 2);
+        return have(a) - have(b) || cost(a) - cost(b) || (a < b ? -1 : a > b ? 1 : 0);
+      });
+    // Fewer options first, so that a narrow block is not starved by a broad one.
+    const ordered = [...blocks].sort((a, b) => a.options.length - b.options.length);
+    const { size, matched } = matching(ordered, usable, prefer);
+    if (size < ordered.reduce((n, b) => n + b.count, 0)) return null;
+    for (const s of matched) if (!taken.has(s)) chosen.add(s);
+  }
+
+  // Complete: the cheapest options of every dependency that is not met yet.
+  const plan = new Set([...chosen, ...ctx.pins.keys()]);
+  const queue = [...plan];
+  while (queue.length > 0) {
+    const s = queue.pop()!;
+    for (const d of ctx.deps.get(s) ?? []) {
+      const have = d.options.filter((o) => ctx.prior.has(o) || plan.has(o)).length;
+      if (have >= d.count) continue;
+      const extra = d.options
+        .filter((o) => !ctx.prior.has(o) && !plan.has(o) && cost(o) < Infinity)
+        .sort((a, b) => cost(a) - cost(b) || (a < b ? -1 : 1))
+        .slice(0, d.count - have);
+      if (extra.length < d.count - have) return null;
+      for (const o of extra) {
+        plan.add(o);
+        queue.push(o);
+      }
+    }
+  }
+  for (const p of ctx.pins.keys()) plan.delete(p);
+  return plan;
+}
+
+/** Step 3 of _findPath: place the subjects season by season, or null if some cannot be placed. */
+function schedule(ctx: Ctx, subjects: Set<string>, includeIAPAndSummer: boolean, reverse: boolean): Placed | null {
   const horizon = ctx.endKey + HORIZON_YEARS * 4;
-  const options = candidates(ctx);
-  // A dependency of a needed subject is worth taking even if it adds no block coverage.
-  const depTargets = dependencyClosure(ctx, [...blockOptions(ctx), ...ctx.pins.keys()]);
+  const all = new Set([...subjects, ...ctx.pins.keys()]);
+  // Who waits on whom, within the plan.
+  const dependents = new Map<string, string[]>();
+  for (const s of all) {
+    for (const d of ctx.deps.get(s) ?? []) for (const o of d.options) if (all.has(o)) dependents.set(o, [...(dependents.get(o) ?? []), s]);
+  }
+  const chain = new Map<string, number>();
+  const chainOf = (s: string, seen = new Set<string>()): number => {
+    if (chain.has(s)) return chain.get(s)!;
+    if (seen.has(s)) return 0;
+    seen.add(s);
+    const n = 1 + Math.max(0, ...(dependents.get(s) ?? []).map((d) => chainOf(d, seen)));
+    chain.set(s, n);
+    return n;
+  };
+  // The season of the earliest pin that waits on a subject, directly or not.
+  const deadline = new Map<string, number>();
+  const pass = (s: string, by: number) => {
+    if ((deadline.get(s) ?? Infinity) <= by) return;
+    deadline.set(s, by);
+    for (const d of ctx.deps.get(s) ?? []) for (const o of d.options) if (subjects.has(o)) pass(o, by);
+  };
+  for (const [p, k] of ctx.pins) for (const d of ctx.deps.get(p) ?? []) for (const o of d.options) if (subjects.has(o)) pass(o, k);
 
+  const order = [...subjects].sort(
+    (a, b) =>
+      (deadline.get(a) ?? Infinity) - (deadline.get(b) ?? Infinity) ||
+      chainOf(b) - chainOf(a) ||
+      (reverse ? (a < b ? 1 : -1) : a < b ? -1 : 1),
+  );
+
+  const placed: Placed = new Map(ctx.pins);
+  let left = order;
+  for (const k of seasonKeys(ctx.startKey, horizon, includeIAPAndSummer)) {
+    if (left.length === 0) break;
+    if (semesterOf(ctx, k).locked) continue;
+    // Corequisites may share the season, so keep placing until nothing more fits. A subject
+    // whose corequisites did not make it into this season or an earlier one is taken out
+    // again, and not tried again in this season.
+    const missedCoreq = new Set<string>();
+    for (let changed = true; changed; ) {
+      changed = false;
+      for (const s of left) {
+        if (placed.has(s) || missedCoreq.has(s) || !canGoIn(ctx, placed, s, k, { endKey: horizon, coreqs: false })) continue;
+        placed.set(s, k);
+        changed = true;
+      }
+      for (let undone = true; undone; ) {
+        undone = false;
+        for (const s of left) {
+          if (placed.get(s) === k && !dependenciesMet(ctx, placed, s, k)) {
+            placed.delete(s);
+            missedCoreq.add(s);
+            undone = true;
+          }
+        }
+      }
+      left = left.filter((s) => !placed.has(s));
+    }
+  }
+  return left.length === 0 && satisfies(ctx, placed) ? placed : null;
+}
+
+const finish = (ctx: Ctx, placed: Placed) => Math.max(ctx.startKey, ...placed.values());
+
+/** Builds plans with different choices of options and answers the best, breadth-first. */
+function findPlans(ctx: Ctx, includeIAPAndSummer: boolean, limit: number): Placed[] {
   const start: Placed = new Map(ctx.pins);
   if (satisfies(ctx, start)) return [start];
 
-  // Begin at the first unlocked season that has room left after its pins.
-  const seasons = seasonKeys(ctx.startKey, horizon, includeIAPAndSummer).filter((k) => !semesterOf(ctx, k).locked);
-  const first = seasons.findIndex((k) => room(ctx, start, k).total > 0);
-  if (first < 0) return [];
+  const cost = costs(ctx, takenSet(ctx, ctx.pins));
+  const found = new Map<string, Placed>();
+  const attempts: Attempt[] = [{ banned: new Set(), reverse: false }, { banned: new Set(), reverse: true }];
+  const tried = new Set<string>();
 
-  let frontier: Placed[] = [start];
-  for (const k of seasons.slice(first)) {
-    const next = new Map<string, Placed>();
-    const fresh: Placed[] = [];
-    let budget = MAX_EXPANSIONS;
+  for (let i = 0; i < attempts.length && tried.size < MAX_ATTEMPTS; i++) {
+    const { banned, reverse } = attempts[i];
+    const id = `${[...banned].sort().join(",")}|${reverse}`;
+    if (tried.has(id)) continue;
+    tried.add(id);
 
-    for (const state of frontier) {
-      next.set(signature(state), state); // take nothing this season
-      const taken = takenSet(ctx, state);
-      const cands = options.filter((o) => !taken.has(o));
-      const cur: Placed = new Map(state);
-      const added: string[] = [];
-      const dfs = (from: number): void => {
-        for (let i = from; i < cands.length; i++) {
-          if (budget-- <= 0) return;
-          const s = cands[i];
-          // corequisites are checked once the subset for the season is known
-          if (!canGoIn(ctx, cur, s, k, { endKey: horizon, coreqs: false })) continue;
-          const have = takenSet(ctx, cur);
-          const grows = maxMatching(ctx.blocks, new Set([...have, s])) > maxMatching(ctx.blocks, have);
-          if (!grows && !depTargets.has(s)) continue;
-          cur.set(s, k);
-          added.push(s);
-          const sig = signature(cur);
-          if (!next.has(sig) && added.every((a) => dependenciesMet(ctx, cur, a, k))) {
-            const copy: Placed = new Map(cur);
-            next.set(sig, copy);
-            fresh.push(copy);
-          }
-          dfs(i + 1);
-          cur.delete(s);
-          added.pop();
-        }
-      };
-      dfs(0);
-    }
+    const subjects = chooseSubjects(ctx, cost, banned);
+    if (!subjects) continue;
+    const placed = schedule(ctx, subjects, includeIAPAndSummer, reverse);
+    if (placed) found.set(signature(placed), placed);
 
-    const done = fresh.filter((p) => satisfies(ctx, p));
-    if (done.length > 0) return done.slice(0, limit);
-
-    frontier = [...next.values()];
-    if (frontier.length > MAX_STATES) {
-      frontier = frontier
-        .map((p) => ({ p, r: maxMatching(ctx.blocks, takenSet(ctx, p)) }))
-        .sort((a, b) => b.r - a.r)
-        .slice(0, MAX_STATES)
-        .map((x) => x.p);
+    // Other plans: leave out, one at a time, a subject chosen for a block that has other options.
+    if (banned.size === 0 && !reverse) {
+      const flexible = ctx.blocks.filter((b) => b.options.length > b.count).flatMap((b) => b.options).filter((o) => subjects.has(o));
+      for (const s of [...new Set(flexible)].sort((a, b) => cost(a) - cost(b))) attempts.push({ banned: new Set([s]), reverse: false });
     }
   }
-  return [];
+
+  const plans = [...found.values()].sort(
+    (a, b) => finish(ctx, a) - finish(ctx, b) || a.size - b.size || (signature(a) < signature(b) ? -1 : 1),
+  );
+  const byEnd = plans.filter((p) => finish(ctx, p) <= ctx.endKey);
+  return (byEnd.length > 0 ? byEnd : plans).slice(0, limit);
 }
 
 export class ConstrainConcept {
@@ -534,6 +669,7 @@ export class ConstrainConcept {
       endKey: keyOf(record.endYear, record.endTerm),
       prior: new Set(record.prior),
       blocks,
+      technical: new Set(blocks.filter((b) => b.technical ?? true).flatMap((b) => b.options)),
       pins: new Map(record.pins.map((p) => [p.subject, pinKey(p)])),
       semesters: new Map(record.semesters.map((s) => [keyOf(s.year, s.term), s])),
       listings: new Map(listings.map((l) => [l._id, l])),
@@ -620,6 +756,7 @@ export class ConstrainConcept {
 
   async addPrior({ road, subject }: { road: string; subject: string }) {
     const record = await this.#requireRoad(road);
+    await this.#requireListing(subject);
     await this.roads.updateOne(
       { _id: road },
       { $addToSet: { prior: subject }, $set: { pins: record.pins.filter((p) => p.subject !== subject) } },
@@ -634,12 +771,28 @@ export class ConstrainConcept {
     return {};
   }
 
-  async addBlock({ road, count }: { road: string; count: number }) {
+  async addBlock({ road, count, technical }: { road: string; count: number; technical: boolean }) {
+    return this.addListedBlock({ road, count, title: "", technical, group: "", origin: "" });
+  }
+
+  async addListedBlock(
+    { road, count, title, technical, group, origin }:
+      { road: string; count: number; title: string; technical: boolean; group: string; origin: string },
+  ) {
     await this.#requireRoad(road);
     if (!(count >= 1)) throw new BadCount();
     const block = crypto.randomUUID();
-    await this.roads.updateOne({ _id: road }, { $push: { blocks: { id: block, options: [], count } } });
+    await this.roads.updateOne(
+      { _id: road },
+      { $push: { blocks: { id: block, options: [], count, title, technical, group, origin } } },
+    );
     return { block };
+  }
+
+  async removeListedBlocks({ road }: { road: string }) {
+    const record = await this.#requireRoad(road);
+    await this.roads.updateOne({ _id: road }, { $set: { blocks: record.blocks.filter((b) => !b.origin) } });
+    return {};
   }
 
   /** Apply a change to one block of whichever road owns it. */
@@ -659,6 +812,8 @@ export class ConstrainConcept {
   }
 
   async addOption({ block, subject }: { block: string; subject: string }) {
+    await this.#requireBlock(block);
+    await this.#requireListing(subject);
     return this.#editBlock(block, (b) => ({ ...b, options: [...new Set([...b.options, subject])] }));
   }
 
@@ -705,7 +860,7 @@ export class ConstrainConcept {
     const record = await this.#requireRoad(road);
 
     const existing = record.pins.find(p => p.subject === subject);
-    if (!existing) throw new PinNotFound("Pin not found.");
+    if (!existing) throw new PinNotFound();
     if (isLocked(record, existing.year, existing.term)) throw new LockedSeason();
 
     await this.roads.updateOne({ _id: road }, { $set: { pins: record.pins.filter(p => p.subject !== subject) } });
@@ -756,14 +911,14 @@ export class ConstrainConcept {
 
   // Listings, dependencies and cancellations: this concept's copy of subject facts.
 
-  async setListing({ subject, units, technical }: { subject: string; units: number; technical: boolean }) {
+  async setListing({ subject, units }: { subject: string; units: number }) {
     // Subject facts arrive here first; the catalog has thousands of subjects, so look them up by index.
     if (!this.indexed) {
       await this.dependencies.createIndex({ course: 1 });
       await this.cancellations.createIndex({ subject: 1 });
       this.indexed = true;
     }
-    await this.listings.updateOne({ _id: subject }, { $set: { units, technical }, $setOnInsert: { terms: [] } }, { upsert: true });
+    await this.listings.updateOne({ _id: subject }, { $set: { units }, $setOnInsert: { terms: [] } }, { upsert: true });
     return {};
   }
 
@@ -839,9 +994,18 @@ export class ConstrainConcept {
 
   async _blocks({ road }: { road: string }) {
     const record = await this.#requireRoad(road);
-    return [...record.blocks]
-      .sort((a, b) => (a.id < b.id ? -1 : 1))
-      .flatMap((b) => b.options.map((subject) => ({ block: b.id, count: b.count, subject })));
+    // Listed blocks first, then the student's, each in the order they were added.
+    return [...record.blocks.filter((b) => b.origin), ...record.blocks.filter((b) => !b.origin)].flatMap((b) =>
+      b.options.map((subject) => ({
+        block: b.id,
+        count: b.count,
+        subject,
+        title: b.title ?? "",
+        technical: b.technical ?? true,
+        group: b.group ?? "",
+        origin: b.origin ?? "",
+      })),
+    );
   }
 
   async _pins({ road }: { road: string }) {

@@ -129,14 +129,26 @@ type PlanRow = Row & { plan: number };
 const db = useFreshDb("constrain_test");
 const expectRefusal = refusalsOf("Constrain");
 let c: ConstrainConcept;
+let known: Set<string>;
 
 beforeEach(() => {
   c = new ConstrainConcept(db());
+  known = new Set();
 });
 
-async function addSubject(id: string, units: number, terms: Term[] = FS, technical = false): Promise<void> {
-  await c.setListing({ subject: id, units, technical });
+async function addSubject(id: string, units: number, terms: Term[] = FS): Promise<void> {
+  await c.setListing({ subject: id, units });
   for (const term of terms) await c.addListingTerm({ subject: id, term });
+  known.add(id);
+}
+
+/** Gives a Listing (12 units, no terms) to each subject that has none, so it can be an option or prior credit. */
+async function listed(...ids: string[]): Promise<void> {
+  for (const id of ids) {
+    if (known.has(id)) continue;
+    await c.setListing({ subject: id, units: 12 });
+    known.add(id);
+  }
 }
 
 async function prerequisite(course: string, options: string[], count = 1, kind: "PREREQUISITE" | "COREQUISITE" = "PREREQUISITE") {
@@ -150,8 +162,9 @@ async function makeRoad(startYear = 2026, startTerm: Term = "FALL"): Promise<str
   return (await c.newRoad({ name: "My road", major: "6-3", startYear, startTerm })).road;
 }
 
-async function addBlock(road: string, count: number, options: string[]): Promise<string> {
-  const { block } = await c.addBlock({ road, count });
+async function addBlock(road: string, count: number, options: string[], technical = false): Promise<string> {
+  const { block } = await c.addBlock({ road, count, technical });
+  await listed(...options);
   for (const subject of options) await c.addOption({ block, subject });
   return block;
 }
@@ -197,6 +210,7 @@ describe("principle", () => {
     await prerequisite("6.1210", ["6.1200"]);
 
     // Prior credit, and a past semester pinned and locked.
+    await listed("18.01");
     await c.addPrior({ road, subject: "18.01" });
     await c.pin({ road, subject: "6.100A", year: 2026, term: "FALL" });
     await c.setLocked({ road, year: 2026, term: "FALL", locked: true });
@@ -304,7 +318,7 @@ describe("renameRoad, setMajor, deleteRoad", () => {
     expect(await c._roadOfBlock({ block })).toEqual([]);
     await expectRefusal("deleteRoad", "NO_SUCH_ROAD", c.deleteRoad({ road }));
     await expectRefusal("renameRoad", "NO_SUCH_ROAD", c.renameRoad({ road, name: "x" }));
-    await expectRefusal("addBlock", "NO_SUCH_ROAD", c.addBlock({ road, count: 1 }));
+    await expectRefusal("addBlock", "NO_SUCH_ROAD", c.addBlock({ road, count: 1, technical: false }));
     expect(await c._roadOfBlock({ block: otherBlock })).toEqual([{ road: other }]);
   });
 });
@@ -434,6 +448,7 @@ describe("prior credit", () => {
     expect(await c.addPrior({ road, subject: "A" })).toEqual({});
     expect(await c._pins({ road })).toEqual([]);
     expect(await c._prior({ road })).toEqual([{ subject: "A" }]);
+    await listed("A");
     await c.addPrior({ road, subject: "A" });
     expect(await c._prior({ road })).toHaveLength(1);
     await expectRefusal("pin", "ALREADY_PRIOR", c.pin({ road, subject: "A", year: 2027, term: "FALL" }));
@@ -441,7 +456,9 @@ describe("prior credit", () => {
 
   it("covers prior credit for a subject with no Listing, removePrior, and nonexistent road", async () => {
     const road = await makeRoad();
+    await listed("A");
     await c.addPrior({ road, subject: "A" });
+    await listed("B");
     await c.addPrior({ road, subject: "B" });
     expect(sorted((await c._prior({ road })).map((r) => r.subject))).toEqual(["A", "B"]);
     expect(await c.removePrior({ road, subject: "A" })).toEqual({});
@@ -454,6 +471,7 @@ describe("prior credit", () => {
   it("covers prior credit being per road", async () => {
     const road = await makeRoad();
     const other = await makeRoad();
+    await listed("A");
     await c.addPrior({ road, subject: "A" });
     expect(await c._prior({ road: other })).toEqual([]);
   });
@@ -466,18 +484,19 @@ describe("prior credit", () => {
 describe("blocks", () => {
   it("covers addBlock with count < 1 and nonexistent road", async () => {
     const road = await makeRoad();
-    await expectRefusal("addBlock", "BAD_COUNT", c.addBlock({ road, count: 0 }));
-    await expectRefusal("addBlock", "BAD_COUNT", c.addBlock({ road, count: -1 }));
-    await expectRefusal("addBlock", "NO_SUCH_ROAD", c.addBlock({ road: "nope", count: 1 }));
-    await expectRefusal("addBlock", "NO_SUCH_ROAD", c.addBlock({ road: "nope", count: 0 }));
+    await expectRefusal("addBlock", "BAD_COUNT", c.addBlock({ road, count: 0, technical: false }));
+    await expectRefusal("addBlock", "BAD_COUNT", c.addBlock({ road, count: -1, technical: false }));
+    await expectRefusal("addBlock", "NO_SUCH_ROAD", c.addBlock({ road: "nope", count: 1, technical: false }));
+    await expectRefusal("addBlock", "NO_SUCH_ROAD", c.addBlock({ road: "nope", count: 0, technical: false }));
   });
 
   it("covers a block with 0 options, many options, duplicate option", async () => {
     const road = await makeRoad();
-    const { block } = await c.addBlock({ road, count: 2 });
+    const { block } = await c.addBlock({ road, count: 2, technical: false });
     expect(await c._blocks({ road })).toEqual([]); // a block with no options has no rows
     expect(await c._roadOfBlock({ block })).toEqual([{ road }]);
 
+    await listed("A", "B");
     await c.addOption({ block, subject: "A" });
     await c.addOption({ block, subject: "B" });
     await c.addOption({ block, subject: "A" });
@@ -610,6 +629,7 @@ describe("unPin", () => {
 
   it("covers a subject that is prior credit (not a pin)", async () => {
     const road = await makeRoad();
+    await listed("A");
     await c.addPrior({ road, subject: "A" });
     await expectRefusal("unPin", "NOT_PINNED", c.unPin({ road, subject: "A" }));
   });
@@ -733,12 +753,12 @@ describe("listings", () => {
   });
 
   it("covers adding a term twice, removing an absent term, and setListing keeping terms", async () => {
-    expect(await c.setListing({ subject: "A", units: 12, technical: false })).toEqual({});
+    expect(await c.setListing({ subject: "A", units: 12 })).toEqual({});
     expect(await c.addListingTerm({ subject: "A", term: "FALL" })).toEqual({});
     await c.addListingTerm({ subject: "A", term: "FALL" });
     await expectRefusal("removeListingTerm", "NOT_A_TERM", c.removeListingTerm({ subject: "A", term: "SPRING" }));
 
-    await c.setListing({ subject: "A", units: 9, technical: true }); // replace units/technical, keep terms
+    await c.setListing({ subject: "A", units: 9 }); // replace units, keep terms
     const road = await makeRoad();
     await addBlock(road, 1, ["A"]);
     expect(keys(await c._options({ road, includeIAPAndSummer: false }))).toContain("2026-FALL-A");
@@ -750,16 +770,15 @@ describe("listings", () => {
     await expectRefusal("removeListing", "NO_LISTING", c.removeListing({ subject: "A" }));
   });
 
-  it("covers setListing replacing units and technical", async () => {
+  it("covers setListing replacing units", async () => {
     const road = await makeRoad();
     await c.setEnd({ road, year: 2027, term: "SPRING" });
-    await addSubject("A", 12, FS, true);
+    await addSubject("A", 12, FS);
     await addBlock(road, 1, ["A"]);
     await c.setCap({ road, year: 2026, term: "FALL", capType: "total", limit: 6 });
-    await c.setCap({ road, year: 2027, term: "SPRING", capType: "technical", limit: 0 });
-    expect(await c._options({ road, includeIAPAndSummer: false })).toEqual([]);
+    expect(keys(await c._options({ road, includeIAPAndSummer: false }))).toEqual(["2027-SPRING-A"]);
 
-    await c.setListing({ subject: "A", units: 6, technical: false });
+    await c.setListing({ subject: "A", units: 6 });
     expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual(["2026-FALL-A", "2027-SPRING-A"]);
   });
 
@@ -832,13 +851,14 @@ describe("_satisfies", () => {
     const road = await makeRoad();
     expect(await c._satisfies({ road })).toEqual({ satisfied: true });
     await addSubject("A", 6);
-    const { block } = await c.addBlock({ road, count: 1 });
+    const { block } = await c.addBlock({ road, count: 1, technical: false });
     expect(await satisfied(road)).toBe(true); // empty block ignored
     await c.addOption({ block, subject: "A" });
     expect(await satisfied(road)).toBe(false);
     await c.pin({ road, subject: "A", year: 2026, term: "FALL" });
     expect(await satisfied(road)).toBe(true);
     await c.unPin({ road, subject: "A" });
+    await listed("A");
     await c.addPrior({ road, subject: "A" });
     expect(await satisfied(road)).toBe(true);
   });
@@ -902,6 +922,7 @@ describe("_satisfies", () => {
     await c.pin({ road, subject: "Q", year: 2026, term: "FALL" });
     expect(await satisfied(road)).toBe(true);
     await c.unPin({ road, subject: "Q" });
+    await listed("P");
     await c.addPrior({ road, subject: "P" });
     expect(await satisfied(road)).toBe(true);
   });
@@ -956,12 +977,13 @@ describe("_satisfies", () => {
     expect(await satisfied(road)).toBe(true);
   });
 
-  it("covers technical cap counting technical units only", async () => {
+  it("covers technical cap counting only subjects of technical blocks", async () => {
     const road = await makeRoad();
-    await addSubject("T1", 12, FS, true);
-    await addSubject("T2", 12, FS, true);
-    await addSubject("N", 12, FS, false);
-    await addBlock(road, 3, ["T1", "T2", "N"]);
+    await addSubject("T1", 12, FS);
+    await addSubject("T2", 12, FS);
+    await addSubject("N", 12, FS);
+    await addBlock(road, 2, ["T1", "T2"], true);
+    await addBlock(road, 1, ["N"], false);
     for (const s of ["T1", "T2", "N"]) await c.pin({ road, subject: s, year: 2026, term: "FALL" });
     await c.setCap({ road, year: 2026, term: "FALL", capType: "technical", limit: 12 });
     expect(await satisfied(road)).toBe(false);
@@ -1018,6 +1040,7 @@ describe("_options", () => {
     await addBlock(road, 1, ["F", "X", "PINNED", "OLD"]);
     await c.markCancelled({ subject: "X", year: 2026, term: "FALL" });
     await c.pin({ road, subject: "PINNED", year: 2027, term: "SPRING" });
+    await listed("OLD");
     await c.addPrior({ road, subject: "OLD" });
 
     expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual([
@@ -1068,6 +1091,7 @@ describe("_options", () => {
     await addSubject("A", 6);
     await prerequisite("A", ["P"]);
     await addBlock(road, 1, ["A"]);
+    await listed("P");
     await c.addPrior({ road, subject: "P" });
     expect(sorted(keys(await c._options({ road, includeIAPAndSummer: false })))).toEqual(["2026-FALL-A", "2027-SPRING-A"]);
   });
@@ -1090,10 +1114,12 @@ describe("_options", () => {
   it("covers technical cap affecting technical but not non-technical subjects", async () => {
     const road = await makeRoad();
     await c.setEnd({ road, year: 2027, term: "SPRING" });
-    await addSubject("T", 9, FS, true);
-    await addSubject("T2", 9, FS, true);
-    await addSubject("N", 3, FS, false);
-    await addBlock(road, 1, ["T2", "N"]);
+    await addSubject("T", 9, FS);
+    await addSubject("T2", 9, FS);
+    await addSubject("N", 3, FS);
+    await addBlock(road, 1, ["T", "T2"], true); // T and T2 are technical for this road
+    await addBlock(road, 1, ["N"], false);
+    // The first block is met by the pin below, so only T2 and N are left to take.
     await c.pin({ road, subject: "T", year: 2026, term: "FALL" });
     await c.setCap({ road, year: 2026, term: "FALL", capType: "technical", limit: 10 });
     const result = keys(await c._options({ road, includeIAPAndSummer: false }));
@@ -1182,6 +1208,7 @@ describe("_findPath", () => {
     await prerequisite("A", ["P"]);
     await c.pin({ road, subject: "A", year: 2026, term: "FALL" });
     expect(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 })).toEqual([]);
+    await listed("P");
     await c.addPrior({ road, subject: "P" });
     expect(groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 }))).toHaveLength(1);
   });
@@ -1262,6 +1289,7 @@ describe("_findPath", () => {
     await addSubject("A", 6);
     await addSubject("B", 6);
     await addBlock(road, 2, ["A", "B"]);
+    await listed("A");
     await c.addPrior({ road, subject: "A" });
     const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 }));
     expect(plans).toHaveLength(1);
@@ -1327,5 +1355,168 @@ describe("_findPath", () => {
     await addSubject("NEVER", 6, []);
     await addBlock(road, 1, ["NEVER"]);
     expect(await c._findPath({ road, includeIAPAndSummer: true, limit: 3 })).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Listed blocks, groups, technical per road, and subjects that must be known
+// ---------------------------------------------------------------------------
+
+/*
+ * addListedBlock / removeListedBlocks / _blocks fields
+ *   partition on blocks of road: listed only, the student's only, both
+ *   partition on count: < 1, >= 1; road: exists, does not exist
+ * addOption / addPrior
+ *   partition on subject: has a Listing, has none
+ * covered with groups
+ *   partition on a subject shared by two blocks: same group, different groups
+ * technical(road, subject)
+ *   partition on subject: option of a technical block, of a non-technical block only, of none;
+ *   the same subject in two roads with different blocks
+ * _findPath
+ *   partition on plans: some finish by the end and some only after it; all only after it
+ *   partition on a dependency with several options: the cheapest is taken, not all of them
+ */
+describe("listed blocks", () => {
+  it("covers addListedBlock refusals, fields in _blocks, and order (listed first)", async () => {
+    const road = await makeRoad();
+    await expectRefusal("addListedBlock", "BAD_COUNT",
+      c.addListedBlock({ road, count: 0, title: "T", technical: true, group: "g", origin: "o" }));
+    await expectRefusal("addListedBlock", "NO_SUCH_ROAD",
+      c.addListedBlock({ road: "nope", count: 1, title: "T", technical: true, group: "g", origin: "o" }));
+
+    const mine = await addBlock(road, 1, ["A"], true);
+    const { block: listedBlock } = await c.addListedBlock({ road, count: 1, title: "Foundation", technical: false, group: "major6-3/4", origin: "major6-3/4" });
+    await listed("B");
+    await c.addOption({ block: listedBlock, subject: "B" });
+    expect(await c._blocks({ road })).toEqual([
+      { block: listedBlock, count: 1, subject: "B", title: "Foundation", technical: false, group: "major6-3/4", origin: "major6-3/4" },
+      { block: mine, count: 1, subject: "A", title: "", technical: true, group: "", origin: "" },
+    ]);
+  });
+
+  it("covers removeListedBlocks keeping the student's blocks, and on a road with no listed blocks", async () => {
+    const road = await makeRoad();
+    await expectRefusal("removeListedBlocks", "NO_SUCH_ROAD", c.removeListedBlocks({ road: "nope" }));
+    const mine = await addBlock(road, 1, ["A"]);
+    expect(await c.removeListedBlocks({ road })).toEqual({});
+    const { block } = await c.addListedBlock({ road, count: 1, title: "", technical: true, group: "g", origin: "o" });
+    await listed("B");
+    await c.addOption({ block, subject: "B" });
+    await c.removeListedBlocks({ road });
+    expect((await c._blocks({ road })).map((r) => r.block)).toEqual([mine]);
+    expect(await c._roadOfBlock({ block })).toEqual([]);
+  });
+});
+
+describe("subjects must be known", () => {
+  it("covers addOption and addPrior of a subject with no Listing", async () => {
+    const road = await makeRoad();
+    const { block } = await c.addBlock({ road, count: 1, technical: false });
+    await expectRefusal("addOption", "NO_LISTING", c.addOption({ block, subject: "6.O1O" }));
+    await expectRefusal("addOption", "NO_SUCH_BLOCK", c.addOption({ block: "nope", subject: "6.O1O" }));
+    await expectRefusal("addPrior", "NO_LISTING", c.addPrior({ road, subject: "6.O1O" }));
+    await expectRefusal("addPrior", "NO_SUCH_ROAD", c.addPrior({ road: "nope", subject: "6.O1O" }));
+    expect(await c._prior({ road })).toEqual([]);
+
+    await addSubject("6.010", 12);
+    expect(await c.addOption({ block, subject: "6.010" })).toEqual({});
+    expect(await c.addPrior({ road, subject: "6.010" })).toEqual({});
+  });
+});
+
+describe("groups", () => {
+  it("covers a subject shared by two blocks: not within a group, but across groups", async () => {
+    const road = await makeRoad();
+    await addSubject("S", 6);
+    for (const group of ["g1", "g1"]) {
+      const { block } = await c.addListedBlock({ road, count: 1, title: "", technical: false, group, origin: "o" });
+      await c.addOption({ block, subject: "S" });
+    }
+    await c.pin({ road, subject: "S", year: 2026, term: "FALL" });
+    expect(await satisfied(road)).toBe(false); // one subject cannot meet two blocks of g1
+
+    const other = await makeRoad();
+    for (const group of ["g1", "g2"]) {
+      const { block } = await c.addListedBlock({ road: other, count: 1, title: "", technical: false, group, origin: "o" });
+      await c.addOption({ block, subject: "S" });
+    }
+    await c.pin({ road: other, subject: "S", year: 2026, term: "FALL" });
+    expect(await satisfied(other)).toBe(true);
+  });
+});
+
+describe("technical per road", () => {
+  it("covers the same subject technical in one road and not in another", async () => {
+    await addSubject("M", 12);
+    const music = await makeRoad();
+    const cs = await makeRoad();
+    await addBlock(music, 1, ["M"], true);
+    await addBlock(cs, 1, ["M"], false);
+    for (const road of [music, cs]) {
+      await c.pin({ road, subject: "M", year: 2026, term: "FALL" });
+      await c.setCap({ road, year: 2026, term: "FALL", capType: "technical", limit: 0 });
+    }
+    expect(await satisfied(music)).toBe(false);
+    expect(await satisfied(cs)).toBe(true);
+  });
+
+  it("covers a subject in no technical block: a pin outside every block is not technical", async () => {
+    const road = await makeRoad();
+    await addSubject("X", 12);
+    await c.pin({ road, subject: "X", year: 2026, term: "FALL" });
+    await c.setCap({ road, year: 2026, term: "FALL", capType: "technical", limit: 0 });
+    expect(await satisfied(road)).toBe(true);
+  });
+});
+
+describe("_findPath plans", () => {
+  it("covers plans finishing by the end preferred over plans that need extra semesters", async () => {
+    const road = await makeRoad();
+    await c.setEnd({ road, year: 2027, term: "SPRING" });
+    await addSubject("EARLY", 6);
+    await addSubject("LATE", 6);
+    await addSubject("P1", 6);
+    await addSubject("P2", 6);
+    await prerequisite("LATE", ["P1"]);
+    await prerequisite("P1", ["P2"]); // LATE needs three semesters
+    await addBlock(road, 1, ["EARLY", "LATE"]);
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 5 }));
+    expect(plans.length).toBeGreaterThanOrEqual(1);
+    for (const p of plans) expect(lastSeason(p)).toBeLessThanOrEqual(rank(2027, "SPRING"));
+    expect(plans[0].map((r) => r.subject)).toEqual(["EARLY"]);
+  });
+
+  it("covers every plan needing extra semesters: the earliest are answered, in order of finish", async () => {
+    const road = await makeRoad();
+    await c.setEnd({ road, year: 2027, term: "SPRING" });
+    for (const s of ["A", "B", "C"]) await addSubject(s, 6);
+    await prerequisite("B", ["A"]);
+    await prerequisite("C", ["B"]);
+    await addBlock(road, 1, ["C"]);
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 }));
+    expect(plans).toHaveLength(1);
+    expect(lastSeason(plans[0])).toBe(rank(2027, "FALL")); // one semester past the end
+  });
+
+  it("covers a dependency with several options: one is taken, the cheapest", async () => {
+    const road = await makeRoad();
+    for (const s of ["T", "EASY", "HARD", "HARD0"]) await addSubject(s, 6);
+    await prerequisite("HARD", ["HARD0"]);
+    await prerequisite("T", ["HARD", "EASY"]);
+    await addBlock(road, 1, ["T"]);
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(sorted(plans[0].map((r) => r.subject))).toEqual(["EASY", "T"]);
+  });
+
+  it("covers plans ordered by finishing season", async () => {
+    const road = await makeRoad();
+    for (const s of ["A", "B", "Q"]) await addSubject(s, 6);
+    await prerequisite("B", ["Q"]);
+    await addBlock(road, 1, ["A", "B"]);
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 5 }));
+    const finishes = plans.map(lastSeason);
+    expect(finishes).toEqual([...finishes].sort((a, b) => a - b));
+    expect(plans[0].map((r) => r.subject)).toEqual(["A"]);
   });
 });
