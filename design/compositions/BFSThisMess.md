@@ -43,24 +43,26 @@ BFSThisMess.ViewSchedule at /bfsthismess/viewSchedule
 
 ## Roads
 
-A signed-in student [creates a road](reaction:BFSThisMess.NewRoad) with a name, major and start (Constrain.newRoad), and in the same request becomes its owner (Share.claim). A request without a valid session [does not create a road](reaction:BFSThisMess.NewRoadWithoutSession) and is refused with NO_SUCH_SESSION. If the claim is refused, the request is refused with the reason of the claim and [the new road is deleted](reaction:BFSThisMess.DeleteUnclaimedRoad) (Constrain.deleteRoad), so a road never exists without an owner. Claiming and releasing are steps of NewRoad and DeleteRoad. They have no endpoints of their own, so nobody can claim or release a road directly.
+A signed-in student [creates a road](reaction:BFSThisMess.NewRoad) with a name, major and start (Constrain.newRoad), and in the same request becomes its owner (Share.claim). The major is picked from the [list of majors](reaction:BFSThisMess.ListMajors) (Requirements._lists, shown as [the majors](former:BFSThisMess.MajorList)), which anyone can see; a road's major is the id of a MAJOR list of Requirements, and a request naming anything else [creates no road](reaction:BFSThisMess.NewRoadUnknownMajor) and is refused with NO_SUCH_MAJOR "There is no such major." A request without a valid session [does not create a road](reaction:BFSThisMess.NewRoadWithoutSession) and is refused with NO_SUCH_SESSION. If the claim is refused, the request is refused with the reason of the claim and [the new road is deleted](reaction:BFSThisMess.DeleteUnclaimedRoad) (Constrain.deleteRoad), so a road never exists without an owner. Claiming and releasing are steps of NewRoad and DeleteRoad. They have no endpoints of their own, so nobody can claim or release a road directly.
 
-Only the owner can change a road. They can [rename it](reaction:BFSThisMess.RenameRoad), [move its start](reaction:BFSThisMess.SetStart) or [its end](reaction:BFSThisMess.SetEnd), [change its major](reaction:BFSThisMess.SetMajor), [add](reaction:BFSThisMess.AddPrior) or [remove](reaction:BFSThisMess.RemovePrior) prior credit, [pin](reaction:BFSThisMess.Pin) or [unpin](reaction:BFSThisMess.UnPin) a subject to a semester, [lock or unlock a semester](reaction:BFSThisMess.SetLocked) so the past is recorded, [set](reaction:BFSThisMess.SetCap) or [clear](reaction:BFSThisMess.ClearCap) a cap on units in a semester, and [reset a semester](reaction:BFSThisMess.ResetSemester). Each of these checks Share._isOwner for the road and then calls the Constrain action of the same name.
+Only the owner can change a road. They can [rename it](reaction:BFSThisMess.RenameRoad), [move its start](reaction:BFSThisMess.SetStart) or [its end](reaction:BFSThisMess.SetEnd), [change its major](reaction:BFSThisMess.SetMajor) (to a MAJOR list, as above; the request is [refused](reaction:BFSThisMess.SetMajorRefused) with NO_SUCH_MAJOR otherwise, and by the usual checks), [add](reaction:BFSThisMess.AddPrior) or [remove](reaction:BFSThisMess.RemovePrior) prior credit, [pin](reaction:BFSThisMess.Pin) or [unpin](reaction:BFSThisMess.UnPin) a subject to a semester, [lock or unlock a semester](reaction:BFSThisMess.SetLocked) so the past is recorded, [set](reaction:BFSThisMess.SetCap) or [clear](reaction:BFSThisMess.ClearCap) a cap on units in a semester, and [reset a semester](reaction:BFSThisMess.ResetSemester). Each of these checks Share._isOwner for the road and then calls the Constrain action of the same name.
 
-They can also change the requirements of the road: [add a block](reaction:BFSThisMess.AddBlock), and [set its count](reaction:BFSThisMess.SetCount), [add an option](reaction:BFSThisMess.AddOption) to it or [remove an option](reaction:BFSThisMess.RemoveOption) from it, or [remove the block](reaction:BFSThisMess.RemoveBlock). These requests name a block and not a road, so the road is found with Constrain._roadOfBlock and then checked in the same way. A block that does not exist is refused with NO_SUCH_BLOCK.
+They can also add requirements of their own to the road: [add a block](reaction:BFSThisMess.AddBlock), saying whether its subjects are technical, and [set its count](reaction:BFSThisMess.SetCount), [add an option](reaction:BFSThisMess.AddOption) to it or [remove an option](reaction:BFSThisMess.RemoveOption) from it, or [remove the block](reaction:BFSThisMess.RemoveBlock). These requests name a block and not a road, so the road is found with Constrain._roadOfBlock and then checked in the same way. A block that does not exist is refused with NO_SUCH_BLOCK.
 
-The owner can [delete the road](reaction:BFSThisMess.DeleteRoad) (Constrain.deleteRoad). Afterwards [the road is released](reaction:BFSThisMess.ReleaseRoad) (Share.release), so a deleted road keeps no owner and no viewers.
+The owner can [delete the road](reaction:BFSThisMess.DeleteRoad) (Constrain.deleteRoad). Afterwards [the road is released](reaction:BFSThisMess.ReleaseRoad) (Share.release), so a deleted road keeps no owner and no viewers, and [its choices are forgotten](reaction:BFSThisMess.ForgetChoices) (Requirements.forget).
 
-The Constrain actions that keep subject facts up to date (setListing, addListingTerm, removeListingTerm, removeListing, addDependency, addDependencyOption, removeDependency, markCancelled and unmarkCancelled) have no endpoints. They are driven by loading the catalog snapshot (see Catalog) and are not requested by users, so they need no check.
+The Constrain actions that keep subject facts up to date (setListing, addListingTerm, removeListingTerm, removeListing, addDependency, addDependencyOption, removeDependency, markCancelled and unmarkCancelled) have no endpoints. They are driven by loading the catalog snapshot (see Catalog) and are not requested by users, so they need no check. Likewise Constrain.addListedBlock and removeListedBlocks, and Requirements.load and forget, have no endpoints: they are driven by the reactions of Degree requirements, by deleting a road, and by loading the catalog.
 
 ```endpoints
 BFSThisMess.NewRoad at /bfsthismess/newRoad
 BFSThisMess.NewRoadWithoutSession at /bfsthismess/newRoad
+BFSThisMess.NewRoadUnknownMajor at /bfsthismess/newRoad
 BFSThisMess.RenameRoad at /bfsthismess/renameRoad
 BFSThisMess.DeleteRoad at /bfsthismess/deleteRoad
 BFSThisMess.SetStart at /bfsthismess/setStart
 BFSThisMess.SetEnd at /bfsthismess/setEnd
 BFSThisMess.SetMajor at /bfsthismess/setMajor
+BFSThisMess.SetMajorRefused at /bfsthismess/setMajor
 BFSThisMess.AddPrior at /bfsthismess/addPrior
 BFSThisMess.RemovePrior at /bfsthismess/removePrior
 BFSThisMess.AddBlock at /bfsthismess/addBlock
@@ -74,6 +76,18 @@ BFSThisMess.SetLocked at /bfsthismess/setLocked
 BFSThisMess.SetCap at /bfsthismess/setCap
 BFSThisMess.ClearCap at /bfsthismess/clearCap
 BFSThisMess.ResetSemester at /bfsthismess/resetSemester
+```
+
+## Degree requirements
+
+Nobody types the requirements of a major. Whenever a road gets a new owner (Share.claim, in NewRoad), a new major (Constrain.setMajor, in SetMajor) or a new choice (in ChooseAlternative), the same request removes its listed blocks (Constrain.removeListedBlocks), keeping the blocks the student added. Then [the major's blocks are listed](reaction:BFSThisMess.ListMajorBlocks) and [the GIRs' blocks are listed](reaction:BFSThisMess.ListGirBlocks): each block of Requirements._activeBlocks, for the road's major and for the list "girs", becomes a block of the road (Constrain.addListedBlock) with the same count, title and technical, and with the item as its origin. Each listed block is a group of its own, because a degree chart lets one subject meet several of its requirements and the GIRs. Last, [each listed block gets its options](reaction:BFSThisMess.ListBlockOptions) (Requirements._options of its origin, each added with Constrain.addOption). NewRoad, SetMajor and ChooseAlternative answer only once the blocks are in place.
+
+The owner can [choose an alternative](reaction:BFSThisMess.ChooseAlternative) of a choice in the road's requirements, such as a track (Requirements.choose). Anyone else is [refused](reaction:BFSThisMess.ChooseAlternativeRefused) by the same checks as the other changes. Anyone who may view the road sees its requirements when they view it (see ViewRoad below): the outline of its major and of the GIRs (Requirements._list and _outline), shown as [the requirements of a road](former:BFSThisMess.RoadRequirements), including the notes that are shown but not planned.
+
+```endpoints
+BFSThisMess.ListMajors at /bfsthismess/listMajors
+BFSThisMess.ChooseAlternative at /bfsthismess/chooseAlternative
+BFSThisMess.ChooseAlternativeRefused at /bfsthismess/chooseAlternative
 ```
 
 ## Sharing
@@ -94,7 +108,7 @@ A signed-in person can [list their roads](reaction:BFSThisMess.MyRoads): the roa
 
 Someone who may view a road (Share._canView) can [find the shortest paths](reaction:BFSThisMess.FindPaths) for it, giving whether to use IAP and summer semesters and a limit of at most that many plans. [The paths of the road](former:BFSThisMess.RoadPaths) are found with Constrain._findPath, given the road, that choice and the limit.
 
-They can [view a road](reaction:BFSThisMess.ViewRoad) to see [its constraints](former:BFSThisMess.RoadConstraints), put together from Constrain._road, _prior, _blocks, _pins and _semesters, together with its paths, found the same way as in FindPaths. A person it is shared with sees exactly what the owner sees, as the road is now, but none of the requests that change it are open to them.
+They can [view a road](reaction:BFSThisMess.ViewRoad) to see [its constraints](former:BFSThisMess.RoadConstraints), put together from Constrain._road, _prior, _blocks, _pins and _semesters, its requirements, and its paths, found the same way as in FindPaths. A person it is shared with sees exactly what the owner sees, as the road is now, but none of the requests that change it are open to them.
 
 Four more requests only read a road, and each passes the same Share._canView check: they [list the options that still fit](reaction:BFSThisMess.ViewOptions), giving whether to include IAP and summer semesters (Constrain._options, shown as [the options of a road](former:BFSThisMess.RoadOptions)); [check the plan chosen so far](reaction:BFSThisMess.CheckPlan) (Constrain._satisfies, shown as [the verdict on a plan](former:BFSThisMess.PlanVerdict)); and [preview the pins lost](reaction:BFSThisMess.PreviewStartChange) by moving the start, or [by moving the end](reaction:BFSThisMess.PreviewEndChange), so that the student can be warned before they change it (Constrain._pinsLostBySetStart and _pinsLostBySetEnd, shown as [the pins lost by moving the start](former:BFSThisMess.PinsLostByStart) and [the pins lost by moving the end](former:BFSThisMess.PinsLostByEnd)). Previews change nothing, so they are open to anyone who may view the road.
 

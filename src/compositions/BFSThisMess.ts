@@ -2,7 +2,7 @@ import { endpoint, receive, respond } from "@mit-sdg/sync-engine/boundary";
 import { compute, each, form, former, no, reaction, when, where } from "@mit-sdg/sync-engine/language";
 import { concepts } from "../concepts.ts";
 
-const { Authentication, Share, CourseOffering, Constrain } = concepts;
+const { Authentication, Share, CourseOffering, Constrain, Requirements } = concepts;
 
 type Var = symbol;
 
@@ -77,6 +77,10 @@ const asBlockOwner = (session: Var, user: Var, block: Var, road: Var) =>
     Share._isOwner({ road, user }).is({ owner: true }),
   );
 
+// A road's major must be one of the majors of Requirements.
+const isMajor = (major: Var) => Requirements._list({ list: major }).is({ found: true, kind: "MAJOR" });
+const notAMajor = (major: Var) => no(isMajor(major));
+
 // ---------- Formers (read side) ----------
 
 const MatchingCourses = former(
@@ -149,6 +153,47 @@ const CourseSchedule = former(
     }),
 );
 
+const MajorList = former("the majors", (_, { list, title, shortTitle, mediumTitle }) =>
+  form({
+    majors: each(Requirements._lists({}).is({ list, title, shortTitle, mediumTitle, kind: "MAJOR" })).form({
+      list,
+      title,
+      shortTitle,
+      mediumTitle,
+    }),
+  }),
+);
+
+const RoadRequirements = former(
+  "the requirements of a road",
+  (
+    { road },
+    {
+      major, found, title, shortTitle,
+      item, parent, depth, kind, itemTitle, count, approximate, active, chosen,
+      girItem, girParent, girDepth, girKind, girTitle, girCount, girApproximate, girActive, girChosen,
+    },
+  ) =>
+    where(Constrain._road({ road }).is({ major }), Requirements._list({ list: major }).is({ found, title, shortTitle })).form({
+      major,
+      found,
+      title,
+      shortTitle,
+      items: each(
+        Requirements._outline({ list: major, road }).is({ item, parent, depth, kind, title: itemTitle, count, approximate, active, chosen }),
+      ).form({ item, parent, depth, kind, title: itemTitle, count, approximate, active, chosen }),
+      girs: each(
+        Requirements._outline({ list: "girs", road }).is({
+          item: girItem, parent: girParent, depth: girDepth, kind: girKind, title: girTitle, count: girCount,
+          approximate: girApproximate, active: girActive, chosen: girChosen,
+        }),
+      ).form({
+        item: girItem, parent: girParent, depth: girDepth, kind: girKind, title: girTitle, count: girCount,
+        approximate: girApproximate, active: girActive, chosen: girChosen,
+      }),
+    }),
+);
+
 const RoadConstraints = former(
   "the constraints of a road",
   (
@@ -156,7 +201,7 @@ const RoadConstraints = former(
     {
       name, major, startYear, startTerm, endYear, endTerm,
       priorSubject,
-      block, count, option,
+      block, count, option, blockTitle, blockTechnical, blockOrigin,
       pinSubject, pinYear, pinTerm,
       year, term, locked, maxUnits, maxTechnicalUnits,
     },
@@ -169,11 +214,9 @@ const RoadConstraints = former(
       endYear,
       endTerm,
       prior: each(Constrain._prior({ road }).is({ subject: priorSubject })).form({ subject: priorSubject }),
-      blocks: each(Constrain._blocks({ road }).is({ block, count, subject: option })).form({
-        block,
-        count,
-        subject: option,
-      }),
+      blocks: each(
+        Constrain._blocks({ road }).is({ block, count, subject: option, title: blockTitle, technical: blockTechnical, origin: blockOrigin }),
+      ).form({ block, count, subject: option, title: blockTitle, technical: blockTechnical, origin: blockOrigin }),
       pins: each(Constrain._pins({ road }).is({ subject: pinSubject, year: pinYear, term: pinTerm })).form({
         subject: pinSubject,
         year: pinYear,
@@ -294,17 +337,30 @@ const ViewSchedule = endpoint("/bfsthismess/viewSchedule", ({ course }) =>
 
 // The road is created and then claimed by the requester in the same request. The claim
 // stage reads the session again because a binding from a read does not reach a later stage.
+// The major is checked before the road is created. Once claimed, the road's listed blocks
+// are put in place (see the Degree requirements reactions) before the request answers. The
+// claim stage reads the session again because a binding from a read does not reach a later stage.
 const NewRoad = endpoint(
   "/bfsthismess/newRoad",
   ({ session, user, name, major, startYear, startTerm, road }) =>
     receive({ session, name, major, startYear, startTerm })
-      .where(Authentication._authenticate({ session }))
+      .where(Authentication._authenticate({ session }), isMajor(major))
       .then(Constrain.newRoad({ name, major, startYear, startTerm }).responds({ road }))
-      .then(
-        where(Authentication._authenticate({ session }).is({ user }))
-          .then(Share.claim({ road, user }).responds({}))
-          .then(respond({ road })),
-      ),
+      .afterFlowSettles()
+      .where(Authentication._authenticate({ session }).is({ user }))
+      .then(Share.claim({ road, user }).responds({}))
+      .then(Constrain.removeListedBlocks({ road }).responds({}))
+      .afterFlowSettles()
+      .then(respond({ road })),
+);
+
+// Same path as NewRoad: a major that is not one of the majors creates no road.
+const NewRoadUnknownMajor = endpoint(
+  "/bfsthismess/newRoad",
+  ({ session, name, major, startYear, startTerm }) =>
+    receive({ session, name, major, startYear, startTerm })
+      .where(Authentication._authenticate({ session }), notAMajor(major))
+      .then(respond({ error: "NO_SUCH_MAJOR" })),
 );
 
 // Same path as NewRoad: without a valid session no road is created.
@@ -336,6 +392,61 @@ const DeleteRoad = endpoint("/bfsthismess/deleteRoad", ({ session, user, road })
 // A deleted road keeps no owner and no viewers.
 const ReleaseRoad = reaction(({ road }) =>
   when(Constrain.deleteRoad({ road }).responds({})).then(Share.release({ road })),
+);
+
+const ForgetChoices = reaction(({ road }) =>
+  when(Constrain.deleteRoad({ road }).responds({})).then(Requirements.forget({ road })),
+);
+
+// ---------- Degree requirements ----------
+// Removing a road's listed blocks (in NewRoad, SetMajor and ChooseAlternative) lists them
+// again from the road's major and the GIRs, as its choices now stand. Each listed block is
+// a group of its own: a degree chart lets one subject meet several of its requirements.
+
+const ListMajorBlocks = reaction(({ road, major, item, title, count, technical }) =>
+  when(Constrain.removeListedBlocks({ road }).responds({}))
+    .where(
+      Constrain._road({ road }).is({ major }),
+      Requirements._activeBlocks({ list: major, road }).is({ item, title, count, technical }),
+    )
+    .then(Constrain.addListedBlock({ road, count, title, technical, group: item, origin: item })),
+);
+
+const ListGirBlocks = reaction(({ road, item, title, count, technical }) =>
+  when(Constrain.removeListedBlocks({ road }).responds({}))
+    .where(Requirements._activeBlocks({ list: "girs", road }).is({ item, title, count, technical }))
+    .then(Constrain.addListedBlock({ road, count, title, technical, group: item, origin: item })),
+);
+
+const ListBlockOptions = reaction(({ block, origin, subject }) =>
+  when(Constrain.addListedBlock({ origin }).responds({ block }))
+    .where(Requirements._options({ item: origin }).is({ subject }))
+    .then(Constrain.addOption({ block, subject })),
+);
+
+const ListMajors = endpoint("/bfsthismess/listMajors", () => receive({}).then(respond({ majors: MajorList({}) })));
+
+// Answers once the road's listed blocks follow the new choice.
+const ChooseAlternative = endpoint(
+  "/bfsthismess/chooseAlternative",
+  ({ session, user, road, choice, alternative }) =>
+    receive({ session, road, choice, alternative })
+      .where(Authentication._authenticate({ session }).is({ user }), Share._isOwner({ road, user }).is({ owner: true }))
+      .then(Requirements.choose({ road, choice, alternative }).responds({}))
+      .then(Constrain.removeListedBlocks({ road }).responds({}))
+      .afterFlowSettles()
+      .then(respond({})),
+);
+
+// Same path as ChooseAlternative: the requests it refuses.
+const ChooseAlternativeRefused = endpoint(
+  "/bfsthismess/chooseAlternative",
+  ({ session, user, road, choice, alternative }) =>
+    receive({ session, road, choice, alternative }).then(
+      noSession(session),
+      hiddenRoad(session, user, road),
+      viewerOnly(session, user, road),
+    ),
 );
 
 const RenameRoad = endpoint("/bfsthismess/renameRoad", ({ session, user, road, name }) =>
@@ -374,15 +485,29 @@ const SetEnd = endpoint("/bfsthismess/setEnd", ({ session, user, road, year, ter
   ),
 );
 
+// Answers once the road's listed blocks are those of the new major.
 const SetMajor = endpoint("/bfsthismess/setMajor", ({ session, user, road, major }) =>
+  receive({ session, road, major })
+    .where(
+      Authentication._authenticate({ session }).is({ user }),
+      Share._isOwner({ road, user }).is({ owner: true }),
+      isMajor(major),
+    )
+    .then(Constrain.setMajor({ road, major }).responds({}))
+    .then(Constrain.removeListedBlocks({ road }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+
+// Same path as SetMajor: the requests it refuses.
+const SetMajorRefused = endpoint("/bfsthismess/setMajor", ({ session, user, road, major }) =>
   receive({ session, road, major }).then(
     noSession(session),
     hiddenRoad(session, user, road),
     viewerOnly(session, user, road),
-    asOwner(session, user, road)
-      .then(Constrain.setMajor({ road, major }).responds({}))
-      .then(respond({}))
-      .named("owner"),
+    asOwner(session, user, road, notAMajor(major))
+      .then(respond({ error: "NO_SUCH_MAJOR" }))
+      .named("not-a-major"),
   ),
 );
 
@@ -484,13 +609,13 @@ const ResetSemester = endpoint("/bfsthismess/resetSemester", ({ session, user, r
 
 // ---------- Blocks ----------
 
-const AddBlock = endpoint("/bfsthismess/addBlock", ({ session, user, road, count, block }) =>
-  receive({ session, road, count }).then(
+const AddBlock = endpoint("/bfsthismess/addBlock", ({ session, user, road, count, technical, block }) =>
+  receive({ session, road, count, technical }).then(
     noSession(session),
     hiddenRoad(session, user, road),
     viewerOnly(session, user, road),
     asOwner(session, user, road)
-      .then(Constrain.addBlock({ road, count }).responds({ block }))
+      .then(Constrain.addBlock({ road, count, technical }).responds({ block }))
       .then(respond({ block }))
       .named("owner"),
   ),
@@ -624,6 +749,7 @@ const ViewRoad = endpoint(
         .then(
           respond({
             constraints: RoadConstraints({ road }),
+            requirements: RoadRequirements({ road }),
             paths: RoadPaths({ road, includeIAPAndSummer, limit }),
           }),
         )
@@ -678,6 +804,15 @@ const PreviewEndChange = endpoint(
 );
 
 export const composition = {
+  MajorList,
+  RoadRequirements,
+  ForgetChoices,
+  ListMajorBlocks,
+  ListGirBlocks,
+  ListBlockOptions,
+  ListMajors,
+  ChooseAlternative,
+  ChooseAlternativeRefused,
   MatchingCourses,
   CourseDetails,
   CourseRatings,
@@ -698,6 +833,7 @@ export const composition = {
   ViewRatings,
   ViewSchedule,
   NewRoad,
+  NewRoadUnknownMajor,
   NewRoadWithoutSession,
   DeleteUnclaimedRoad,
   DeleteRoad,
@@ -706,6 +842,7 @@ export const composition = {
   SetStart,
   SetEnd,
   SetMajor,
+  SetMajorRefused,
   AddPrior,
   RemovePrior,
   Pin,

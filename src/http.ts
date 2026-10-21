@@ -11,7 +11,7 @@ export const policy = httpPolicy({
     NO_SUCH_BLOCK: "NOT_FOUND",
     NOT_AN_OWNER: "FORBIDDEN",
     NO_SUCH_USER: "NOT_FOUND",
-    BAD_SOURCE: "INVALID_REQUEST",
+    NO_SUCH_MAJOR: "INVALID_REQUEST",
     // Authentication
     EMPTY_CREDENTIALS: "INVALID_REQUEST",
     USERNAME_TAKEN: "CONFLICT",
@@ -20,8 +20,10 @@ export const policy = httpPolicy({
     ROAD_ALREADY_OWNED: "CONFLICT",
     SHARE_WITH_OWNER: "CONFLICT",
     NOT_SHARED: "NOT_FOUND",
-    // CourseOffering
+    // CourseOffering and Requirements
     LOAD_FAILED: "INVALID_REQUEST",
+    NO_SUCH_CHOICE: "NOT_FOUND",
+    NOT_AN_ALTERNATIVE: "NOT_FOUND",
     // Constrain
     EMPTY_NAME: "INVALID_REQUEST",
     BAD_START: "INVALID_REQUEST",

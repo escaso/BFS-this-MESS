@@ -40,18 +40,18 @@ const { session: advisorSession } = ok("logIn advisor", await api.logIn({ userna
 
 refused(
   "newRoad without a session",
-  await api.newRoad({ session: "not-a-session", name: "x", major: "6-3", startYear: 2025, startTerm: "FALL" }),
+  await api.newRoad({ session: "not-a-session", name: "x", major: "major6-3", startYear: 2025, startTerm: "FALL" }),
   "UNAUTHORIZED", // NO_SUCH_SESSION
 );
 
 const { road } = ok(
   "newRoad",
-  await api.newRoad({ session, name: "My 6-3 road", major: "6-3", startYear: 2025, startTerm: "FALL" }),
+  await api.newRoad({ session, name: "My 6-3 road", major: "major6-3", startYear: 2025, startTerm: "FALL" }),
 );
 console.log("created road:", road);
 
 ok("addPrior 18.01", await api.addPrior({ session, road, subject: "18.01" }));
-const { block } = ok("addBlock", await api.addBlock({ session, road, count: 1 }));
+const { block } = ok("addBlock", await api.addBlock({ session, road, count: 1, technical: true }));
 ok("addOption 6.1800", await api.addOption({ session, block, subject: "6.1800" }));
 ok("addOption 6.1810", await api.addOption({ session, block, subject: "6.1810" }));
 ok("setCap total", await api.setCap({ session, road, year: 2025, term: "FALL", capType: "total", limit: 48 }));

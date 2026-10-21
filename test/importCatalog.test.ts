@@ -10,12 +10,14 @@ import { join } from "node:path";
 import { importCatalog } from "../src/catalog/import.ts";
 import { ConstrainConcept } from "../src/concepts/Constrain.ts";
 import { CourseOfferingConcept, type SnapshotCourse } from "../src/concepts/CourseOffering.ts";
+import { RequirementsConcept } from "../src/concepts/Requirements.ts";
 import { useFreshDb } from "./support.ts";
 
 /*
  * Testing strategy
  *
  * partition on the snapshot file: missing; present and not loaded yet; already loaded; already loaded but forced
+ * partition on the requirements file: missing; present (loaded after the subjects); already loaded
  * partition on a subject: with prerequisites; with corequisites; with cancellations; neither
  * partition on a reload with a new id: dependencies and cancellations change (replaced, not added to)
  */
@@ -28,9 +30,22 @@ const quiet = () => {};
 const course = (subject: string, fields: Partial<SnapshotCourse> = {}): SnapshotCourse => ({
   subject, name: subject, courseId: subject, description: "", lecturer: "Staff", level: "Undergraduate",
   terms: ["FALL", "SPRING"], offering: "Offered normally", canBeRepeated: false, prerequisitesText: "",
-  corequisitesText: "", units: "3-0-9", prerequisites: [], corequisites: [], totalUnits: 12, technical: true,
+  corequisitesText: "", units: "3-0-9", prerequisites: [], corequisites: [], totalUnits: 12,
   ...fields,
 });
+
+// Each test reads the subjects it is given and no requirements, unless it says otherwise.
+const NO_REQUIREMENTS = join(dir, "no-requirements.json");
+
+function writeRequirements(id: string) {
+  const path = join(dir, `requirements-${id}.json`);
+  writeFileSync(path, JSON.stringify({
+    id, source: "test",
+    lists: [{ id: "major6-3", title: "Computer Science", shortTitle: "6-3", mediumTitle: "6-3 Major", kind: "MAJOR" }],
+    items: [{ key: "major6-3/1", list: "major6-3", parent: null, kind: "BLOCK", title: "Software", count: 1, options: ["6.1020"], approximate: false, technical: true, order: 0 }],
+  }));
+  return path;
+}
 
 function write(id: string, courses: SnapshotCourse[]) {
   const path = join(dir, `${id}.json`);
@@ -47,17 +62,17 @@ const SUBJECTS = [
     prerequisites: [{ count: 1, options: ["6.1010"] }],
     corequisites: [{ count: 1, options: ["6.100A"] }],
   }),
-  course("21M.301", { technical: false, terms: ["FALL"] }),
+  course("21M.301", { terms: ["FALL"] }),
 ];
 
 describe("importCatalog", () => {
   test("covers: missing file -> nothing loaded", async () => {
-    expect(await importCatalog(db(), { path: join(dir, "none.json"), log: quiet })).toEqual({ loaded: false, id: "", count: 0 });
+    expect(await importCatalog(db(), { path: join(dir, "none.json"), log: quiet })).toMatchObject({ loaded: false, id: "", count: 0 });
   });
 
   test("covers: new snapshot -> loaded into CourseOffering and copied into Constrain", async () => {
     const path = write("one", SUBJECTS);
-    expect(await importCatalog(db(), { path, log: quiet })).toEqual({ loaded: true, id: "one", count: 4 });
+    expect(await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet })).toMatchObject({ loaded: true, id: "one", count: 4 });
 
     const offering = new CourseOfferingConcept(db());
     expect((await offering._search({})).map((r) => r.course)).toEqual(["6.100A", "6.1010", "6.1020", "21M.301"]);
@@ -65,7 +80,7 @@ describe("importCatalog", () => {
     // A road that has to take 6.1020 needs 6.100A, then 6.1010, before it, as the copied facts say.
     const constrain = new ConstrainConcept(db());
     const { road } = await constrain.newRoad({ name: "R", major: "6-3", startYear: 2026, startTerm: "FALL" });
-    const { block } = await constrain.addBlock({ road, count: 1 });
+    const { block } = await constrain.addBlock({ road, count: 1, technical: true });
     await constrain.addOption({ block, subject: "6.1020" });
     const plan = await constrain._findPath({ road, includeIAPAndSummer: false, limit: 1 });
     const TERMS = ["IAP", "SPRING", "SUMMER", "FALL"];
@@ -82,14 +97,15 @@ describe("importCatalog", () => {
 
   test("covers: the same snapshot again -> skipped; forced -> loaded", async () => {
     const path = write("two", SUBJECTS);
-    await importCatalog(db(), { path, log: quiet });
-    expect(await importCatalog(db(), { path, log: quiet })).toEqual({ loaded: false, id: "two", count: 0 });
-    expect(await importCatalog(db(), { path, force: true, log: quiet })).toEqual({ loaded: true, id: "two", count: 4 });
+    await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet });
+    expect(await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet })).toMatchObject({ loaded: false, id: "two", count: 0 });
+    expect(await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, force: true, log: quiet })).toMatchObject({ loaded: true, id: "two", count: 4 });
   });
 
   test("covers: a new snapshot replaces dependencies and cancellations instead of adding to them", async () => {
     await importCatalog(db(), { path: write("fall", SUBJECTS), log: quiet });
     await importCatalog(db(), {
+      requirementsPath: NO_REQUIREMENTS,
       path: write("spring", [
         ...SUBJECTS.filter((c) => c.subject !== "6.1020"),
         course("6.1020", { terms: ["SPRING"], prerequisites: [{ count: 1, options: ["6.100A"] }] }),
@@ -104,10 +120,27 @@ describe("importCatalog", () => {
     // In Constrain too: 6.1020 now only needs 6.100A and runs in SPRING 2027.
     const constrain = new ConstrainConcept(db());
     const { road } = await constrain.newRoad({ name: "R", major: "6-3", startYear: 2026, startTerm: "FALL" });
-    const { block } = await constrain.addBlock({ road, count: 1 });
+    const { block } = await constrain.addBlock({ road, count: 1, technical: true });
     await constrain.addOption({ block, subject: "6.1020" });
     const plan = await constrain._findPath({ road, includeIAPAndSummer: false, limit: 1 });
     expect(plan.map((r) => r.subject).sort()).toEqual(["6.100A", "6.1020"]);
     expect(plan.find((r) => r.subject === "6.1020")).toEqual(expect.objectContaining({ year: 2027, term: "SPRING" }));
+  });
+});
+
+describe("importCatalog requirements", () => {
+  test("covers: requirements load after the subjects, and are skipped once loaded", async () => {
+    const path = write("subjects", SUBJECTS);
+    const requirementsPath = writeRequirements("r1");
+    expect((await importCatalog(db(), { path, requirementsPath, log: quiet })).requirements).toEqual({ loaded: true, id: "r1", count: 1 });
+    expect(await new RequirementsConcept(db())._activeBlocks({ list: "major6-3", road: "any" })).toEqual([
+      { item: "major6-3/1", title: "Software", count: 1, technical: true },
+    ]);
+    expect((await importCatalog(db(), { path, requirementsPath, log: quiet })).requirements).toEqual({ loaded: false, id: "r1", count: 0 });
+  });
+
+  test("covers: missing requirements file -> none loaded, subjects still loaded", async () => {
+    const result = await importCatalog(db(), { path: write("subjects2", SUBJECTS), requirementsPath: join(dir, "none.json"), log: quiet });
+    expect(result).toMatchObject({ loaded: true, count: 4, requirements: { loaded: false, id: "", count: 0 } });
   });
 });

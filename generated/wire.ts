@@ -19,6 +19,7 @@ export type BFSThisMessWire = {
       "count": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["count"]>>;
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["road"]>]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "technical": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["technical"]>>;
     };
     output: {
       "block": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>>, ["block"]>>;
@@ -32,7 +33,7 @@ export type BFSThisMessWire = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addOption"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_BLOCK" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_LISTING" | "NO_SUCH_BLOCK" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/addPrior": {
     input: {
@@ -41,7 +42,7 @@ export type BFSThisMessWire = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addPrior"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_LISTING" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/checkPlan": {
     input: {
@@ -54,6 +55,16 @@ export type BFSThisMessWire = {
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/chooseAlternative": {
+    input: {
+      "alternative": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["choose"]>[0], ["alternative"]>>;
+      "choice": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["choose"]>[0], ["choice"]>>;
+      "road": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["choose"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_COUNT" | "INVALID_INPUT" | "NOT_AN_ALTERNATIVE" | "NOT_AN_OWNER" | "NO_LISTING" | "NO_SUCH_BLOCK" | "NO_SUCH_CHOICE" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/clearCap": {
     input: {
@@ -92,6 +103,20 @@ export type BFSThisMessWire = {
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/listMajors": {
+    input: Record<string, never>;
+    output: {
+      "majors": {
+        "majors": {
+          "list": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["list"]>>;
+          "mediumTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["mediumTitle"]>>;
+          "shortTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["shortTitle"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["title"]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError };
   };
   "/bfsthismess/logIn": {
     input: {
@@ -132,16 +157,16 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/newRoad": {
     input: {
-      "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["major"]>>;
+      "major": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["major"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>]>>;
       "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["name"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "startTerm": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startTerm"]>>;
       "startYear": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startYear"]>>;
     };
     output: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["claim"]>[0], ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>>;
     };
-    error: { error: AppWideError | "BAD_START" | "EMPTY_NAME" | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "ROAD_ALREADY_OWNED" };
+    error: { error: AppWideError | "BAD_COUNT" | "BAD_START" | "EMPTY_NAME" | "INVALID_INPUT" | "NO_LISTING" | "NO_SUCH_BLOCK" | "NO_SUCH_MAJOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "ROAD_ALREADY_OWNED" };
   };
   "/bfsthismess/pin": {
     input: {
@@ -310,12 +335,12 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/setMajor": {
     input: {
-      "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["major"]>>;
-      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["road"]>]>>;
+      "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "EMPTY_MAJOR" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "BAD_COUNT" | "EMPTY_MAJOR" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_LISTING" | "NO_SUCH_BLOCK" | "NO_SUCH_MAJOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/setStart": {
     input: {
@@ -399,7 +424,10 @@ export type BFSThisMessWire = {
         "blocks": {
           "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["block"]>>;
           "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["count"]>>;
+          "origin": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["origin"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["subject"]>>;
+          "technical": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["technical"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["title"]>>;
         }[];
         "endTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endTerm"]>>;
         "endYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endYear"]>>;
@@ -430,6 +458,34 @@ export type BFSThisMessWire = {
           "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
           "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
+      };
+      "requirements": {
+        "found": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["found"]>>;
+        "girs": {
+          "active": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["active"]>>;
+          "approximate": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["approximate"]>>;
+          "chosen": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["chosen"]>>;
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["count"]>>;
+          "depth": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["depth"]>>;
+          "item": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["item"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["kind"]>>;
+          "parent": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["parent"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["title"]>>;
+        }[];
+        "items": {
+          "active": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["active"]>>;
+          "approximate": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["approximate"]>>;
+          "chosen": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["chosen"]>>;
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["count"]>>;
+          "depth": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["depth"]>>;
+          "item": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["item"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["kind"]>>;
+          "parent": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["parent"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["title"]>>;
+        }[];
+        "major": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>]>>;
+        "shortTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["shortTitle"]>>;
+        "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["title"]>>;
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
@@ -512,6 +568,7 @@ export type BFSThisMessWireHttp = {
       "count": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["count"]>>;
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["road"]>]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "technical": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>[0], ["technical"]>>;
     };
     output: {
       "block": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>>, ["block"]>>;
@@ -547,6 +604,16 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/chooseAlternative": {
+    input: {
+      "alternative": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["choose"]>[0], ["alternative"]>>;
+      "choice": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["choose"]>[0], ["choice"]>>;
+      "road": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["choose"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/clearCap": {
     input: {
@@ -585,6 +652,20 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/listMajors": {
+    input: Record<string, never>;
+    output: {
+      "majors": {
+        "majors": {
+          "list": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["list"]>>;
+          "mediumTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["mediumTitle"]>>;
+          "shortTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["shortTitle"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_lists"]>>>, ["title"]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError };
   };
   "/bfsthismess/logIn": {
     input: {
@@ -625,14 +706,14 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/newRoad": {
     input: {
-      "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["major"]>>;
+      "major": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["major"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>]>>;
       "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["name"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "startTerm": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startTerm"]>>;
       "startYear": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["newRoad"]>[0], ["startYear"]>>;
     };
     output: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["claim"]>[0], ["road"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>>;
     };
     error: { error: HttpAppWideError | "CONFLICT" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
@@ -803,8 +884,8 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/setMajor": {
     input: {
-      "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["major"]>>;
-      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setMajor"]>[0], ["road"]>]>>;
+      "major": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: Record<string, never>;
@@ -892,7 +973,10 @@ export type BFSThisMessWireHttp = {
         "blocks": {
           "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["block"]>>;
           "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["count"]>>;
+          "origin": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["origin"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["subject"]>>;
+          "technical": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["technical"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_blocks"]>>>, ["title"]>>;
         }[];
         "endTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endTerm"]>>;
         "endYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["endYear"]>>;
@@ -923,6 +1007,34 @@ export type BFSThisMessWireHttp = {
           "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
           "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
+      };
+      "requirements": {
+        "found": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["found"]>>;
+        "girs": {
+          "active": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["active"]>>;
+          "approximate": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["approximate"]>>;
+          "chosen": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["chosen"]>>;
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["count"]>>;
+          "depth": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["depth"]>>;
+          "item": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["item"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["kind"]>>;
+          "parent": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["parent"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["title"]>>;
+        }[];
+        "items": {
+          "active": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["active"]>>;
+          "approximate": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["approximate"]>>;
+          "chosen": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["chosen"]>>;
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["count"]>>;
+          "depth": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["depth"]>>;
+          "item": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["item"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["kind"]>>;
+          "parent": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["parent"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_outline"]>>>, ["title"]>>;
+        }[];
+        "major": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>]>>;
+        "shortTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["shortTitle"]>>;
+        "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["title"]>>;
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
