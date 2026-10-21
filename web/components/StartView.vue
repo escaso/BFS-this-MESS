@@ -3,6 +3,7 @@
 // make a new road.
 import { onMounted, ref } from "vue";
 import { call, message, type Output, type Term } from "../api.ts";
+import { loadMajors, majorLabel, majors } from "../majors.ts";
 
 const emit = defineEmits<{ open: [road: string] }>();
 
@@ -11,6 +12,7 @@ const roads = ref<Roads | null>(null);
 const listError = ref("");
 
 onMounted(async () => {
+  loadMajors().catch((e) => (error.value = message(e)));
   try {
     roads.value = (await call("myRoads", {})).roads;
   } catch (e) {
@@ -24,10 +26,10 @@ const busy = ref(false);
 
 async function createRoad() {
   const name = form.value.name.trim();
-  const major = form.value.major.trim();
+  const major = form.value.major;
   const startYear = Number(form.value.startYear);
   if (!name || !major) {
-    error.value = "A road needs a name and a major.";
+    error.value = "A road needs a name and a major from the list.";
     return;
   }
   if (!Number.isInteger(startYear) || startYear < 1900 || startYear > 2200) {
@@ -56,7 +58,7 @@ async function createRoad() {
       <ul>
         <li v-for="r in roads.owned" :key="r.road">
           <a :href="`#road=${r.road}`" @click.prevent="emit('open', r.road)">{{ r.name }}</a>
-          <span class="hint"> · {{ r.major }}</span>
+          <span class="hint"> · {{ majorLabel(r.major) }}</span>
         </li>
         <li v-if="!roads.owned.length" class="hint">You have no roads yet. Create one below.</li>
       </ul>
@@ -65,7 +67,7 @@ async function createRoad() {
         <ul>
           <li v-for="r in roads.shared" :key="r.road">
             <a :href="`#road=${r.road}`" @click.prevent="emit('open', r.road)">{{ r.name }}</a>
-            <span class="hint"> · {{ r.major }} · view only</span>
+            <span class="hint"> · {{ majorLabel(r.major) }} · view only</span>
           </li>
         </ul>
       </template>
@@ -74,7 +76,13 @@ async function createRoad() {
     <h2>New road</h2>
     <form class="grid" @submit.prevent="createRoad">
       <label>Name <input v-model="form.name" placeholder="My 6-3 road" required /></label>
-      <label>Major <input v-model="form.major" placeholder="6-3" required /></label>
+      <label>
+        Major
+        <select v-model="form.major" required>
+          <option value="" disabled>{{ majors.length ? "Pick your major" : "Loading majors…" }}</option>
+          <option v-for="m in majors" :key="m.list" :value="m.list">{{ majorLabel(m.list, true) }}</option>
+        </select>
+      </label>
       <label>
         First semester
         <span class="inline">
@@ -88,5 +96,9 @@ async function createRoad() {
       <button :disabled="busy">{{ busy ? "Creating…" : "Create road" }}</button>
     </form>
     <p v-if="error" class="error" role="alert">{{ error }}</p>
+    <p class="hint">
+      The major's requirements and the General Institute Requirements are added for you; you can pick a track
+      and add requirements of your own afterwards.
+    </p>
   </main>
 </template>

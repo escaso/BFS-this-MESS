@@ -5,7 +5,8 @@
 // bookmarked; every edit reloads the road, so the views stay in sync without a
 // page refresh.
 import { onMounted, onUnmounted, ref, watch } from "vue";
-import { ApiError, call, message, type Constraints, type PlanRow } from "./api.ts";
+import { ApiError, call, message, type Constraints, type PlanRow, type Requirements } from "./api.ts";
+import { loadMajors, majorLabel } from "./majors.ts";
 import { session, signOut, username } from "./session.ts";
 import { MAX_PATHS } from "./util.ts";
 import AuthView from "./components/AuthView.vue";
@@ -18,6 +19,7 @@ const road = ref("");
 const view = ref<"start" | "catalog" | "paths" | "edit">("start");
 const status = ref<{ text: string; kind: "ok" | "error" }>({ text: "", kind: "ok" });
 const constraints = ref<Constraints | null>(null);
+const requirements = ref<Requirements | null>(null);
 const plans = ref<PlanRow[]>([]);
 const includeIAPAndSummer = ref(false);
 const loading = ref(false);
@@ -34,6 +36,7 @@ async function load() {
       limit: MAX_PATHS,
     });
     constraints.value = data.constraints;
+    requirements.value = data.requirements;
     plans.value = data.paths.plans;
   } catch (e) {
     say(message(e), "error");
@@ -62,6 +65,7 @@ function goStart() {
 function route() {
   road.value = new URLSearchParams(location.hash.slice(1)).get("road") ?? "";
   constraints.value = null;
+  requirements.value = null;
   plans.value = [];
   view.value = road.value ? "paths" : "start";
   load();
@@ -90,6 +94,8 @@ watch(session, (now, before) => {
 });
 
 onMounted(() => {
+  // Majors are shown by name everywhere; a failure only leaves the ids showing.
+  loadMajors().catch(() => {});
   window.addEventListener("hashchange", route);
   route();
 });
@@ -122,7 +128,7 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
 
     <template v-else>
       <p class="road-summary">
-        <strong>{{ constraints.name }}</strong> · {{ constraints.major }} ·
+        <strong>{{ constraints.name }}</strong> · {{ majorLabel(constraints.major) }} ·
         {{ constraints.startTerm.toLowerCase() }} {{ constraints.startYear }} to
         {{ constraints.endTerm.toLowerCase() }} {{ constraints.endYear }}
         <span v-if="loading" class="hint">· updating…</span>
@@ -142,6 +148,7 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
         :key="road"
         :road="road"
         :constraints="constraints"
+        :requirements="requirements"
         @back="view = 'paths'"
         @changed="onChanged"
         @error="say($event, 'error')"

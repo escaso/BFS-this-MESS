@@ -1,7 +1,8 @@
 <script setup lang="ts">
-// The requirements of a road: blocks, each asking for some number of subjects
-// from a list of options. A required subject is a block with one option and a
-// count of 1.
+// The student's own requirements of a road: blocks, each asking for some number of
+// subjects from a list of options. A required subject is a block with one option and
+// a count of 1. Blocks listed from the major and the GIRs are shown in RequirementsView
+// and are not edited here.
 import { computed, ref } from "vue";
 import { call, message, type Constraints } from "../api.ts";
 
@@ -24,11 +25,12 @@ async function attempt(run: () => Promise<unknown>, note?: string): Promise<bool
   }
 }
 
-// viewRoad answers one row per option; put each block back together.
+// viewRoad answers one row per option; put each of the student's blocks back together.
 const grouped = computed(() => {
-  const byBlock = new Map<string, { block: string; count: number; options: string[] }>();
+  const byBlock = new Map<string, { block: string; count: number; technical: boolean; options: string[] }>();
   for (const row of props.blocks) {
-    const entry = byBlock.get(row.block) ?? { block: row.block, count: row.count, options: [] };
+    if (row.origin) continue; // listed from the major or the GIRs
+    const entry = byBlock.get(row.block) ?? { block: row.block, count: row.count, technical: row.technical, options: [] };
     entry.options.push(row.subject);
     byBlock.set(row.block, entry);
   }
@@ -40,7 +42,7 @@ const validCount = (n: number) => Number.isInteger(n) && n >= 1;
 
 // ---------- New block ----------
 
-const newBlock = ref({ count: 1, options: "" });
+const newBlock = ref({ count: 1, options: "", technical: true });
 
 async function addBlock() {
   const count = Number(newBlock.value.count);
@@ -51,10 +53,10 @@ async function addBlock() {
   // A block with no options is not shown by the road, so the block and its
   // options are added together.
   const ok = await attempt(async () => {
-    const { block } = await call("addBlock", { road: props.road, count });
+    const { block } = await call("addBlock", { road: props.road, count, technical: newBlock.value.technical });
     for (const subject of options) await call("addOption", { block, subject });
   }, "Requirement added.");
-  if (ok) newBlock.value = { count: 1, options: "" };
+  if (ok) newBlock.value = { count: 1, options: "", technical: true };
 }
 
 // ---------- Existing blocks ----------
@@ -90,7 +92,8 @@ function removeBlock(block: string) {
 
 <template>
   <section>
-    <h2>Requirements</h2>
+    <h2>Your own requirements</h2>
+    <p class="hint">Anything else you want every plan to include, beyond the degree requirements above.</p>
     <ul>
       <li v-for="b in grouped" :key="b.block" class="block">
         Take
@@ -120,9 +123,10 @@ function removeBlock(block: string) {
           <input v-model="adding[b.block]" placeholder="add option" />
           <button :disabled="busy">Add</button>
         </form>
+        <span v-if="b.technical" class="badge">technical</span>
         <button :disabled="busy" @click="removeBlock(b.block)">Remove requirement</button>
       </li>
-      <li v-if="!grouped.length" class="hint">None yet.</li>
+      <li v-if="!grouped.length" class="hint">None.</li>
     </ul>
 
     <h3>Add a requirement</h3>
@@ -131,6 +135,9 @@ function removeBlock(block: string) {
         Take <input v-model.number="newBlock.count" class="count" type="number" min="1" required /> of
       </label>
       <input v-model="newBlock.options" placeholder="6.1800, 6.1810 (one subject = required)" required />
+      <label class="inline" title="Technical subjects count toward a semester's cap on technical units">
+        <input v-model="newBlock.technical" type="checkbox" /> technical
+      </label>
       <button :disabled="busy">Add requirement</button>
     </form>
   </section>

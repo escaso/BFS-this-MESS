@@ -20,6 +20,9 @@ type Args<N extends Endpoint> = Omit<Input<N>, "session">;
 
 type RoadView = Output<"viewRoad">;
 export type Constraints = RoadView["constraints"];
+export type Requirements = RoadView["requirements"];
+export type RequirementItem = Requirements["items"][number];
+export type Major = Output<"listMajors">["majors"]["majors"][number];
 export type PlanRow = RoadView["paths"]["plans"][number];
 export type Term = Constraints["startTerm"];
 export type Ratings = Output<"viewRatings">["ratings"]["ratings"][number];
@@ -28,7 +31,7 @@ export type CourseRow = Output<"searchSubjects">["courses"]["courses"][number];
 export type CourseDetails = Output<"viewSubject">["subject"];
 
 // Endpoints anyone may call. Every other endpoint takes the session.
-const PUBLIC = new Set<Endpoint>(["register", "logIn", "searchSubjects", "viewSubject", "viewRatings", "viewSchedule"]);
+const PUBLIC = new Set<Endpoint>(["register", "logIn", "listMajors", "searchSubjects", "viewSubject", "viewRatings", "viewSchedule"]);
 
 // ---------- Errors ----------
 
@@ -58,10 +61,12 @@ const blockErrors = {
 const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> = {
   register: { INVALID_REQUEST: "A username and a password are needed.", CONFLICT: "Username is already taken." },
   logIn: { UNAUTHORIZED: "Invalid username or password." },
-  newRoad: { INVALID_REQUEST: "A road needs a name, and must start in a Fall or Spring semester." },
-  setMajor: { INVALID_REQUEST: "A major cannot be empty." },
+  newRoad: { INVALID_REQUEST: "A road needs a name, a major from the list, and a Fall or Spring start." },
+  setMajor: { INVALID_REQUEST: "Pick a major from the list." },
+  chooseAlternative: { NOT_FOUND: "That choice is no longer part of this road's requirements." },
+  addPrior: { NOT_FOUND: "That subject is not in the catalog." },
   pin: {
-    NOT_FOUND: "That subject is not known.",
+    NOT_FOUND: "That subject is not in the catalog.",
     CONFLICT: "That semester is locked, or the subject is already prior credit.",
     INVALID_REQUEST: "That semester is outside the road.",
   },
@@ -69,7 +74,7 @@ const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> 
   setCap: { INVALID_REQUEST: "A cap cannot be negative." },
   addBlock: { INVALID_REQUEST: blockErrors.INVALID_REQUEST },
   setCount: blockErrors,
-  addOption: blockErrors,
+  addOption: { ...blockErrors, NOT_FOUND: "That subject is not in the catalog." },
   removeOption: { ...blockErrors, NOT_FOUND: "That subject is not an option of this block." },
   removeBlock: blockErrors,
 };

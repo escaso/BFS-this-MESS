@@ -101,8 +101,15 @@ function toggle(s: Season) {
           Unpin it or pin it later.
         </li>
         <li>A cap, a locked semester, or the terms a subject runs in leave no room for it.</li>
+        <li v-if="!includeIAPAndSummer">
+          A required subject only runs in IAP or the summer (some majors have one). Tick "Use IAP and summer".
+        </li>
       </ul>
     </div>
+    <p v-else-if="!nothingToPlan" class="hint">
+      Paths cover the requirements the planner can check. Requirements marked "not planned" (such as the eight
+      HASS subjects) still need room: set a cap on units per semester to leave space for them.
+    </p>
 
     <p v-if="constraints.prior.length" class="hint">
       Prior credit: {{ constraints.prior.map((p) => p.subject).join(", ") }}

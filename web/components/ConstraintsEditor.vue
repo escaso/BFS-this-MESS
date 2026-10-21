@@ -1,14 +1,17 @@
 <script setup lang="ts">
 // Edit a road's major, the settings of one semester (caps and lock) and its
-// pins. Requirement blocks are edited in BlocksEditor. Each edit calls the
+// pins. The major's requirements are shown in RequirementsView; the student's own
+// requirement blocks are edited in BlocksEditor. Each edit calls the
 // backend, then tells App to reload the road, so every view stays in sync
 // without a page refresh.
 import { computed, ref, watch } from "vue";
-import { call, message, type Constraints } from "../api.ts";
+import { call, message, type Constraints, type Requirements } from "../api.ts";
+import { isListedMajor, majorLabel, majors } from "../majors.ts";
 import { key, label, sameSeason, seasonsOf, type Season } from "../util.ts";
 import BlocksEditor from "./BlocksEditor.vue";
+import RequirementsView from "./RequirementsView.vue";
 
-const props = defineProps<{ road: string; constraints: Constraints }>();
+const props = defineProps<{ road: string; constraints: Constraints; requirements: Requirements | null }>();
 const emit = defineEmits<{ back: []; changed: [note?: string]; error: [message: string] }>();
 
 const busy = ref(false);
@@ -38,9 +41,12 @@ const major = ref(props.constraints.major);
 watch(() => props.constraints.major, (m) => (major.value = m));
 
 function saveMajor() {
-  const value = major.value.trim();
-  if (!value) return emit("error", "A major cannot be empty.");
-  return attempt(() => call("setMajor", { road: props.road, major: value }), "Major saved.");
+  if (!isListedMajor(major.value)) return emit("error", "Pick a major from the list.");
+  if (major.value === props.constraints.major) return;
+  return attempt(
+    () => call("setMajor", { road: props.road, major: major.value }),
+    `Major set to ${majorLabel(major.value)}; its requirements replace the old ones.`,
+  );
 }
 
 // ---------- One semester's settings ----------
@@ -129,9 +135,21 @@ function unPin(subject: string) {
 
     <h2>Major</h2>
     <form @submit.prevent="saveMajor">
-      <input v-model="major" placeholder="6-3" required />
-      <button :disabled="busy">Save major</button>
+      <select v-model="major" required aria-label="Major">
+        <option v-if="!isListedMajor(major)" :value="major" disabled>{{ major }} (not a listed major)</option>
+        <option v-for="m in majors" :key="m.list" :value="m.list">{{ majorLabel(m.list, true) }}</option>
+      </select>
+      <button :disabled="busy || major === constraints.major">Change major</button>
     </form>
+
+    <RequirementsView
+      v-if="requirements"
+      :road="road"
+      :requirements="requirements"
+      :constraints="constraints"
+      @changed="emit('changed', $event)"
+      @error="emit('error', $event)"
+    />
 
     <h2>Semester settings</h2>
     <form class="grid" @submit.prevent="saveSemester">
@@ -162,7 +180,7 @@ function unPin(subject: string) {
       <li v-if="!constraints.pins.length" class="hint">None</li>
     </ul>
     <form @submit.prevent="addPin">
-      <input v-model="pinForm.subject" placeholder="6.1010" required />
+      <input v-model="pinForm.subject" placeholder="6.1010" required aria-label="Subject to pin" />
       <select v-model="pinForm.season">
         <option v-for="s in seasons" :key="key(s)" :value="key(s)">{{ label(s) }}</option>
       </select>
