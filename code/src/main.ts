@@ -1,8 +1,11 @@
+import { join } from "node:path";
 import { createGateway } from "@mit-sdg/sync-engine/boundary";
 import { createHttpHandler } from "@mit-sdg/sync-engine-http/handler";
 import { assembleApplication } from "./assembly.ts";
 import { policy } from "./http.ts";
 import { db } from "./db.ts";
+
+const dist = join(import.meta.dir, "..", "dist");
 
 const application = assembleApplication();
 const gateway = createGateway({ application });
@@ -24,6 +27,14 @@ const server = Bun.serve({
         );
       }
     },
+  },
+  // Anything that is not an API or health route is the built frontend: serve the
+  // file if it exists in dist/, otherwise index.html so the single-page app loads.
+  async fetch(req) {
+    const path = new URL(req.url).pathname;
+    const file = Bun.file(join(dist, path));
+    if (path !== "/" && file.name?.startsWith(dist) && (await file.exists())) return new Response(file);
+    return new Response(Bun.file(join(dist, "index.html")));
   },
 });
 

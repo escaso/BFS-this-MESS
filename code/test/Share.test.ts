@@ -3,7 +3,7 @@
  * Only the public actions and queries are used; no test reads the database directly.
  * Refusals are checked by the code and sentence the spec declares for each action.
  *
- * Run with: bun test test/Share.test.ts (needs MongoDB at MONGODB_URL)
+ * Run with: bun test test/Share.test.ts (needs MongoDB at MONGODB_URI)
  *
  * =====================================================================================
  * TESTING STRATEGY (partitions)

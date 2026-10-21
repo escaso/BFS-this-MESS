@@ -1,7 +1,7 @@
 /* Tests for the Constrain concept, derived from the concept specification
  * (Constrain.md), not from the implementation.
  *
- * Run with: bun test test/Constrain.test.ts (needs MongoDB at MONGODB_URL)
+ * Run with: bun test test/Constrain.test.ts (needs MongoDB at MONGODB_URI)
  */
 
 import { describe, test as it, expect, beforeEach } from "bun:test";

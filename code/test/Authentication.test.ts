@@ -5,7 +5,7 @@
 // results by the cardinality the spec declares (one: an object; optional and
 // many: an array of rows), so the tests do not depend on how state is stored.
 //
-// Run with: bun test test/Authentication.test.ts (needs MongoDB at MONGODB_URL)
+// Run with: bun test test/Authentication.test.ts (needs MongoDB at MONGODB_URI)
 
 import { describe, test, expect, beforeEach } from "bun:test";
 import { AuthenticationConcept } from "../src/concepts/Authentication.ts";

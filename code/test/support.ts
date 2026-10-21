@@ -10,12 +10,12 @@ import { afterAll, afterEach, beforeAll, expect } from "bun:test";
 import { MongoClient, type Db } from "mongodb";
 
 /**
- * Gives every test a fresh, empty database on MONGODB_URL (Bun loads it from
+ * Gives every test a fresh, empty database on MONGODB_URI (Bun loads it from
  * .env), and drops it afterwards. Call once at the top level of a test file;
  * read the current database with the returned function.
  */
 export function useFreshDb(prefix: string): () => Db {
-  const url = process.env.MONGODB_URL ?? "mongodb://127.0.0.1:27017";
+  const url = process.env.MONGODB_URI ?? "mongodb://127.0.0.1:27017";
   let client: MongoClient;
   let db: Db | undefined;
 

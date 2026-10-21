@@ -16,7 +16,7 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
     environment:
-      MONGODB_URL: mongodb://dev:dev@mongo:27017/myapp?authSource=admin
+      MONGODB_URI: mongodb://dev:dev@mongo:27017/myapp?authSource=admin
     depends_on:
       - mongo
 

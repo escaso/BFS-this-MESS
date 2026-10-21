@@ -4,7 +4,7 @@
  * partitions its inputs/outputs (MIT 6.102 style), and each test notes which
  * partitions it covers.
  *
- * Run with: bun test test/CourseOffering.test.ts (needs MongoDB at MONGODB_URL)
+ * Run with: bun test test/CourseOffering.test.ts (needs MongoDB at MONGODB_URI)
  *
  * The only way to put courses into this concept is `load`, and the spec does not
  * fix the format of the MIT Subject Listing or the Subject Evaluation Reports.
