@@ -1,6 +1,6 @@
 import { endpoint, receive, respond } from "@mit-sdg/sync-engine/boundary";
 import { compute, each, form, former, no, reaction, when, where } from "@mit-sdg/sync-engine/language";
-import { computations, concepts } from "../concepts.ts";
+import { concepts } from "../concepts.ts";
 
 const { Authentication, Share, CourseOffering, Constrain } = concepts;
 
@@ -79,19 +79,63 @@ const asBlockOwner = (session: Var, user: Var, block: Var, road: Var) =>
 
 // ---------- Formers (read side) ----------
 
-const MatchingCourses = former("the matching courses", ({ query }, { course }) =>
-  form({
-    courses: each(CourseOffering._search({ query }).is({ course })).form({ course }),
-  }),
+const MatchingCourses = former(
+  "the matching courses",
+  ({ query, level, term }, { course, name, courseId, courseLevel, units, unitsKnown, terms }) =>
+    form({
+      courses: each(
+        CourseOffering._search({ query, level, term }).is({
+          course, name, courseId, level: courseLevel, units, unitsKnown, terms,
+        }),
+      ).form({ course, name, courseId, level: courseLevel, units, unitsKnown, terms }),
+    }),
+);
+
+const CourseDetails = former(
+  "the details of a course",
+  (
+    { course },
+    {
+      found, name, courseId, description, lecturer, level, units, offering, canBeRepeated,
+      prerequisitesText, corequisitesText,
+      term, prereqDependency, prereqCount, prerequisite, coreqDependency, coreqCount, corequisite,
+      cancelledYear, cancelledTerm,
+    },
+  ) =>
+    where(
+      CourseOffering._course({ course }).is({
+        found, name, courseId, description, lecturer, level, units, offering, canBeRepeated,
+        prerequisitesText, corequisitesText,
+      }),
+    ).form({
+      found, name, courseId, description, lecturer, level, units, offering, canBeRepeated,
+      prerequisitesText, corequisitesText,
+      terms: each(CourseOffering._terms({ course }).is({ term })).form({ term }),
+      prerequisites: each(
+        CourseOffering._prerequisites({ course }).is({
+          dependency: prereqDependency, count: prereqCount, prerequisite,
+        }),
+      ).form({ dependency: prereqDependency, count: prereqCount, subject: prerequisite }),
+      corequisites: each(
+        CourseOffering._corequisites({ course }).is({
+          dependency: coreqDependency, count: coreqCount, corequisite,
+        }),
+      ).form({ dependency: coreqDependency, count: coreqCount, subject: corequisite }),
+      cancellations: each(
+        CourseOffering._cancellations({ course }).is({ year: cancelledYear, term: cancelledTerm }),
+      ).form({ year: cancelledYear, term: cancelledTerm }),
+    }),
 );
 
 const CourseRatings = former(
   "the ratings of a course",
-  ({ course }, { found, classRating, professorRating, url }) =>
+  ({ course }, { found, classRating, url }) =>
     form({
-      ratings: each(
-        CourseOffering._ratings({ course }).is({ found, classRating, professorRating, url }),
-      ).form({ found, classRating, professorRating, url }),
+      ratings: each(CourseOffering._ratings({ course }).is({ found, classRating, url })).form({
+        found,
+        classRating,
+        url,
+      }),
     }),
 );
 
@@ -228,34 +272,14 @@ const LogOut = endpoint("/bfsthismess/logOut", ({ session }) =>
 
 // ---------- Catalog ----------
 
-const LoadCatalog = endpoint(
-  "/bfsthismess/loadCatalog",
-  ({ session, subjectListingURL, ratingsURL, count }) =>
-    receive({ session, subjectListingURL, ratingsURL }).then(
-      noSession(session),
-      where(
-        Authentication._authenticate({ session }),
-        compute(computations.catalogSources, { subjectListingURL, ratingsURL }, { trusted: false }),
-      )
-        .then(
-          respond({
-            error: "BAD_SOURCE",
-            message: "Catalog sources must be the MIT Subject Listing and Subject Evaluation Reports sites.",
-          }),
-        )
-        .named("bad-source"),
-      where(
-        Authentication._authenticate({ session }),
-        compute(computations.catalogSources, { subjectListingURL, ratingsURL }, { trusted: true }),
-      )
-        .then(CourseOffering.load({ subjectListingURL, ratingsURL }).responds({ count }))
-        .then(respond({ count }))
-        .named("load"),
-    ),
+// The catalog is loaded from catalog/snapshot.json when the server starts (src/catalog/import.ts),
+// so loading has no endpoint. An empty level or term means any.
+const SearchSubjects = endpoint("/bfsthismess/searchSubjects", ({ query, level, term }) =>
+  receive({ query, level, term }).then(respond({ courses: MatchingCourses({ query, level, term }) })),
 );
 
-const SearchSubjects = endpoint("/bfsthismess/searchSubjects", ({ query }) =>
-  receive({ query }).then(respond({ courses: MatchingCourses({ query }) })),
+const ViewSubject = endpoint("/bfsthismess/viewSubject", ({ course }) =>
+  receive({ course }).then(respond({ subject: CourseDetails({ course }) })),
 );
 
 const ViewRatings = endpoint("/bfsthismess/viewRatings", ({ course }) =>
@@ -655,6 +679,7 @@ const PreviewEndChange = endpoint(
 
 export const composition = {
   MatchingCourses,
+  CourseDetails,
   CourseRatings,
   CourseSchedule,
   RoadConstraints,
@@ -668,8 +693,8 @@ export const composition = {
   Register,
   LogIn,
   LogOut,
-  LoadCatalog,
   SearchSubjects,
+  ViewSubject,
   ViewRatings,
   ViewSchedule,
   NewRoad,

@@ -474,6 +474,7 @@ export class ConstrainConcept {
   private readonly listings: Collection<Listing>;
   private readonly dependencies: Collection<DependencyRecord>;
   private readonly cancellations: Collection<Cancellation>;
+  private indexed = false;
 
   constructor(db: Db) {
     this.roads = db.collection<RoadRecord>("constrain.roads");
@@ -756,6 +757,12 @@ export class ConstrainConcept {
   // Listings, dependencies and cancellations: this concept's copy of subject facts.
 
   async setListing({ subject, units, technical }: { subject: string; units: number; technical: boolean }) {
+    // Subject facts arrive here first; the catalog has thousands of subjects, so look them up by index.
+    if (!this.indexed) {
+      await this.dependencies.createIndex({ course: 1 });
+      await this.cancellations.createIndex({ subject: 1 });
+      this.indexed = true;
+    }
     await this.listings.updateOne({ _id: subject }, { $set: { units, technical }, $setOnInsert: { terms: [] } }, { upsert: true });
     return {};
   }

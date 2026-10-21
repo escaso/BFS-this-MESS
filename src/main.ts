@@ -4,6 +4,7 @@ import { createHttpHandler } from "@mit-sdg/sync-engine-http/handler";
 import { assembleApplication } from "./assembly.ts";
 import { policy } from "./http.ts";
 import { db } from "./db.ts";
+import { importCatalog } from "./catalog/import.ts";
 
 const dist = join(import.meta.dir, "..", "dist");
 
@@ -39,3 +40,6 @@ const server = Bun.serve({
 });
 
 console.log(`Backend listening on ${server.url}`);
+
+// Load a new catalog snapshot in the background, so requests are served meanwhile.
+importCatalog(db).catch((error) => console.error("Catalog: loading the snapshot failed.", error));

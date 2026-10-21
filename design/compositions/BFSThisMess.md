@@ -30,18 +30,13 @@ BFSThisMess.LogOut at /bfsthismess/logOut
 
 ## Catalog
 
-A signed-in person [loads the catalog](reaction:BFSThisMess.LoadCatalog) from the MIT Subject Listing and the Subject Evaluation Reports by giving both URLs (CourseOffering.load). Any signed-in person may do this; an administrator role is left for later. Because the catalog is shared by everyone and the server fetches the URLs it is given, the listing URL must be on student.mit.edu and the ratings URL on eduapps.mit.edu, both over https. A request with any other URL is refused with BAD_SOURCE "Catalog sources must be the MIT Subject Listing and Subject Evaluation Reports sites." and nothing is loaded. The URLs are checked with [catalogSources](computation:catalogSources).
+The catalog is loaded from a snapshot file, catalog/snapshot.json, that the maintainer builds once a semester from Fireroad and commits. When the server starts, it loads the snapshot (CourseOffering.load) unless CourseOffering._loadedSnapshot already has its id, and copies each subject's facts into Constrain: its listing (Constrain.removeListing, setListing and addListingTerm), its prerequisites and corequisites (Constrain.addDependency and addDependencyOption, the same groups CourseOffering._prerequisites and _corequisites answer) and its cancellations (Constrain.markCancelled, from CourseOffering._cancellations). Units are the total units of the subject (e.g. 12 for "3-0-9"), and 12 is assumed when there is no numeric total. A subject is technical when it carries no HASS attribute, until technical subjects can be set per major. Nobody loads the catalog through a request, so loading has no endpoint.
 
-```computations
-catalogSources(subjectListingURL: String, ratingsURL: String) : Record
-  Answers trusted = true when subjectListingURL is an https URL on student.mit.edu and ratingsURL is an https URL on eduapps.mit.edu, and trusted = false otherwise, including when either is not a valid URL.
-```
-
-Anyone can [search subjects](reaction:BFSThisMess.SearchSubjects) (CourseOffering._search), which answers [the matching courses](former:BFSThisMess.MatchingCourses). For a subject they can [see its ratings](reaction:BFSThisMess.ViewRatings) (CourseOffering._ratings), shown as [the ratings of a course](former:BFSThisMess.CourseRatings), and [its schedule](reaction:BFSThisMess.ViewSchedule) (CourseOffering._schedule), shown as [the schedule of a course](former:BFSThisMess.CourseSchedule).
+Anyone can [search subjects](reaction:BFSThisMess.SearchSubjects) by text, level and term (CourseOffering._search), which answers [the matching courses](former:BFSThisMess.MatchingCourses). For a subject they can [view its details](reaction:BFSThisMess.ViewSubject) (CourseOffering._course, _terms, _prerequisites, _corequisites and _cancellations), shown as [the details of a course](former:BFSThisMess.CourseDetails), [see its ratings](reaction:BFSThisMess.ViewRatings) (CourseOffering._ratings), shown as [the ratings of a course](former:BFSThisMess.CourseRatings), and [its schedule](reaction:BFSThisMess.ViewSchedule) (CourseOffering._schedule), shown as [the schedule of a course](former:BFSThisMess.CourseSchedule).
 
 ```endpoints
-BFSThisMess.LoadCatalog at /bfsthismess/loadCatalog
 BFSThisMess.SearchSubjects at /bfsthismess/searchSubjects
+BFSThisMess.ViewSubject at /bfsthismess/viewSubject
 BFSThisMess.ViewRatings at /bfsthismess/viewRatings
 BFSThisMess.ViewSchedule at /bfsthismess/viewSchedule
 ```
@@ -56,7 +51,7 @@ They can also change the requirements of the road: [add a block](reaction:BFSThi
 
 The owner can [delete the road](reaction:BFSThisMess.DeleteRoad) (Constrain.deleteRoad). Afterwards [the road is released](reaction:BFSThisMess.ReleaseRoad) (Share.release), so a deleted road keeps no owner and no viewers.
 
-The Constrain actions that keep subject facts up to date (setListing, addListingTerm, removeListingTerm, removeListing, addDependency, addDependencyOption, removeDependency, markCancelled and unmarkCancelled) have no endpoints. They are driven by CourseOffering.load and are not requested by users, so they need no check.
+The Constrain actions that keep subject facts up to date (setListing, addListingTerm, removeListingTerm, removeListing, addDependency, addDependencyOption, removeDependency, markCancelled and unmarkCancelled) have no endpoints. They are driven by loading the catalog snapshot (see Catalog) and are not requested by users, so they need no check.
 
 ```endpoints
 BFSThisMess.NewRoad at /bfsthismess/newRoad

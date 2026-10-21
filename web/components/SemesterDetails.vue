@@ -1,28 +1,28 @@
 <script setup lang="ts">
 // Ratings and units for every class in one semester of a plan. Both come from
-// CourseOffering, so they show "—" until the catalog has been loaded.
+// CourseOffering, so they show "—" for a subject the catalog does not have.
 import { computed, ref, watch } from "vue";
-import { call, type Ratings, type Schedule } from "../api.ts";
+import { call, type Ratings } from "../api.ts";
 import { label, unitSum, type Season } from "../util.ts";
 
 const props = defineProps<{ season: Season; courses: string[] }>();
 
-type Row = { course: string; r: Ratings | null; s: Schedule | null };
+type Row = { course: string; r: Ratings | null; units: string | null };
 
 const details = ref<Row[]>([]);
 const loading = ref(false);
 let token = 0;
 
 async function lookUp(course: string): Promise<Row> {
-  const [r, s] = await Promise.all([
+  const [r, units] = await Promise.all([
     call("viewRatings", { course })
       .then((d) => d.ratings.ratings[0] ?? null)
       .catch(() => null),
-    call("viewSchedule", { course })
-      .then((d) => d.schedule.schedule[0] ?? null)
+    call("viewSubject", { course })
+      .then((d) => (d.subject.found ? d.subject.units : null))
       .catch(() => null),
   ]);
-  return { course, r, s };
+  return { course, r, units };
 }
 
 // Watch the contents, not the array: the parent builds a new array on every
@@ -42,7 +42,7 @@ watch(
 );
 
 const totalUnits = computed(() =>
-  details.value.reduce((n, { s }) => n + (unitSum(s?.units) ?? 0), 0),
+  details.value.reduce((n, { units }) => n + (unitSum(units) ?? 0), 0),
 );
 </script>
 
@@ -52,16 +52,15 @@ const totalUnits = computed(() =>
     <h2>{{ label(season) }} · {{ totalUnits }} units</h2>
     <table>
       <thead>
-        <tr><th>Class</th><th>Class rating</th><th>Professor rating</th><th>Units</th></tr>
+        <tr><th>Class</th><th>Class rating</th><th>Units</th></tr>
       </thead>
       <tbody>
         <tr v-for="row in details" :key="row.course">
           <td>{{ row.course }}</td>
           <td>{{ row.r?.found ? row.r.classRating : "—" }}</td>
-          <td>{{ row.r?.found ? row.r.professorRating : "—" }}</td>
-          <td>{{ row.s?.found ? (unitSum(row.s.units) ?? row.s.units) : "—" }}</td>
+          <td>{{ row.units ? (unitSum(row.units) ?? row.units) : "—" }}</td>
         </tr>
-        <tr v-if="!details.length"><td colspan="4" class="hint">Nothing this semester.</td></tr>
+        <tr v-if="!details.length"><td colspan="3" class="hint">Nothing this semester.</td></tr>
       </tbody>
     </table>
   </template>

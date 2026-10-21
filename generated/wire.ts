@@ -93,17 +93,6 @@ export type BFSThisMessWire = {
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
-  "/bfsthismess/loadCatalog": {
-    input: {
-      "ratingsURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["ratingsURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["ratingsURL"]>]>>;
-      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
-      "subjectListingURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["subjectListingURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["subjectListingURL"]>]>>;
-    };
-    output: {
-      "count": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>>, ["count"]>>;
-    };
-    error: { error: AppWideError | "BAD_SOURCE" | "INVALID_INPUT" | "LOAD_FAILED" | "NO_SUCH_SESSION" };
-  };
   "/bfsthismess/logIn": {
     input: {
       "password": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["login"]>[0], ["password"]>>;
@@ -258,12 +247,20 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/searchSubjects": {
     input: {
+      "level": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>[0], ["level"]>>;
       "query": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>[0], ["query"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>[0], ["term"]>>;
     };
     output: {
       "courses": {
         "courses": {
           "course": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["course"]>>;
+          "courseId": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["courseId"]>>;
+          "level": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["level"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["name"]>>;
+          "terms": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["terms"]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["units"]>>;
+          "unitsKnown": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["unitsKnown"]>>;
         }[];
       };
     };
@@ -384,7 +381,6 @@ export type BFSThisMessWire = {
         "ratings": {
           "classRating": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["classRating"]>>;
           "found": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["found"]>>;
-          "professorRating": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["professorRating"]>>;
           "url": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["url"]>>;
         }[];
       };
@@ -467,6 +463,44 @@ export type BFSThisMessWire = {
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/viewSubject": {
+    input: {
+      "course": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_cancellations"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_terms"]>[0], ["course"]>]>>;
+    };
+    output: {
+      "subject": {
+        "canBeRepeated": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["canBeRepeated"]>>;
+        "cancellations": {
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_cancellations"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_cancellations"]>>>, ["year"]>>;
+        }[];
+        "corequisites": {
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>>>, ["count"]>>;
+          "dependency": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>>>, ["dependency"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>>>, ["corequisite"]>>;
+        }[];
+        "corequisitesText": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["corequisitesText"]>>;
+        "courseId": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["courseId"]>>;
+        "description": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["description"]>>;
+        "found": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["found"]>>;
+        "lecturer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["lecturer"]>>;
+        "level": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["level"]>>;
+        "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["name"]>>;
+        "offering": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["offering"]>>;
+        "prerequisites": {
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>>>, ["count"]>>;
+          "dependency": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>>>, ["dependency"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>>>, ["prerequisite"]>>;
+        }[];
+        "prerequisitesText": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["prerequisitesText"]>>;
+        "terms": {
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_terms"]>>>, ["term"]>>;
+        }[];
+        "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["units"]>>;
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" };
   };
 };
 
@@ -551,17 +585,6 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
-  };
-  "/bfsthismess/loadCatalog": {
-    input: {
-      "ratingsURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["ratingsURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["ratingsURL"]>]>>;
-      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
-      "subjectListingURL": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.computations)["catalogSources"]["fn"]>[0], ["subjectListingURL"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>[0], ["subjectListingURL"]>]>>;
-    };
-    output: {
-      "count": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["load"]>>, ["count"]>>;
-    };
-    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/logIn": {
     input: {
@@ -717,12 +740,20 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/searchSubjects": {
     input: {
+      "level": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>[0], ["level"]>>;
       "query": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>[0], ["query"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>[0], ["term"]>>;
     };
     output: {
       "courses": {
         "courses": {
           "course": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["course"]>>;
+          "courseId": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["courseId"]>>;
+          "level": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["level"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["name"]>>;
+          "terms": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["terms"]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["units"]>>;
+          "unitsKnown": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_search"]>>>, ["unitsKnown"]>>;
         }[];
       };
     };
@@ -843,7 +874,6 @@ export type BFSThisMessWireHttp = {
         "ratings": {
           "classRating": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["classRating"]>>;
           "found": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["found"]>>;
-          "professorRating": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["professorRating"]>>;
           "url": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_ratings"]>>>, ["url"]>>;
         }[];
       };
@@ -926,5 +956,43 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/viewSubject": {
+    input: {
+      "course": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_cancellations"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_terms"]>[0], ["course"]>]>>;
+    };
+    output: {
+      "subject": {
+        "canBeRepeated": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["canBeRepeated"]>>;
+        "cancellations": {
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_cancellations"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_cancellations"]>>>, ["year"]>>;
+        }[];
+        "corequisites": {
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>>>, ["count"]>>;
+          "dependency": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>>>, ["dependency"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>>>, ["corequisite"]>>;
+        }[];
+        "corequisitesText": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["corequisitesText"]>>;
+        "courseId": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["courseId"]>>;
+        "description": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["description"]>>;
+        "found": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["found"]>>;
+        "lecturer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["lecturer"]>>;
+        "level": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["level"]>>;
+        "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["name"]>>;
+        "offering": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["offering"]>>;
+        "prerequisites": {
+          "count": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>>>, ["count"]>>;
+          "dependency": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>>>, ["dependency"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>>>, ["prerequisite"]>>;
+        }[];
+        "prerequisitesText": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["prerequisitesText"]>>;
+        "terms": {
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_terms"]>>>, ["term"]>>;
+        }[];
+        "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["units"]>>;
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" };
   };
 };

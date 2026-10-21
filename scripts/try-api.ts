@@ -105,9 +105,9 @@ refused("view after delete", await api.checkPlan({ session, road }), "NOT_FOUND"
 ok("logOut", await api.logOut({ session }));
 refused("use a logged-out session", await api.myRoads({ session }), "UNAUTHORIZED");
 
-// ---------- Catalog lookups (empty until loadCatalog actually parses data) ----------
+// ---------- Catalog lookups (empty until the server has loaded catalog/snapshot.json) ----------
 
-const search = ok("searchSubjects", await api.searchSubjects({ query: "6.1010" }));
+const search = ok("searchSubjects", await api.searchSubjects({ query: "6.1010", level: "", term: "" }));
 console.log("\nsearch '6.1010':", search.courses.courses.map((c) => c.course));
 const schedule = ok("viewSchedule", await api.viewSchedule({ course: "6.1010" }));
 console.log("6.1010 schedule:", schedule.schedule.schedule);

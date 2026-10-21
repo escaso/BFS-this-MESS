@@ -7,9 +7,9 @@ const deadline = Date.now() + (process.argv.includes("--wait") ? 60_000 : 0);
 const client = createHttpClient<BFSThisMessWireHttp>({ baseUrl: `${address}/api` });
 
 while (true) {
-  const result = await client.bfsthismess.searchSubjects({ query: "" });
+  const result = await client.bfsthismess.searchSubjects({ query: "6.1010", level: "", term: "" });
   if (!("error" in result)) {
-    console.log(`The API at ${address} answered. It has ${result.courses.courses.length} course(s) in the catalog.`);
+    console.log(`The API at ${address} answered. A search for 6.1010 found ${result.courses.courses.length} course(s).`);
     break;
   }
   if (Date.now() > deadline) {

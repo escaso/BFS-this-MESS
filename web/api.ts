@@ -24,9 +24,11 @@ export type PlanRow = RoadView["paths"]["plans"][number];
 export type Term = Constraints["startTerm"];
 export type Ratings = Output<"viewRatings">["ratings"]["ratings"][number];
 export type Schedule = Output<"viewSchedule">["schedule"]["schedule"][number];
+export type CourseRow = Output<"searchSubjects">["courses"]["courses"][number];
+export type CourseDetails = Output<"viewSubject">["subject"];
 
 // Endpoints anyone may call. Every other endpoint takes the session.
-const PUBLIC = new Set<Endpoint>(["register", "logIn", "searchSubjects", "viewRatings", "viewSchedule"]);
+const PUBLIC = new Set<Endpoint>(["register", "logIn", "searchSubjects", "viewSubject", "viewRatings", "viewSchedule"]);
 
 // ---------- Errors ----------
 
@@ -56,7 +58,6 @@ const blockErrors = {
 const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> = {
   register: { INVALID_REQUEST: "A username and a password are needed.", CONFLICT: "Username is already taken." },
   logIn: { UNAUTHORIZED: "Invalid username or password." },
-  loadCatalog: { INVALID_REQUEST: "The subject listing or the ratings could not be retrieved." },
   newRoad: { INVALID_REQUEST: "A road needs a name, and must start in a Fall or Spring semester." },
   setMajor: { INVALID_REQUEST: "A major cannot be empty." },
   pin: {

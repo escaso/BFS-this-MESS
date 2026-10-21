@@ -74,22 +74,6 @@ const authentication = registerConcept({
   },
 });
 
-// The catalog is fetched by the server, so only the two MIT sites may be named as its sources.
-function onHttpsHost(url: string, host: string) {
-  try {
-    const parsed = new URL(url);
-    return parsed.protocol === "https:" && parsed.hostname === host;
-  } catch {
-    return false;
-  }
-}
-
-export function catalogSources({ subjectListingURL, ratingsURL }: { subjectListingURL: string; ratingsURL: string }) {
-  return {
-    trusted: onHttpsHost(subjectListingURL, "student.mit.edu") && onHttpsHost(ratingsURL, "eduapps.mit.edu"),
-  };
-}
-
 export const applicationConceptSet = conceptSet(
   {
     Share: share,
@@ -97,7 +81,7 @@ export const applicationConceptSet = conceptSet(
     CourseOffering: courseOffering,
     Authentication: authentication,
   },
-  { catalogSources },
+  {},
 );
 
 export const { concepts, computations } = applicationConceptSet;

@@ -27,6 +27,8 @@
     "preview": "bun run build && NODE_ENV=production PORT=3000 PUBLIC_ORIGIN=http://localhost:3000 bun run start",
     "start:backend": "HOST=127.0.0.1 PORT=4000 bun src/main.ts",
     "start:frontend": "HOST=0.0.0.0 BACKEND_URL=http://127.0.0.1:4000 bunx --bun vite preview",
+    "catalog:build": "bun scripts/build-catalog.ts",
+    "catalog:import": "bun scripts/import-catalog.ts",
     "check:design": "sync-engine check-design design/concepts/*.md design/types.md design/compositions/*.md",
     "dev": "bun run db:up && bun run --parallel dev:backend dev:frontend",
     "dev:backend": "bun --watch src/main.ts",

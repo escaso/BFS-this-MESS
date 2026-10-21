@@ -102,7 +102,7 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
     <template v-if="session">
       <nav class="inline">
         <button class="link light" @click="goStart">Roads</button>
-        <button class="link light" @click="view = 'catalog'">Load catalog</button>
+        <button class="link light" @click="view = 'catalog'">Catalog</button>
       </nav>
       <span class="spacer" />
       <span>{{ username }}</span>

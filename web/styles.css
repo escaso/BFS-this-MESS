@@ -69,3 +69,13 @@ input.count { width: 3.5rem; }
 li.block { margin-bottom: 0.5rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
 li.block form { margin: 0; }
 .sem.extra { border-style: dashed; }
+
+/* Catalog listing */
+.catalog .filters input[type="search"] { flex: 1; min-width: 16rem; }
+.catalog-body { display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+.catalog .results { flex: 1 1 32rem; min-width: 0; overflow-x: auto; }
+.catalog .results tbody tr { cursor: pointer; }
+.catalog .results tbody tr:hover, .catalog .results tr.picked { background: #eceff1; }
+.catalog .details { flex: 1 1 22rem; max-width: 36rem; position: sticky; top: 0.5rem; background: white; border: 1px solid #ccc; padding: 0 1rem 1rem; }
+.catalog .details dt { font-weight: bold; margin-top: 0.6rem; }
+.catalog .details dd { margin: 0.1rem 0 0; }

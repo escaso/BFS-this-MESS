@@ -6,20 +6,14 @@
  *
  * Run with: bun test test/CourseOffering.test.ts (needs MongoDB at MONGODB_URI)
  *
- * The only way to put courses into this concept is `load`, and the spec does not
- * fix the format of the MIT Subject Listing or the Subject Evaluation Reports.
- * `serve()` below therefore stubs `fetch` with fixtures in a placeholder format.
- * Until `load` parses real listings, the tests that need loaded courses are
- * marked todo (see LOAD_PARSES_LISTINGS). When the parser exists, change
- * `serve()` to emit the real format and flip the flag; nothing else depends on it.
+ * The only way to put courses into this concept is `load`, which takes a catalog
+ * snapshot (the JSON written by scripts/build-catalog.ts). The fixtures below build
+ * snapshots; `loadFall`/`loadSpring` load one for the academic year a Fall or an
+ * IAP/Spring listing belongs to.
  */
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { CourseOfferingConcept } from "../src/concepts/CourseOffering.ts";
+import { beforeEach, describe, expect, test } from "bun:test";
+import { CourseOfferingConcept, type SnapshotCourse } from "../src/concepts/CourseOffering.ts";
 import { refusalsOf, useFreshDb } from "./support.ts";
-
-/** Whether `load` turns a retrieved listing into courses yet. */
-const LOAD_PARSES_LISTINGS = false;
-const describeLoaded = describe.todoIf(!LOAD_PARSES_LISTINGS);
 
 // ───────────────────────── HARNESS ─────────────────────────
 
@@ -41,50 +35,41 @@ interface SubjectFixture {
   location?: string;
   prerequisites?: { count: number; options: string[] }[];
   corequisites?: { count: number; options: string[] }[];
+  prerequisitesText?: string;
+  corequisitesText?: string;
 }
-interface RatingFixture { course: string; classRating: number; professorRating: number; url: string }
-interface ListingFixture {
-  half: "FALL" | "IAP_SPRING";
-  year: number; // FALL Y listing or IAP/SPRING Y+1 listing: Y is the *calendar* year printed on the listing
-  subjects: SubjectFixture[];
-}
-
-const LISTING_URL = "https://student.mit.edu/catalog/m6a.html";
-const RATINGS_URL = "https://eduapps.mit.edu/ose-rpt/subjectEvaluationSearch.htm";
+interface RatingFixture { course: string; classRating: number; url: string }
 
 const db = useFreshDb("course_offering_test");
 const expectRefusal = refusalsOf("CourseOffering");
-const realFetch = globalThis.fetch;
 let concept: CourseOfferingConcept;
+let snapshots = 0;
 
 beforeEach(() => {
   concept = new CourseOfferingConcept(db());
 });
-afterEach(() => {
-  globalThis.fetch = realFetch;
-});
 
-/** Stubs fetch so load() sees the given fixtures. ADAPT to the parser's real input format. */
-function serve(listing: ListingFixture | "fail" | "unreachable", ratings: RatingFixture[] | "fail" | "unreachable" = []) {
-  globalThis.fetch = (async (input: string | URL | Request) => {
-    const url = input instanceof Request ? input.url : String(input);
-    const body = url === LISTING_URL ? listing : ratings;
-    if (body === "unreachable") throw new TypeError("fetch failed");
-    if (body === "fail") return new Response("nope", { status: 500 });
-    return new Response(JSON.stringify(body), { status: 200 });
-  }) as typeof fetch;
+/** The JSON of a snapshot of the academic year starting in FALL of academicYear. */
+function snapshot(subjects: SubjectFixture[], ratings: RatingFixture[], academicYear: number, id = `test-${++snapshots}`) {
+  const courses: SnapshotCourse[] = subjects.map((s) => {
+    const rating = ratings.find((r) => r.course === s.subject);
+    return {
+      name: "", courseId: s.subject, description: "", lecturer: "", level: "", terms: [], offering: "Offered normally",
+      canBeRepeated: false, prerequisitesText: "", corequisitesText: "", prerequisites: [], corequisites: [],
+      totalUnits: 12, technical: true,
+      ...s,
+      ...(rating ? { rating: { classRating: rating.classRating, url: rating.url } } : {}),
+    };
+  });
+  return JSON.stringify({ id, source: "test", academicYear, courses });
 }
 
-const fallListing = (subjects: SubjectFixture[], year = 2026): ListingFixture => ({ half: "FALL", year, subjects });
-const springListing = (subjects: SubjectFixture[], year = 2027): ListingFixture => ({ half: "IAP_SPRING", year, subjects });
-
+// A Fall Y listing and an IAP/Spring Y+1 listing both belong to the academic year starting in FALL of Y.
 async function loadFall(subjects: SubjectFixture[], ratings: RatingFixture[] = [], year = 2026) {
-  serve(fallListing(subjects, year), ratings);
-  return concept.load({ subjectListingURL: LISTING_URL, ratingsURL: RATINGS_URL });
+  return concept.load({ snapshot: snapshot(subjects, ratings, year) });
 }
 async function loadSpring(subjects: SubjectFixture[], year = 2027) {
-  serve(springListing(subjects, year));
-  return concept.load({ subjectListingURL: LISTING_URL, ratingsURL: RATINGS_URL });
+  return concept.load({ snapshot: snapshot(subjects, [], year - 1) });
 }
 
 const normal = (subject: string, extra: Partial<SubjectFixture> = {}): SubjectFixture => ({
@@ -103,48 +88,52 @@ const normal = (subject: string, extra: Partial<SubjectFixture> = {}): SubjectFi
 /**
  * Testing strategy for load
  *
- * Partition on retrieval:
- *   both retrievable; listing not retrievable (error status, network failure);
- *   ratings not retrievable (error status, network failure)
- * Partition on listing half:
+ * Partition on the snapshot:
+ *   well formed; not JSON; JSON of the wrong shape (missing id, bad term, bad offering,
+ *   bad dependency count, duplicate subject)
+ * Partition on listing half the academic year was taken from:
  *   Fall Y listing; IAP/Spring Y+1 listing
  * Partition on offering of a subject:
  *   "Offered normally"; "Not offered THIS year"; "Not offered NEXT year"; "Not currently listed"
  * Partition on prior state of a subject:
- *   never loaded; loaded before from the other half; loaded before from the same half (reload)
+ *   never loaded; loaded before (reload)
  * Partition on ratings:
  *   subject has a rating entry; subject has none
- * Partition on number of subjects in listing:
+ * Partition on number of subjects in the snapshot:
  *   0, 1, many
  */
 describe("load refusals", () => {
-  test("covers: listing not retrievable (error status) -> refuses LOAD_FAILED and stores nothing", async () => {
-    serve("fail", []);
-    await expectRefusal("load", "LOAD_FAILED", concept.load({ subjectListingURL: LISTING_URL, ratingsURL: RATINGS_URL }));
+  test("covers: not JSON -> refuses LOAD_FAILED and stores nothing", async () => {
+    await expectRefusal("load", "LOAD_FAILED", concept.load({ snapshot: "not json" }));
+    expect(await concept._search({})).toEqual([]);
+    expect(await concept._loadedSnapshot({})).toEqual({ found: false, id: "" });
+  });
+
+  test("covers: wrong shape (no id, no courses) -> refuses LOAD_FAILED", async () => {
+    await expectRefusal("load", "LOAD_FAILED", concept.load({ snapshot: JSON.stringify({ academicYear: 2026, courses: [] }) }));
+    await expectRefusal("load", "LOAD_FAILED", concept.load({ snapshot: JSON.stringify({ id: "x", academicYear: 2026 }) }));
+    await expectRefusal("load", "LOAD_FAILED", concept.load({ snapshot: "[]" }));
+  });
+
+  test("covers: a course with a bad term, offering or dependency count -> refuses LOAD_FAILED and stores no courses", async () => {
+    for (const bad of [
+      { terms: ["WINTER" as Term] },
+      { offering: "Sometimes" as Offering },
+      { prerequisites: [{ count: 0, options: ["6.1010"] }] },
+    ]) {
+      await expectRefusal("load", "LOAD_FAILED", concept.load({ snapshot: snapshot([normal("6.1020", bad)], [], 2026) }));
+    }
     expect(await concept._search({})).toEqual([]);
   });
 
-  test("covers: listing not retrievable (network failure) -> refuses LOAD_FAILED", async () => {
-    serve("unreachable", []);
-    await expectRefusal("load", "LOAD_FAILED", concept.load({ subjectListingURL: LISTING_URL, ratingsURL: RATINGS_URL }));
-    expect(await concept._search({})).toEqual([]);
-  });
-
-  test("covers: ratings not retrievable (error status) -> refuses LOAD_FAILED and stores no courses", async () => {
-    serve(fallListing([normal("6.1010")]), "fail");
-    await expectRefusal("load", "LOAD_FAILED", concept.load({ subjectListingURL: LISTING_URL, ratingsURL: RATINGS_URL }));
-    expect(await concept._search({})).toEqual([]);
-  });
-
-  test("covers: ratings not retrievable (network failure) -> refuses LOAD_FAILED and stores no courses", async () => {
-    serve(fallListing([normal("6.1010")]), "unreachable");
-    await expectRefusal("load", "LOAD_FAILED", concept.load({ subjectListingURL: LISTING_URL, ratingsURL: RATINGS_URL }));
+  test("covers: the same subject twice -> refuses LOAD_FAILED", async () => {
+    await expectRefusal("load", "LOAD_FAILED", concept.load({ snapshot: snapshot([normal("6.1010"), normal("6.1010")], [], 2026) }));
     expect(await concept._search({})).toEqual([]);
   });
 });
 
-describeLoaded("load", () => {
-  test("covers: both retrievable, Fall, many subjects; returns the number of subjects loaded", async () => {
+describe("load", () => {
+  test("covers: well formed, Fall, many subjects; returns the number of subjects loaded", async () => {
     const res = await loadFall([normal("6.1010"), normal("6.1020"), normal("6.1200")]);
     expect(res).toEqual({ count: 3 });
     expect((await concept._search({})).map((r) => r.course).sort()).toEqual(["6.1010", "6.1020", "6.1200"]);
@@ -166,10 +155,10 @@ describeLoaded("load", () => {
 
   test("covers: subject with a rating / subject without one", async () => {
     await loadFall([normal("6.1010"), normal("6.1020")], [
-      { course: "6.1010", classRating: 6.1, professorRating: 6.5, url: "https://eval.test/6.1010" },
+      { course: "6.1010", classRating: 6.1, url: "https://eval.test/6.1010" },
     ]);
     expect(await concept._ratings({ course: "6.1010" })).toEqual({
-      found: true, classRating: 6.1, professorRating: 6.5, url: "https://eval.test/6.1010",
+      found: true, classRating: 6.1, url: "https://eval.test/6.1010",
     });
     expect((await concept._ratings({ course: "6.1020" })).found).toBe(false);
   });
@@ -217,13 +206,13 @@ describeLoaded("load", () => {
     ]);
   });
 
-  test("covers: loading the other half replaces that half's terms and keeps the rest", async () => {
+  test("covers: reload replaces the terms of a subject (a snapshot covers every term)", async () => {
     await loadFall([normal("6.1010", { terms: ["FALL"] })]);
     await loadSpring([normal("6.1010", { terms: ["IAP", "SPRING"] })]);
-    expect((await concept._terms({ course: "6.1010" })).map((t) => t.term).sort()).toEqual(["FALL", "IAP", "SPRING"]);
+    expect((await concept._terms({ course: "6.1010" })).map((t) => t.term)).toEqual(["IAP", "SPRING"]);
   });
 
-  test("covers: reloading the same half replaces its terms (a dropped term disappears)", async () => {
+  test("covers: reload with no terms empties them", async () => {
     await loadFall([normal("6.1010", { terms: ["FALL"] })]);
     await loadFall([normal("6.1010", { terms: [] })]);
     expect(await concept._terms({ course: "6.1010" })).toEqual([]);
@@ -242,11 +231,65 @@ describeLoaded("load", () => {
     expect(rows.map((r) => r.prerequisite)).toEqual(["6.1200"]);
   });
 
-  test("covers: a refused load leaves the courses of an earlier load in place", async () => {
-    await loadFall([normal("6.1010")]);
-    serve("fail", []);
-    await expectRefusal("load", "LOAD_FAILED", concept.load({ subjectListingURL: LISTING_URL, ratingsURL: RATINGS_URL }));
+  test("covers: a refused load leaves the courses and snapshot of an earlier load in place", async () => {
+    await concept.load({ snapshot: snapshot([normal("6.1010")], [], 2026, "first") });
+    await expectRefusal("load", "LOAD_FAILED", concept.load({ snapshot: "{" }));
     expect((await concept._search({})).map((r) => r.course)).toEqual(["6.1010"]);
+    expect(await concept._loadedSnapshot({})).toEqual({ found: true, id: "first" });
+  });
+
+  test("covers: a subject left out of a later snapshot is kept", async () => {
+    await loadFall([normal("6.1010"), normal("6.1020")]);
+    await loadFall([normal("6.1020")]);
+    expect((await concept._search({})).map((r) => r.course)).toEqual(["6.1010", "6.1020"]);
+  });
+});
+
+// ───────────────────────── _loadedSnapshot / _course ─────────────────────────
+/**
+ * Testing strategy for _loadedSnapshot
+ *
+ * Partition on loads: none; one; several (answers the last)
+ *
+ * Testing strategy for _course
+ *
+ * Partition on course: in Courses; not in Courses
+ * Partition on units: present; absent
+ * Partition on requirement text: empty; present
+ */
+describe("_loadedSnapshot", () => {
+  test("covers: none loaded -> found = false", async () => {
+    expect(await concept._loadedSnapshot({})).toEqual({ found: false, id: "" });
+  });
+
+  test("covers: one, then several loaded -> the id of the last", async () => {
+    await concept.load({ snapshot: snapshot([normal("6.1010")], [], 2026, "fall") });
+    expect(await concept._loadedSnapshot({})).toEqual({ found: true, id: "fall" });
+    await concept.load({ snapshot: snapshot([], [], 2026, "spring") });
+    expect(await concept._loadedSnapshot({})).toEqual({ found: true, id: "spring" });
+  });
+});
+
+describe("_course", () => {
+  test("covers: not in Courses -> found = false", async () => {
+    expect((await concept._course({ course: "6.1010" })).found).toBe(false);
+  });
+
+  test("covers: in Courses, units and requirement text present -> every attribute", async () => {
+    await loadFall([normal("6.1020", {
+      name: "Software Construction", units: "3-0-9", canBeRepeated: true,
+      prerequisitesText: "6.1010/''permission of instructor''", corequisitesText: "18.02",
+    })]);
+    expect(await concept._course({ course: "6.1020" })).toEqual({
+      found: true, name: "Software Construction", courseId: "6.1020", description: "Description of 6.1020",
+      lecturer: "Prof. X", level: "Undergraduate", units: "3-0-9", offering: "Offered normally", canBeRepeated: true,
+      prerequisitesText: "6.1010/''permission of instructor''", corequisitesText: "18.02",
+    });
+  });
+
+  test("covers: units absent, no requirement text -> empty strings", async () => {
+    await loadFall([normal("6.1010")]);
+    expect(await concept._course({ course: "6.1010" })).toMatchObject({ found: true, units: "", prerequisitesText: "", corequisitesText: "" });
   });
 });
 
@@ -260,7 +303,7 @@ describeLoaded("load", () => {
  * Partition on other kind present: yes (must not leak), no
  * Partition on transitivity: prerequisite has its own prerequisites (must not be listed)
  */
-describeLoaded("_prerequisites", () => {
+describe("_prerequisites", () => {
   test("covers: 0 dependencies -> no rows", async () => {
     await loadFall([normal("6.1010")]);
     expect(await concept._prerequisites({ course: "6.1010" })).toEqual([]);
@@ -324,7 +367,7 @@ describeLoaded("_prerequisites", () => {
   });
 });
 
-describeLoaded("_corequisites", () => {
+describe("_corequisites", () => {
   test("covers: 0 dependencies -> no rows", async () => {
     await loadFall([normal("6.1010")]);
     expect(await concept._corequisites({ course: "6.1010" })).toEqual([]);
@@ -367,7 +410,7 @@ describeLoaded("_corequisites", () => {
  *
  * Spec: offered iff terms include term AND there is no cancellation for that season.
  */
-describeLoaded("_isOffered", () => {
+describe("_isOffered", () => {
   test("covers: term listed, not cancelled -> offered", async () => {
     await loadFall([normal("6.1010", { terms: ["FALL"] })]);
     expect(await concept._isOffered({ course: "6.1010", year: 2026, term: "FALL" })).toEqual({ offered: true });
@@ -420,7 +463,7 @@ describeLoaded("_isOffered", () => {
  *   across years (FALL Y precedes IAP Y+1 because year compares first)
  * Partition on other subjects: another course has cancellations (must not leak)
  */
-describeLoaded("_cancellations", () => {
+describe("_cancellations", () => {
   test("covers: none -> no rows", async () => {
     await loadFall([normal("6.1010")]);
     expect(await concept._cancellations({ course: "6.1010" })).toEqual([]);
@@ -453,11 +496,11 @@ describeLoaded("_cancellations", () => {
  * Partition on whether course has a Ratings entry: yes, no
  * Partition on rating values: typical, boundary (0 / max)
  */
-describeLoaded("_ratings", () => {
-  test("covers: course in Ratings -> found with class rating, professor rating and url", async () => {
-    await loadFall([normal("6.1010")], [{ course: "6.1010", classRating: 5.5, professorRating: 6.2, url: "https://eval.test/a" }]);
+describe("_ratings", () => {
+  test("covers: course in Ratings -> found with class rating and url", async () => {
+    await loadFall([normal("6.1010")], [{ course: "6.1010", classRating: 5.5, url: "https://eval.test/a" }]);
     expect(await concept._ratings({ course: "6.1010" })).toEqual({
-      found: true, classRating: 5.5, professorRating: 6.2, url: "https://eval.test/a",
+      found: true, classRating: 5.5, url: "https://eval.test/a",
     });
   });
 
@@ -468,11 +511,11 @@ describeLoaded("_ratings", () => {
 
   test("covers: boundary rating values 0 and 7 are preserved", async () => {
     await loadFall([normal("A"), normal("B")], [
-      { course: "A", classRating: 0, professorRating: 0, url: "u1" },
-      { course: "B", classRating: 7, professorRating: 7, url: "u2" },
+      { course: "A", classRating: 0, url: "u1" },
+      { course: "B", classRating: 7, url: "u2" },
     ]);
-    expect(await concept._ratings({ course: "A" })).toMatchObject({ found: true, classRating: 0, professorRating: 0 });
-    expect(await concept._ratings({ course: "B" })).toMatchObject({ found: true, classRating: 7, professorRating: 7 });
+    expect(await concept._ratings({ course: "A" })).toMatchObject({ found: true, classRating: 0 });
+    expect(await concept._ratings({ course: "B" })).toMatchObject({ found: true, classRating: 7 });
   });
 });
 
@@ -497,7 +540,7 @@ describe("_search on an empty catalog", () => {
   });
 });
 
-describeLoaded("_search", () => {
+describe("_search", () => {
   const catalog = () => [
     normal("6.1010", { name: "Fundamentals of Programming", description: "Python and testing", courseId: "6.1010", level: "Undergraduate", terms: ["FALL", "SPRING"], units: "2-4-6" }),
     normal("6.8200", { name: "Advanced Robotics", description: "Planning and control", courseId: "6.8200", level: "Graduate", terms: ["SPRING"], units: "3-0-9" }),
@@ -578,7 +621,19 @@ describeLoaded("_search", () => {
 
   test("covers: result fields; units numeric -> unitsKnown true", async () => {
     const [r] = await concept._search({ query: "Robotics" });
-    expect(r).toEqual({ course: "6.8200", name: "Advanced Robotics", courseId: "6.8200", level: "Graduate", units: "3-0-9", unitsKnown: true });
+    expect(r).toEqual({
+      course: "6.8200", name: "Advanced Robotics", courseId: "6.8200", level: "Graduate", units: "3-0-9", unitsKnown: true,
+      terms: "SPRING",
+    });
+  });
+
+  test("covers: terms are in season order, separated by spaces", async () => {
+    const [r] = await concept._search({ query: "Calculus" });
+    expect(r.terms).toBe("IAP FALL");
+  });
+
+  test("covers: rows are ordered by course Id, numbers compared as numbers", async () => {
+    expect((await concept._search({})).map((r) => r.courseId)).toEqual(["6.1010", "6.8200", "18.01", "21M.301"]);
   });
 
   test("covers: units 'Arrange' -> unitsKnown false", async () => {
@@ -605,9 +660,10 @@ describeLoaded("_search", () => {
  * Testing strategy for _terms
  *
  * Partition on number of terms: 0, 1, many (up to all 4)
- * Partition on loaded halves: Fall only; Spring only; both
+ * Partition on the snapshot's listing half: Fall; Spring
+ * Partition on order: terms are answered in season order
  */
-describeLoaded("_terms", () => {
+describe("_terms", () => {
   const names = async (c: string) => (await concept._terms({ course: c })).map((t) => t.term).sort();
 
   test("covers: 0 terms -> no rows", async () => {
@@ -625,10 +681,9 @@ describeLoaded("_terms", () => {
     expect(await names("6.1010")).toEqual(["SPRING"]);
   });
 
-  test("covers: all four terms across both halves", async () => {
-    await loadFall([normal("6.1010", { terms: ["FALL", "SUMMER"] })]);
-    await loadSpring([normal("6.1010", { terms: ["IAP", "SPRING"] })]);
-    expect(await names("6.1010")).toEqual(["FALL", "IAP", "SPRING", "SUMMER"]);
+  test("covers: all four terms, in season order", async () => {
+    await loadFall([normal("6.1010", { terms: ["FALL", "SUMMER", "IAP", "SPRING"] })]);
+    expect((await concept._terms({ course: "6.1010" })).map((t) => t.term)).toEqual(["IAP", "SPRING", "SUMMER", "FALL"]);
   });
 });
 
@@ -640,7 +695,7 @@ describeLoaded("_terms", () => {
  * Partition on units: present; absent (with meetingTimes present)
  * Partition on location: present; absent (with meetingTimes present)
  */
-describeLoaded("_schedule", () => {
+describe("_schedule", () => {
   test("covers: meetingTimes present -> found with units, meetingTimes, location", async () => {
     await loadFall([normal("6.1010", { units: "2-4-6", meetingTimes: "TR2.30-4", location: "36-153" })]);
     expect(await concept._schedule({ course: "6.1010" })).toEqual({
@@ -667,8 +722,8 @@ describeLoaded("_schedule", () => {
 });
 
 // ───────────────────────── principle ─────────────────────────
-describeLoaded("principle", () => {
-  test("a student loads the listing and ratings, then searches and sees when a subject is offered, what it requires, and how it was rated", async () => {
+describe("principle", () => {
+  test("the maintainer loads a snapshot, then a student searches and sees when a subject is offered, what it requires, and how it was rated", async () => {
     await loadFall(
       [
         normal("6.1010", { name: "Fundamentals of Programming", terms: ["FALL", "SPRING"] }),
@@ -679,7 +734,7 @@ describeLoaded("principle", () => {
           prerequisites: [{ count: 1, options: ["6.1010"] }],
         }),
       ],
-      [{ course: "6.1020", classRating: 5.8, professorRating: 6.0, url: "https://eval.test/6.1020" }],
+      [{ course: "6.1020", classRating: 5.8, url: "https://eval.test/6.1020" }],
     );
 
     const [hit] = await concept._search({ query: "software construction" });
