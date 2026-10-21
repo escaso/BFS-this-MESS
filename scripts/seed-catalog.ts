@@ -7,7 +7,7 @@
 // future synchronization would. CourseOffering has no action to write courses
 // other than load, so ratings and schedules stay empty.
 //
-// Run from code/: bun scripts/seed-catalog.ts   (safe to rerun)
+// Run from the repo root: bun scripts/seed-catalog.ts   (safe to rerun)
 
 import { client, db } from "../src/db.ts";
 import { ConstrainConcept, NoListing, type Term } from "../src/concepts/Constrain.ts";
