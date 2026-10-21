@@ -32,9 +32,8 @@ export type SnapshotCourse = {
   prerequisites: SnapshotDependency[];
   corequisites: SnapshotDependency[];
   rating?: { classRating: number; url: string };
-  // Facts for Constrain that CourseOffering does not keep (see the composition).
+  // A fact for Constrain that CourseOffering does not keep (see the composition).
   totalUnits: number;
-  technical: boolean;
 };
 export type Snapshot = { id: string; source: string; academicYear: number; courses: SnapshotCourse[] };
 

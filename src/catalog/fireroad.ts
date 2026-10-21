@@ -29,6 +29,9 @@ export type FireroadCourse = {
   rating?: number;
   gir_attribute?: string;
   hass_attribute?: string;
+  communication_requirement?: string;
+  joint_subjects?: string[];
+  old_id?: string;
 };
 
 export const FIREROAD_URL = "https://fireroad.mit.edu/courses/all?full=true";
@@ -202,16 +205,11 @@ function simplify(clauses: Clause[]): Clause[] {
  * (free text such as ''permission of instructor'') is dropped, as are options that are not
  * in the catalog; a group left with no options is dropped too.
  */
-export function dependenciesOf(
-  source: string | undefined,
-  known: Set<string>,
-  gir: (attribute: string) => string[],
-  stats: BuildStats,
-): SnapshotDependency[] {
+export function dependenciesOf(source: string | undefined, index: CatalogIndex, stats: BuildStats): SnapshotDependency[] {
   if (!source?.trim()) return [];
   let clauses: Clause[];
   try {
-    clauses = toClauses(parseRequirement(source), gir);
+    clauses = toClauses(parseRequirement(source), (attribute) => index.attribute(`GIR:${attribute}`) ?? []);
   } catch (e) {
     (e instanceof TooLarge ? stats.tooLarge : stats.unparsed).push(source);
     return [];
@@ -222,14 +220,62 @@ export function dependenciesOf(
       stats.freeTextGroups++;
       continue;
     }
-    const options = [...clause].filter((id): id is string => {
-      if (known.has(id!)) return true;
-      stats.unknownSubjects++;
-      return false;
-    });
-    if (options.length > 0) dependencies.push({ count: 1, options });
+    const options: string[] = [];
+    for (const id of clause as Set<string>) {
+      const current = index.canonical(id);
+      if (index.known.has(current)) options.push(current);
+      else stats.unknownSubjects++;
+    }
+    if (options.length > 0) dependencies.push({ count: 1, options: index.withJoint(options) });
   }
   return dependencies;
+}
+
+// ───────────── Catalog index ─────────────
+
+/** Lookups over Fireroad's courses that the catalog and the requirements both need. */
+export type CatalogIndex = {
+  /** Every subject, one record each, in subject order. */
+  courses: FireroadCourse[];
+  known: Set<string>;
+  /** The current number of a subject, given an old one (6.006 -> 6.1210), or the id itself. */
+  canonical(id: string): string;
+  /** The options together with their joint subjects (one class listed under two numbers), without repeats. */
+  withJoint(options: string[]): string[];
+  /** The current subjects that carry an attribute (GIR:CAL1, HASS-A, CI-H, ...), or null if it is not one. */
+  attribute(token: string): string[] | null;
+};
+
+export function indexCatalog(raw: FireroadCourse[]): CatalogIndex {
+  // The first record of a subject wins if Fireroad repeats one.
+  const courses = [...new Map(raw.toReversed().map((c) => [c.subject_id, c])).values()].sort((a, b) =>
+    a.subject_id.localeCompare(b.subject_id, "en", { numeric: true }),
+  );
+  const known = new Set(courses.map((c) => c.subject_id));
+  const renamed = new Map<string, string>();
+  for (const c of courses) if (c.old_id && !known.has(c.old_id)) renamed.set(c.old_id, c.subject_id);
+  const joint = new Map(courses.map((c) => [c.subject_id, (c.joint_subjects ?? []).filter((j) => known.has(j))]));
+
+  const byAttribute = new Map<string, string[]>();
+  const add = (key: string, subject: string) => byAttribute.set(key, [...(byAttribute.get(key) ?? []), subject]);
+  for (const c of courses) {
+    if (c.is_historical) continue;
+    // GIR:LAB is met by LAB and by LAB2 (half a lab) subjects; the others match exactly.
+    if (c.gir_attribute) for (const key of new Set([c.gir_attribute, c.gir_attribute.replace(/2$/, "")])) add(`GIR:${key}`, c.subject_id);
+    if (c.hass_attribute) {
+      add("HASS", c.subject_id);
+      for (const h of c.hass_attribute.split(",")) add(h.trim(), c.subject_id);
+    }
+    if (c.communication_requirement) add(c.communication_requirement, c.subject_id);
+  }
+
+  return {
+    courses,
+    known,
+    canonical: (id) => renamed.get(id) ?? id,
+    withJoint: (options) => [...new Set(options.flatMap((o) => [o, ...(joint.get(o) ?? [])]))],
+    attribute: (token) => byAttribute.get(token) ?? (/^(GIR:|HASS|CI-)/.test(token) ? [] : null),
+  };
 }
 
 // ───────────── Other attributes ─────────────
@@ -285,22 +331,9 @@ export function fromFireroad(
   { academicYear, id }: { academicYear: number; id: string },
 ): { snapshot: Snapshot; stats: BuildStats } {
   const stats: BuildStats = { freeTextGroups: 0, unknownSubjects: 0, unparsed: [], tooLarge: [] };
-  // The first record of a subject wins if Fireroad repeats one.
-  const all = [...new Map(raw.toReversed().map((c) => [c.subject_id, c])).values()].sort((a, b) =>
-    a.subject_id.localeCompare(b.subject_id, "en", { numeric: true }),
-  );
-  const known = new Set(all.map((c) => c.subject_id));
+  const index = indexCatalog(raw);
 
-  // GIR:LAB is met by LAB and by LAB2 (half a lab) subjects; the others match exactly.
-  const byGir = new Map<string, string[]>();
-  for (const c of all) {
-    if (!c.gir_attribute || c.is_historical) continue;
-    const family = c.gir_attribute.replace(/2$/, "");
-    for (const key of new Set([c.gir_attribute, family])) byGir.set(key, [...(byGir.get(key) ?? []), c.subject_id]);
-  }
-  const gir = (attribute: string) => byGir.get(attribute) ?? [];
-
-  const courses = all.map((c): SnapshotCourse => {
+  const courses = index.courses.map((c): SnapshotCourse => {
     const { units, totalUnits } = unitsOf(c);
     const description = c.description ?? "";
     const instructors = (c.instructors ?? []).map((s) => s.trim()).filter(Boolean);
@@ -323,11 +356,10 @@ export function fromFireroad(
       corequisitesText: c.corequisites ?? "",
       units,
       ...scheduleOf(c.schedule),
-      prerequisites: dependenciesOf(c.prerequisites, known, gir, stats),
-      corequisites: dependenciesOf(c.corequisites, known, gir, stats),
+      prerequisites: dependenciesOf(c.prerequisites, index, stats),
+      corequisites: dependenciesOf(c.corequisites, index, stats),
       ...(typeof c.rating === "number" ? { rating: { classRating: c.rating, url: evaluationUrl(c.subject_id) } } : {}),
       totalUnits,
-      technical: !c.hass_attribute,
     };
   });
 

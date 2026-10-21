@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  academicYearOf, dependenciesOf, fromFireroad, offeringOf, parseRequirement, scheduleOf, toClauses, unitsOf,
+  academicYearOf, dependenciesOf, fromFireroad, indexCatalog, offeringOf, parseRequirement, scheduleOf, toClauses, unitsOf,
   type BuildStats, type FireroadCourse,
 } from "../src/catalog/fireroad.ts";
 
@@ -17,6 +17,10 @@ import {
  * dependenciesOf:
  *   partition on groups: all subjects; some free text (dropped); some unknown subjects (dropped);
  *     a group left empty (dropped); empty or missing source; unparsable source (counted)
+ *   partition on an option: current number; old number (renumbered); has a joint subject
+ * indexCatalog:
+ *   partition on attribute: GIR (LAB includes LAB2), HASS and its categories, CI; historical subjects left out;
+ *     an attribute no subject has; not an attribute
  * offeringOf: historical; not offered this year; next year; an earlier year; normal
  * unitsOf: fixed; variable; zero
  * scheduleOf: lecture plus other sections; no lecture; evening; empty
@@ -77,10 +81,12 @@ describe("parseRequirement and toClauses", () => {
 });
 
 describe("dependenciesOf", () => {
-  const known = new Set(["6.100A", "6.1200", "18.03", "18.06", "6.1000", "6.1210"]);
+  const index = indexCatalog(
+    ["6.100A", "6.1200", "18.03", "18.06", "6.1000", "6.1210"].map((subject_id) => ({ subject_id, title: subject_id })),
+  );
 
   test("all subjects -> one dependency per group, count 1", () => {
-    expect(dependenciesOf("(6.1000/6.1210), (18.03/18.06)", known, noGir, stats())).toEqual([
+    expect(dependenciesOf("(6.1000/6.1210), (18.03/18.06)", index, stats())).toEqual([
       { count: 1, options: ["6.1000", "6.1210"] },
       { count: 1, options: ["18.03", "18.06"] },
     ]);
@@ -88,7 +94,7 @@ describe("dependenciesOf", () => {
 
   test("a group that can be met by permission is dropped and counted", () => {
     const s = stats();
-    expect(dependenciesOf("6.100A, (18.03/''permission of instructor'')", known, noGir, s)).toEqual([
+    expect(dependenciesOf("6.100A, (18.03/''permission of instructor'')", index, s)).toEqual([
       { count: 1, options: ["6.100A"] },
     ]);
     expect(s.freeTextGroups).toBe(1);
@@ -96,15 +102,27 @@ describe("dependenciesOf", () => {
 
   test("unknown subjects are dropped from a group, and an emptied group is dropped", () => {
     const s = stats();
-    expect(dependenciesOf("(6.100A/9.999), 9.998", known, noGir, s)).toEqual([{ count: 1, options: ["6.100A"] }]);
+    expect(dependenciesOf("(6.100A/9.999), 9.998", index, s)).toEqual([{ count: 1, options: ["6.100A"] }]);
     expect(s.unknownSubjects).toBe(2);
   });
 
+  test("an old number is read as the current one, and joint subjects are added as options", () => {
+    const renamed = indexCatalog([
+      { subject_id: "6.1210", title: "Algorithms", old_id: "6.006" },
+      { subject_id: "6.1200", title: "Discrete", joint_subjects: ["18.062"] },
+      { subject_id: "18.062", title: "Discrete", joint_subjects: ["6.1200"] },
+    ]);
+    expect(dependenciesOf("6.006, 6.1200", renamed, stats())).toEqual([
+      { count: 1, options: ["6.1210"] },
+      { count: 1, options: ["6.1200", "18.062"] },
+    ]);
+  });
+
   test("empty or missing -> none; unparsable -> none, and recorded", () => {
-    expect(dependenciesOf(undefined, known, noGir, stats())).toEqual([]);
-    expect(dependenciesOf("  ", known, noGir, stats())).toEqual([]);
+    expect(dependenciesOf(undefined, index, stats())).toEqual([]);
+    expect(dependenciesOf("  ", index, stats())).toEqual([]);
     const s = stats();
-    expect(dependenciesOf("(6.100A", known, noGir, s)).toEqual([]);
+    expect(dependenciesOf("(6.100A", index, s)).toEqual([]);
     expect(s.unparsed).toEqual(["(6.100A"]);
   });
 });
@@ -193,7 +211,7 @@ describe("fromFireroad", () => {
       prerequisites: [{ count: 1, options: ["18.01"] }, { count: 1, options: ["8.01"] }],
       corequisites: [],
       rating: { classRating: 5.38, url: expect.stringContaining("subjectCode=8.02") },
-      totalUnits: 12, technical: true,
+      totalUnits: 12,
     });
   });
 
@@ -201,12 +219,38 @@ describe("fromFireroad", () => {
     expect(get("21M.301").prerequisites).toEqual([{ count: 1, options: ["1.015"] }]);
   });
 
-  test("missing attributes take defaults; HASS subjects are not technical", () => {
+  test("missing attributes take defaults", () => {
     expect(get("21M.301")).toMatchObject({
-      lecturer: "Staff", level: "Graduate", units: "Arrange", totalUnits: 12, canBeRepeated: true, technical: false, terms: [],
+      lecturer: "Staff", level: "Graduate", units: "Arrange", totalUnits: 12, canBeRepeated: true, terms: [],
     });
     expect(get("18.01A")).toMatchObject({ offering: "Not currently listed", level: "" });
     expect(get("18.01")).not.toHaveProperty("rating");
     expect(stats.unparsed).toEqual([]);
+  });
+});
+
+describe("indexCatalog", () => {
+  const index = indexCatalog([
+    { subject_id: "18.01", title: "Calculus", gir_attribute: "CAL1" },
+    { subject_id: "18.01A", title: "Old Calculus", gir_attribute: "CAL1", is_historical: true },
+    { subject_id: "1.015", title: "Robots", gir_attribute: "LAB2" },
+    { subject_id: "5.310", title: "Lab", gir_attribute: "LAB" },
+    { subject_id: "21M.301", title: "Harmony", hass_attribute: "HASS-A" },
+    { subject_id: "21H.001", title: "History", hass_attribute: "HASS-A,HASS-H", communication_requirement: "CI-H" },
+  ]);
+
+  test("attributes: GIR (LAB includes LAB2), HASS and categories, CI; historical subjects left out", () => {
+    expect(index.attribute("GIR:CAL1")).toEqual(["18.01"]);
+    expect(index.attribute("GIR:LAB")?.sort()).toEqual(["1.015", "5.310"]);
+    expect(index.attribute("GIR:LAB2")).toEqual(["1.015"]);
+    expect(index.attribute("HASS")?.sort()).toEqual(["21H.001", "21M.301"]);
+    expect(index.attribute("HASS-H")).toEqual(["21H.001"]);
+    expect(index.attribute("CI-H")).toEqual(["21H.001"]);
+  });
+
+  test("an attribute no subject has -> none; not an attribute -> null", () => {
+    expect(index.attribute("GIR:REST")).toEqual([]);
+    expect(index.attribute("CI-M")).toEqual([]);
+    expect(index.attribute("18.01")).toBeNull();
   });
 });
