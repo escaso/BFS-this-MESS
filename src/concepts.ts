@@ -4,6 +4,7 @@ import shareSpec from "@design/concepts/Share.md" with { type: "text" };
 import constrainSpec from "@design/concepts/Constrain.md" with { type: "text" };
 import courseOfferingSpec from "@design/concepts/CourseOffering.md" with { type: "text" };
 import authenticationSpec from "@design/concepts/Authentication.md" with { type: "text" };
+import requirementsSpec from "@design/concepts/Requirements.md" with { type: "text" };
 
 import {
   RoadAlreadyOwned, NoSuchRoad as ShareNoSuchRoad, NotAnOwner, ShareWithOwner, NotShared, ShareConcept,
@@ -14,6 +15,9 @@ import {
   NotATerm, NoSuchDependency, NotCancelled, ConstrainConcept,
 } from "./concepts/Constrain.ts";
 import { LoadFailed, CourseOfferingConcept } from "./concepts/CourseOffering.ts";
+import {
+  LoadFailed as RequirementsLoadFailed, NoSuchChoice, NotAnAlternative, RequirementsConcept,
+} from "./concepts/Requirements.ts";
 import {
   EmptyCredentials, UsernameTaken, InvalidCredentials, NoSuchSession, AuthenticationConcept,
 } from "./concepts/Authentication.ts";
@@ -63,6 +67,16 @@ const courseOffering = registerConcept({
   refusals: { LOAD_FAILED: LoadFailed },
 });
 
+const requirements = registerConcept({
+  class: RequirementsConcept,
+  spec: requirementsSpec,
+  refusals: {
+    LOAD_FAILED: RequirementsLoadFailed,
+    NO_SUCH_CHOICE: NoSuchChoice,
+    NOT_AN_ALTERNATIVE: NotAnAlternative,
+  },
+});
+
 const authentication = registerConcept({
   class: AuthenticationConcept,
   spec: authenticationSpec,
@@ -79,6 +93,7 @@ export const applicationConceptSet = conceptSet(
     Share: share,
     Constrain: constrain,
     CourseOffering: courseOffering,
+    Requirements: requirements,
     Authentication: authentication,
   },
   {},

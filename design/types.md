@@ -16,6 +16,10 @@ instantiate Constrain with
 
 instantiate Authentication
 
+instantiate Requirements with
+  Subject is CourseId
+  Road is Constrain.Road
+
 instantiate Share with
   Road is Constrain.Road
   User is Authentication.User
