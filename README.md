@@ -15,3 +15,5 @@ Omar compares the paths semester by semester, using class ratings and unit count
 ![Typography](documentation/Typography.jpg)
 
 ## SCREEN RECORDING
+
+https://youtu.be/ZT8TmaLoSi4
