@@ -1,6 +1,6 @@
 <script setup lang="ts">
-// Edit a road's major, the settings of one semester (caps and lock) and its
-// pins. The major's requirements are shown in RequirementsView; the student's own
+// Edit a road's major, caps for all fall and spring semesters at once, the
+// settings of one semester (caps and lock) and its pins. The major's requirements are shown in RequirementsView; the student's own
 // requirement blocks are edited in BlocksEditor. Each edit calls the
 // backend, then tells App to reload the road, so every view stays in sync
 // without a page refresh.
@@ -106,6 +106,35 @@ async function saveSemester() {
   }, `${label(s)} saved.`);
 }
 
+// ---------- Caps for all semesters ----------
+
+// One cap typed once, sent as that cap on every fall and spring semester.
+// IAP and summer keep their own caps. An empty field leaves that cap alone.
+const allCaps = ref({ total: "", technical: "" });
+
+async function saveAll() {
+  const caps = { total: parseCap(allCaps.value.total), technical: parseCap(allCaps.value.technical) };
+  if (caps.total === "bad" || caps.technical === "bad") {
+    return emit("error", "A cap must be a whole number of units, at least 0, or empty for no cap.");
+  }
+  if (caps.total === null && caps.technical === null) return emit("error", "Give a cap to apply.");
+  const terms = seasonsOf(props.constraints, false);
+  const set = [
+    caps.total !== null && `max ${caps.total} units`,
+    caps.technical !== null && `max ${caps.technical} technical units`,
+  ].filter(Boolean);
+  const ok = await attempt(async () => {
+    for (const s of terms) {
+      for (const capType of ["total", "technical"] as const) {
+        const limit = caps[capType];
+        if (limit === null) continue;
+        await call("setCap", { road: props.road, year: s.year, term: s.term, capType, limit });
+      }
+    }
+  }, `Set ${set.join(" and ")} on all ${terms.length} fall and spring semesters.`);
+  if (ok) allCaps.value = { total: "", technical: "" };
+}
+
 // ---------- Pins ----------
 
 const pinForm = ref({ subject: "", season: key(seasons.value[0]) });
@@ -150,6 +179,20 @@ function unPin(subject: string) {
       @changed="emit('changed', $event)"
       @error="emit('error', $event)"
     />
+
+    <h2>All semesters</h2>
+    <p class="hint">
+      Sets the cap of each fall and spring semester. IAP and summer keep their own; you can still change any
+      semester below.
+    </p>
+    <form class="grid" @submit.prevent="saveAll">
+      <label>Max units <input v-model="allCaps.total" inputmode="numeric" placeholder="leave as is" /></label>
+      <label>
+        Max technical units
+        <input v-model="allCaps.technical" inputmode="numeric" placeholder="leave as is" />
+      </label>
+      <button :disabled="busy">Apply to all semesters</button>
+    </form>
 
     <h2>Semester settings</h2>
     <form class="grid" @submit.prevent="saveSemester">
