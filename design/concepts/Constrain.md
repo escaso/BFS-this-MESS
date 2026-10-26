@@ -6,7 +6,7 @@ Let a student state everything a multi-year course plan must satisfy (what they 
 
 ## Principle
 
-A student creates a road for a major, starting in a given semester. They record the credit they brought in as prior credit, pin the subjects they have taken to the semesters they took them in, and lock those semesters so that nothing else can be added to them. The major's requirements are added to the road as blocks, each asking for some number of subjects from a list of options. The student caps the units they are willing to take in a semester, and may pin subjects they have chosen for the future. They then ask for the options that still fit, or for plans that finish as early as possible. If no plan fits, they relax a cap, remove a pin, or move the end of the road later to widen the set of valid plans.
+A student creates a road for a major, starting in a given semester. They record the credit they brought in as prior credit, pin the subjects they have taken to the semesters they took them in, and lock those semesters so that nothing else can be added to them. The major's requirements are added to the road as blocks, each asking for some number of subjects from a list of options. The student caps the units they are willing to take in a semester, and may pin subjects they have chosen for the future. They then ask for the options that still fit, or for plans that finish as early as possible. A requirement with very many options, such as eight HASS subjects, is left to the student: a plan keeps an open slot for it in some semester, and the student asks which subjects could fill that slot and pins one. If no plan fits, they relax a cap, remove a pin, or move the end of the road later to widen the set of valid plans.
 
 ## Types
 
@@ -47,12 +47,15 @@ a set of Blocks with
   a technical Flag
   a group String
   an origin String
+  an early Flag
   Rule: A block is a requirement: the road needs at least count distinct subjects from the options of the block. count is at least 1.
   Rule: A subject that must be taken is a block with that one subject as its only option and a count of 1.
   Rule: A block with no options is ignored until it has one.
-  Rule: group says which blocks compete for subjects: one subject cannot count toward two blocks of the same group, but may count toward blocks of different groups. The blocks a student adds share the empty group; whoever lists blocks chooses their groups (a degree chart lets one subject meet several of its requirements, so each listed block can be a group of its own).
+  Rule: group says which blocks compete for subjects: one subject cannot count toward two blocks of the same group, but may count toward blocks of different groups. The blocks a student adds share the empty group; whoever lists blocks chooses their groups (for example, the blocks of one major in one group, and each requirement a subject may meet on top of others in a group of its own).
   Rule: origin names the requirement a block was listed from (e.g. "major6-3/4.2"); it is empty for a block the student adds. A block with an origin is a listed block: it is replaced, not edited, when the requirements change.
   Rule: technical says whether the subjects of the block count toward caps on technical units (see technical below). title is a name for the block, e.g. "Foundation", or empty.
+  Rule: early says plans take the subjects of the block as early as they can without finishing later (for example the GIRs). A block the student adds is not early. A block made before early existed is early if it has an origin and is not technical.
+  Rule: A block with more than 100 options is open. Plans do not choose subjects for an open block; they leave slots for it that the student fills (see slots below). Subjects that are taken, or chosen for other blocks, still count toward it.
 
 a set of Pins with
   a Road
@@ -79,8 +82,9 @@ a set of Semesters with
 a set of Listings with
   a unique Subject
   a units Number
+  a popularity Number
   a terms set of Term
-  Rule: units is the total units of the subject, as a number. terms are the terms the subject can run in.
+  Rule: units is the total units of the subject, as a number. terms are the terms the subject can run in. popularity is how many students usually take it (0 if unknown); among options that are otherwise equal, plans take the more popular.
 
 a set of Dependencies with
   a course Subject
@@ -97,6 +101,10 @@ a set of Cancellations with
   unique subject and year and term
   Rule: A cancellation says a subject is not offered in that season even though its terms allow it. A subject with no cancellation is assumed to be available.
 
+a Catalog with
+  an optional snapshot String
+  Rule: snapshot is the id of the last catalog snapshot whose subjects were all copied into Listings, Dependencies and Cancellations, so that a copy that was cut short is made again. Whoever copies may make it include a digest of the snapshot's contents, so that a snapshot edited under the same id is copied again.
+
 Rule: Listings, Dependencies and Cancellations are this concept's copy of the facts it needs about subjects. They are kept up to date by synchronizations with the concept that owns subject information, and by no other means.
 Rule: taken(road) is the prior credit of road plus every pinned subject. takenBefore(road, season) is the prior credit plus the subjects pinned to earlier seasons. takenBy(road, season) is the prior credit plus the subjects pinned to that season or an earlier one.
 Rule: canRun(subject, season) holds when the subject has a Listing, its terms include the term of season, and it has no Cancellation for season.
@@ -106,7 +114,9 @@ Rule: room(road, season) is the units still free in season after its pins: maxUn
 Rule: withinCaps(road, season) holds when neither room of season is negative. fitsRoom(road, subject, season) holds when the units of subject fit in the total room of season, and if technical(road, subject), in its technical room.
 Rule: canGoIn(road, subject, season) is the one test for adding a subject: season is unlocked and between the start and end of road, subject is not in taken(road), canRun(subject, season), dependenciesMet(road, subject, season), and fitsRoom(road, subject, season) all hold.
 Rule: covered(road, subjects) holds when, for each group, the subjects can be assigned to the blocks of road in that group so that every block with options gets at least count distinct options, and no subject is assigned to two blocks of the group.
-Rule: candidates(road) is the subjects a plan may add: every option of a block of road, plus every option of a dependency of a candidate or of a pinned subject, repeated until nothing new is added. A candidate that is only a prerequisite or corequisite is taken to meet that dependency; it counts toward a block only if it is also an option of that block.
+Rule: candidates(road) is the subjects a plan may add: every option of a block of road that is not open, plus every option of a dependency of a candidate or of a pinned subject, repeated until nothing new is added. A candidate that is only a prerequisite or corequisite is taken to meet that dependency; it counts toward a block only if it is also an option of that block.
+Rule: A slot is a place a plan keeps for a subject the student will choose. It stands for a set of open blocks, at most one of each group, whose options have at least 10 subjects in common, and it is filled by one of those common options. It takes 12 units of room, and counts toward technical room if one of its blocks is technical.
+Rule: slots(road, subjects) are made, for a plan taking subjects, from what the open blocks still need once taken(road) and subjects count toward them (assigned as in covered). Going through the open blocks from the fewest options to the most, each subject a block still needs is put into the first slot made so far that it may join (the slot has no block of its group, and the common options stay at least 10), or else into a new slot. So the 8 HASS subjects of the GIRs share slots with the HASS-A, HASS-H, HASS-S and CI-H subjects, and need 8 slots in all.
 Rule: reachable(road) is the subjects in taken(road), plus every candidate that canGoIn some season up to the end of road, working through the seasons in order and treating subjects reachable in earlier seasons as taken. Each subject is checked on its own, so two reachable subjects may not fit in the same season together.
 ```
 
@@ -222,7 +232,7 @@ addBlock(road: Road, count: Number, technical: Flag) : returns (block: Block)
     create a new block of road with this count and technical, no options, an empty title, an empty group and an empty origin
     returns block
 
-addListedBlock(road: Road, count: Number, title: String, technical: Flag, group: String, origin: String) : returns (block: Block)
+addListedBlock(road: Road, count: Number, title: String, technical: Flag, group: String, origin: String, early: Flag) : returns (block: Block)
   where road does not exist
   then
     refuses NO_SUCH_ROAD "There is no such road."
@@ -231,7 +241,7 @@ addListedBlock(road: Road, count: Number, title: String, technical: Flag, group:
     refuses BAD_COUNT "A block must require at least one subject."
   where road exists and count is at least 1
   then
-    create a new block of road with this count, title, technical, group and origin, and no options
+    create a new block of road with this count, title, technical, group, origin and early, and no options
     returns block
 
 removeListedBlocks(road: Road) : returns ()
@@ -383,8 +393,17 @@ setListing(subject: Subject, units: Number) : returns ()
     returns
   where subject has no Listing
   then
-    create a Listing for subject with this units and no terms
+    create a Listing for subject with this units, no terms and popularity 0
     returns
+
+setPopularity(subject: Subject, popularity: Number) : returns ()
+  where subject has a Listing
+  then
+    set the popularity of its Listing to popularity
+    returns
+  where subject has no Listing
+  then
+    refuses NO_LISTING "That subject is not known."
 
 addListingTerm(subject: Subject, term: Term) : returns ()
   where subject has no Listing
@@ -463,6 +482,15 @@ unmarkCancelled(subject: Subject, year: Number, term: Term) : returns ()
   then
     delete it
     returns
+
+markCatalog(snapshot: String) : returns ()
+  where snapshot is not empty
+  then
+    set the snapshot of Catalog to snapshot
+    returns
+  where snapshot is empty
+  then
+    refuses NO_SNAPSHOT "A catalog snapshot needs an id."
 ```
 
 ## Queries
@@ -474,7 +502,7 @@ _road(road: Road) : one (name: String, major: String, startYear: Number, startTe
 _prior(road: Road) : many (subject: Subject)
   where road exists. Answers each subject in the prior credit of road, or no rows if there are none.
 
-_blocks(road: Road) : many (block: Block, count: Number, subject: Subject, title: String, technical: Flag, group: String, origin: String)
+_blocks(road: Road) : many (block: Block, count: Number, subject: Subject, title: String, technical: Flag, group: String, origin: String, early: Flag)
   where road exists. Answers one row for each option of each block of road, ordered by block (listed blocks first, in the order they were added, then the student's), or no rows if there are none. A block with no options has no rows.
 
 _pins(road: Road) : many (subject: Subject, year: Number, term: Term)
@@ -504,12 +532,19 @@ _options(road: Road, includeIAPAndSummer: Flag) : many (year: Number, term: Term
     - canGoIn(road, subject, season)
   fitsByEnd is true if, with subject pinned to season, covered(road, reachable(road)) still holds. It is false when taking the option would push some block past the end of road: the student should move the end later (setEnd) before choosing it. Because reachable checks each subject on its own, fitsByEnd can be true when the subjects only fit one at a time; _findPath catches that case.
 
-_findPath(road: Road, includeIAPAndSummer: Flag, limit: Number) : many (plan: Number, year: Number, term: Term, subject: Subject)
-  where road exists and limit is at least 1. Answers up to limit plans, numbered from 1, with one row for each subject in each season of each plan (prior credit is in every plan but has no rows; see _prior). Each plan satisfies _satisfies, and locked semesters appear exactly as pinned. Plans are built, not searched for exhaustively, so that a whole degree can be planned:
-    1. Choose: for each group, pick subjects that cover its blocks, preferring subjects already taken or chosen for another group, then those needing the fewest new subjects before them (their own prerequisites, followed down).
-    2. Complete: add, for every chosen or pinned subject, the cheapest options of each dependency that is not yet met, until nothing is missing.
-    3. Schedule: from the first unlocked season of road, place the subjects season by season (FALL and SPRING always; IAP and SUMMER only if includeIAPAndSummer is true), each in the first season where canGoIn holds once its dependencies are placed. Subjects that more others wait on go first, and a subject needed by a pin goes before the pin.
-  Different plans come from choosing different options for the blocks. Plans are ordered breadth-first: by the season they finish in, then by the number of subjects they add. If some plan finishes by the end of road, only plans that finish by the end are answered; otherwise the earliest-finishing plans are answered, and the student can compare a plan's last season with the end to see that it needs extra semesters. If no plan can be built, answers no rows.
+_findPath(road: Road, includeIAPAndSummer: Flag, limit: Number) : many (plan: Number, year: Number, term: Term, subject: Subject, slot: String, title: String, units: Number, counts: String)
+  where road exists and limit is at least 1. Answers up to limit plans, numbered from 1, with one row for each subject in each season of each plan (prior credit is in every plan but has no rows; see _prior), and one row for each slot, whose subject is empty, whose slot is the ids of its blocks joined by commas, and whose title is the titles of its blocks joined by " · ". slot and title are empty for a subject. units is the units of the subject, or 12 for a slot. counts is the ids of the blocks, joined by commas, that the subject is counted toward in that plan (assigned as in covered, each group on its own), or empty if it is only there for a dependency; for a slot it is the slot's blocks. Each plan would satisfy _satisfies once its slots are filled, and locked semesters appear exactly as pinned. Plans are built, not searched for exhaustively, so that a whole degree can be planned:
+    1. Choose: for each group, pick subjects that cover its blocks, preferring subjects already taken or chosen for another group, then those needing the fewest new subjects before them (their own prerequisites, followed down; a subject every plan takes, the only options of a block, is not new), then the more popular. Then pick for each group again, in the same order, now preferring subjects chosen for the other groups, so that a requirement that may share subjects takes those of the others.
+    2. Complete: add, for every chosen or pinned subject, the cheapest options of each dependency that is not yet met, the more popular among equals, until nothing is missing.
+    3. Slots: make slots(road, subjects) and place them first, one per FALL or SPRING season in turn from the first unlocked season to the end of road (then again from the start), each where its 12 units fit.
+    4. Schedule: from the first unlocked season of road, place the subjects season by season (FALL and SPRING always; IAP and SUMMER only if includeIAPAndSummer is true), each in the first season where canGoIn holds once its dependencies are placed. Subjects that more others wait on go first, and a subject needed by a pin goes before the pin. Each plan is also scheduled with the subjects of early blocks (and what they need) first; that schedule is kept unless it finishes later, after the end of road. Electives (subjects chosen for a block that has other options, outside early blocks, that nothing else in the plan waits on) are placed last, from the end backwards, one per semester in turn, each in the latest season where canGoIn holds up to the later of the end of road and the plan's last season (or, if none, the first one where it does), so that the early semesters hold what later subjects need; as with early blocks, that schedule is kept unless it finishes later, after the end of road.
+  Different plans come from choosing different options for the blocks: leaving out one chosen subject, or every subject chosen for one block, at a time. Plans that take the same subjects count once. Plans are ordered breadth-first: by the season they finish in, then by the number of subjects they add. If some plan finishes by the end of road, only plans that finish by the end are answered; otherwise the earliest-finishing plans are answered. Among plans that finish in the same season, each next plan answered is the one with the most subjects that no plan answered before it has, so that the plans differ, and the student can compare a plan's last season with the end to see that it needs extra semesters. If no plan can be built, answers no rows.
+
+_slotOptions(road: Road, blocks: String, year: Number, term: Term) : many (subject: Subject)
+  where road exists. blocks is the ids of blocks of road joined by commas, as in a slot of _findPath. Answers, in subject order, each subject that is an option of every one of these blocks and canGoIn(road, subject, season) for this season, or no rows if there are none.
+
+_loadedCatalog() : one (found: Flag, id: String)
+  If a catalog snapshot has been marked, answers found = true with the id of the last one; otherwise answers found = false and an empty id.
 
 _roadOfBlock(block: Block) : optional (road: Road)
   Answers the road that block belongs to, or no row if block does not exist.

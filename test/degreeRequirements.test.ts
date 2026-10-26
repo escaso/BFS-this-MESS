@@ -12,6 +12,7 @@ import { createGateway } from "@mit-sdg/sync-engine/boundary";
 import type { BFSThisMessWire } from "../generated/wire.ts";
 import { assembleApplication } from "../src/assembly.ts";
 import { importCatalog } from "../src/catalog/import.ts";
+import { ConstrainConcept } from "../src/concepts/Constrain.ts";
 import type { SnapshotCourse } from "../src/concepts/CourseOffering.ts";
 import type { RequirementItem } from "../src/concepts/Requirements.ts";
 import { useFreshDb } from "./support.ts";
@@ -21,10 +22,13 @@ import { useFreshDb } from "./support.ts";
  *
  * NewRoad: partition on major: a major, the GIRs (not a major), unknown
  *   -> blocks of the major and of the GIRs are in place when it answers, with titles,
- *      origins, technical (major) / not technical (GIRs), each block its own group
+ *      origins, technical (major) / not technical (GIRs), and groups: the major's blocks share
+ *      the major's group, an overlay and each GIR block have their own; the GIRs' blocks are early
  * SetMajor: partition on major: another major, unknown; requester: owner, viewer
  *   -> listed blocks replaced, the student's own blocks kept
  * ChooseAlternative: partition on requester: owner, someone else; alternative: another one
+ * RefreshRequirements: partition on requester: owner, someone else, no session
+ *   -> listed blocks listed again, the student's kept
  *   -> blocks follow the choice; outline marks it chosen
  * ListMajors: only majors, in order
  * AddOption / AddPrior: partition on subject: known, unknown (NO_LISTING)
@@ -48,7 +52,7 @@ const item = (key: string, kind: RequirementItem["kind"], fields: Partial<Requir
 });
 
 const ITEMS = [
-  item("majorA/1", "BLOCK", { title: "Core", options: ["A.1"] }),
+  item("majorA/1", "BLOCK", { title: "Core", options: ["A.1"], overlay: true }),
   item("majorA/2", "CHOICE", { title: "Track" }),
   item("majorA/2.1", "GROUP", { parent: "majorA/2", title: "Theory" }),
   item("majorA/2.1.1", "BLOCK", { parent: "majorA/2.1", title: "Theory subjects", options: ["T.1", "T.2"] }),
@@ -138,6 +142,10 @@ describe("degree requirements", () => {
     expect(requirements.items.find((i) => i.item === "majorA/3")).toMatchObject({ kind: "NOTE", active: true });
     expect(requirements.girs.map((i) => i.item)).toEqual(["girs/1"]);
     expect(new Set(constraints.blocks.map((b) => b.origin))).toEqual(new Set(["majorA/1", "majorA/2.1.1", "girs/1"]));
+    const groups = new Map((await new ConstrainConcept(db())._blocks({ road })).map((b) => [b.origin, b.group]));
+    expect(Object.fromEntries(groups)).toEqual({ "majorA/1": "majorA/1", "majorA/2.1.1": "majorA", "girs/1": "girs/1" });
+    const early = new Map((await new ConstrainConcept(db())._blocks({ road })).map((b) => [b.origin, b.early]));
+    expect(Object.fromEntries(early)).toEqual({ "majorA/1": false, "majorA/2.1.1": false, "girs/1": true });
   });
 
   test("covers: NewRoad with the GIRs or an unknown major -> NO_SUCH_MAJOR, and no road", async () => {
@@ -190,6 +198,21 @@ describe("degree requirements", () => {
     expect(await api.addOption({ session, block: own.block, subject: "6.O1O" })).toMatchObject({ error: "NO_LISTING" });
     expect(await api.addPrior({ session, road, subject: "6.O1O" })).toMatchObject({ error: "NO_LISTING" });
     expect(await api.addPrior({ session, road, subject: "X.1" })).toEqual({});
+  });
+
+  test("covers: RefreshRequirements relists the blocks for the owner, keeps the student's, refuses others", async () => {
+    const ada = await signUp("ada");
+    const road = await newRoad(ada, "majorA");
+    const own = await api.addBlock({ session: ada, road, count: 1, technical: false });
+    if ("error" in own) throw new Error(String(own.error));
+    await api.addOption({ session: ada, block: own.block, subject: "X.1" });
+    const before = await blocks(ada, road);
+    expect(await api.refreshRequirements({ session: ada, road })).toEqual({});
+    expect(await blocks(ada, road)).toEqual(before);
+
+    const bob = await signUp("bob");
+    expect(await api.refreshRequirements({ session: bob, road })).toEqual({ error: "NO_SUCH_ROAD" });
+    expect(await api.refreshRequirements({ session: "nope", road })).toEqual({ error: "NO_SUCH_SESSION" });
   });
 
   test("covers: DeleteRoad forgets the road's choices", async () => {

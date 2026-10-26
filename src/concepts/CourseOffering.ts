@@ -32,8 +32,10 @@ export type SnapshotCourse = {
   prerequisites: SnapshotDependency[];
   corequisites: SnapshotDependency[];
   rating?: { classRating: number; url: string };
-  // A fact for Constrain that CourseOffering does not keep (see the composition).
+  // Facts for Constrain that CourseOffering does not keep (see the composition).
   totalUnits: number;
+  // Students who usually take it; absent in snapshots made before it existed.
+  enrollment?: number;
 };
 export type Snapshot = { id: string; source: string; academicYear: number; courses: SnapshotCourse[] };
 
@@ -265,6 +267,13 @@ export class CourseOfferingConcept {
       unitsKnown: /^\d+(\.\d+)?(-\d+(\.\d+)?)*$/.test(m.units ?? ""),
       terms: sortTerms(m.terms ?? []).join(" "),
     }));
+  }
+
+  async _matches({ course, query }: { course: string; query: string }) {
+    const m = await this.courses.findOne({ subject: course }, { projection: { name: 1, description: 1, courseId: 1 } });
+    if (!m) return { matches: false };
+    const q = query.toLowerCase();
+    return { matches: [m.name, m.description, m.courseId].some((f) => String(f ?? "").toLowerCase().includes(q)) };
   }
 
   async _terms({ course }: { course: string }): Promise<{ term: string }[]> {

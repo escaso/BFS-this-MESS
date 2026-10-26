@@ -95,9 +95,13 @@ export type BFSThisMessWire = {
     output: {
       "paths": {
         "plans": {
+          "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "slot": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["slot"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
           "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["title"]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["units"]>>;
           "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
@@ -214,6 +218,14 @@ export type BFSThisMessWire = {
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/refreshRequirements": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_COUNT" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_LISTING" | "NO_SUCH_BLOCK" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/register": {
     input: {
@@ -453,9 +465,13 @@ export type BFSThisMessWire = {
       };
       "paths": {
         "plans": {
+          "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "slot": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["slot"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
           "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["title"]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["units"]>>;
           "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
@@ -519,6 +535,26 @@ export type BFSThisMessWire = {
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/viewSlotOptions": {
+    input: {
+      "blocks": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>[0], ["blocks"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>[0], ["term"]>>;
+      "topic": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_matches"]>[0], ["query"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>[0], ["year"]>>;
+    };
+    output: {
+      "subjects": {
+        "subjects": {
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["name"]>>;
+          "subject": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_matches"]>[0], ["course"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>>>, ["subject"]>]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["units"]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/viewSubject": {
     input: {
@@ -644,9 +680,13 @@ export type BFSThisMessWireHttp = {
     output: {
       "paths": {
         "plans": {
+          "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "slot": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["slot"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
           "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["title"]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["units"]>>;
           "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
@@ -763,6 +803,14 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/refreshRequirements": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removeListedBlocks"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/register": {
     input: {
@@ -1002,9 +1050,13 @@ export type BFSThisMessWireHttp = {
       };
       "paths": {
         "plans": {
+          "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
+          "slot": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["slot"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["subject"]>>;
           "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["term"]>>;
+          "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["title"]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["units"]>>;
           "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["year"]>>;
         }[];
       };
@@ -1068,6 +1120,26 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/viewSlotOptions": {
+    input: {
+      "blocks": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>[0], ["blocks"]>>;
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>[0], ["term"]>>;
+      "topic": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_matches"]>[0], ["query"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>[0], ["year"]>>;
+    };
+    output: {
+      "subjects": {
+        "subjects": {
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["name"]>>;
+          "subject": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_matches"]>[0], ["course"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_slotOptions"]>>>, ["subject"]>]>>;
+          "units": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>>>, ["units"]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/viewSubject": {
     input: {

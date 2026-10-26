@@ -17,6 +17,8 @@ export type RequirementItem = {
   options: string[];
   approximate: boolean;
   technical: boolean;
+  // Absent in snapshots made before it existed: false.
+  overlay?: boolean;
   order: number;
 };
 export type RequirementsSnapshot = { id: string; source: string; lists: RequirementList[]; items: RequirementItem[] };
@@ -64,6 +66,7 @@ function parseSnapshot(text: string): RequirementsSnapshot {
       ITEM_KINDS.includes(i.kind) && Number.isInteger(i.count) && Number.isFinite(i.order) &&
       Array.isArray(i.options) && i.options.every(isString) &&
       typeof i.approximate === "boolean" && typeof i.technical === "boolean" &&
+      (i.overlay === undefined || typeof i.overlay === "boolean") &&
       // Parents come first, in the same list.
       (i.parent === null || i.parent === undefined || (parent !== undefined && parent!.list === i.list)) &&
       // A CHOICE holds GROUPs; anything else sits in a GROUP or at the top.
@@ -73,7 +76,7 @@ function parseSnapshot(text: string): RequirementsSnapshot {
       (i.kind === "GROUP" ? i.count === 0 : i.kind === "NOTE" ? i.count >= 0 : i.count >= 1) &&
       (i.kind !== "BLOCK" || i.options.length >= i.count);
     if (!valid) throw new LoadFailed();
-    items.set(i.key, { ...i, parent: i.parent ?? null });
+    items.set(i.key, { ...i, parent: i.parent ?? null, overlay: i.overlay ?? false });
   }
   return { id: parsed.id, source: parsed.source ?? "", lists: [...lists.values()], items: [...items.values()] };
 }
@@ -188,9 +191,17 @@ export class RequirementsConcept {
   }
 
   async _activeBlocks({ list, road }: { list: string; road: string }) {
+    const girs = (await this.lists.findOne({ _id: list }))?.kind === "GIRS";
+    // group(item): the blocks of a major share one group, except overlays; each GIR is its own.
     return (await this.#walk(list, road))
       .filter((w) => w.active && w.item.kind === "BLOCK")
-      .map(({ item }) => ({ item: item._id, title: item.title, count: item.count, technical: item.technical }));
+      .map(({ item }) => ({
+        item: item._id,
+        title: item.title,
+        count: item.count,
+        technical: item.technical,
+        group: girs || item.overlay ? item._id : list,
+      }));
   }
 
   async _options({ item }: { item: string }) {

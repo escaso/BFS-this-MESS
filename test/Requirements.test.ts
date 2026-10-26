@@ -176,7 +176,7 @@ describe("queries", () => {
 
   test("covers: _activeBlocks fields; unknown list", async () => {
     await concept.load({ snapshot: snapshot() });
-    expect(await concept._activeBlocks({ list: "girs", road: "r" })).toEqual([{ item: "girs/1", title: "Calculus", count: 1, technical: false }]);
+    expect(await concept._activeBlocks({ list: "girs", road: "r" })).toEqual([{ item: "girs/1", title: "Calculus", count: 1, technical: false, group: "girs/1" }]);
     expect(await concept._activeBlocks({ list: "nope", road: "r" })).toEqual([]);
   });
 

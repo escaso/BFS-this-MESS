@@ -66,7 +66,7 @@ Rule: level is e.g. "Undergraduate" vs "Graduate". terms holds e.g. FALL, IAP, S
 Rule: prerequisitesText and corequisitesText are the requirements as the listing words them (e.g. "6.100A, (6.1200/18.062)" or "''Permission of instructor''"), or empty if there are none. They are for reading; Dependencies holds what a plan must satisfy.
 Rule: A snapshot covers every term of an academic year, so terms holds the terms of the last snapshot that listed the subject.
 Rule: Dependencies is NOT recursive: if a prereq has a prereq, only the direct pre-reqs are listed. The prerequisite graph is derived from Dependencies.
-Rule: A dependency says that course needs at least count of its options. count is at least 1. An "or" in a subject's prerequisites is a dependency with count 1 and several options; an "and" is several dependencies. A group of the listing that can be met without a subject (e.g. "18.03/''permission of instructor''") is not a dependency.
+Rule: A dependency says that course needs at least count of its options. count is at least 1. An "or" in a subject's prerequisites is a dependency with count 1 and several options; an "and" is several dependencies. An alternative that is only free text, such as permission of instructor, is left out of a group that also names subjects, so that a plan takes the subjects: "18.03/''permission of instructor''" is a dependency on 18.03. A group that is only free text (e.g. "''permission of instructor''") is not a dependency.
 Rule: A cancellation says a subject is not offered in that season even though its terms allow it. A subject with no cancellation is assumed to be offered in the terms it lists. Cancellations are derived from offering by load (see load).
 Rule: Courses without evaluation data have no entry in Ratings.
 Rule: snapshot is the id of the last snapshot loaded, so that the same snapshot is not loaded twice.
@@ -118,6 +118,9 @@ _ratings(course: Subject) : one (found: Flag, classRating: Number, url: String)
 
 _search(query?: String, level?: String, term?: Term) : many (course: Subject, name: String, courseId: String, level: String, units: String, unitsKnown: Flag, terms: String)
   Answers every course that satisfies each filter that is given, or every course if none is given, ordered by course Id with numbers compared as numbers (so 6.1010 comes before 18.01). query matches courses whose name, description or course Id contains it, ignoring case (an empty query is treated as not given); level matches courses of that level, ignoring case; term matches courses whose terms include it. units is empty if the course has none. unitsKnown is false when units is absent or has no numeric total (e.g. "Arrange"); other concepts then assume 12 units, so an interface can show that these units are an assumption. terms is the terms of the course in season order, separated by spaces (e.g. "FALL SPRING"), or empty.
+
+_matches(course: Subject, query: String) : one (matches: Flag)
+  Answers true if course is in Courses and query is empty or its name, description or course Id contains query, ignoring case; otherwise false.
 
 _terms(course: Subject) : many (term: Term)
   where course is in Courses. Answers each term in the terms of course, in season order, or no rows if there are none.

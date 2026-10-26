@@ -1381,17 +1381,17 @@ describe("listed blocks", () => {
   it("covers addListedBlock refusals, fields in _blocks, and order (listed first)", async () => {
     const road = await makeRoad();
     await expectRefusal("addListedBlock", "BAD_COUNT",
-      c.addListedBlock({ road, count: 0, title: "T", technical: true, group: "g", origin: "o" }));
+      c.addListedBlock({ road, count: 0, title: "T", technical: true, group: "g", origin: "o", early: false }));
     await expectRefusal("addListedBlock", "NO_SUCH_ROAD",
-      c.addListedBlock({ road: "nope", count: 1, title: "T", technical: true, group: "g", origin: "o" }));
+      c.addListedBlock({ road: "nope", count: 1, title: "T", technical: true, group: "g", origin: "o", early: false }));
 
     const mine = await addBlock(road, 1, ["A"], true);
-    const { block: listedBlock } = await c.addListedBlock({ road, count: 1, title: "Foundation", technical: false, group: "major6-3/4", origin: "major6-3/4" });
+    const { block: listedBlock } = await c.addListedBlock({ road, count: 1, title: "Foundation", technical: false, group: "major6-3/4", origin: "major6-3/4", early: false });
     await listed("B");
     await c.addOption({ block: listedBlock, subject: "B" });
     expect(await c._blocks({ road })).toEqual([
-      { block: listedBlock, count: 1, subject: "B", title: "Foundation", technical: false, group: "major6-3/4", origin: "major6-3/4" },
-      { block: mine, count: 1, subject: "A", title: "", technical: true, group: "", origin: "" },
+      { block: listedBlock, count: 1, subject: "B", title: "Foundation", technical: false, group: "major6-3/4", origin: "major6-3/4", early: false },
+      { block: mine, count: 1, subject: "A", title: "", technical: true, group: "", origin: "", early: false },
     ]);
   });
 
@@ -1400,7 +1400,7 @@ describe("listed blocks", () => {
     await expectRefusal("removeListedBlocks", "NO_SUCH_ROAD", c.removeListedBlocks({ road: "nope" }));
     const mine = await addBlock(road, 1, ["A"]);
     expect(await c.removeListedBlocks({ road })).toEqual({});
-    const { block } = await c.addListedBlock({ road, count: 1, title: "", technical: true, group: "g", origin: "o" });
+    const { block } = await c.addListedBlock({ road, count: 1, title: "", technical: true, group: "g", origin: "o", early: false });
     await listed("B");
     await c.addOption({ block, subject: "B" });
     await c.removeListedBlocks({ road });
@@ -1430,7 +1430,7 @@ describe("groups", () => {
     const road = await makeRoad();
     await addSubject("S", 6);
     for (const group of ["g1", "g1"]) {
-      const { block } = await c.addListedBlock({ road, count: 1, title: "", technical: false, group, origin: "o" });
+      const { block } = await c.addListedBlock({ road, count: 1, title: "", technical: false, group, origin: "o", early: false });
       await c.addOption({ block, subject: "S" });
     }
     await c.pin({ road, subject: "S", year: 2026, term: "FALL" });
@@ -1438,7 +1438,7 @@ describe("groups", () => {
 
     const other = await makeRoad();
     for (const group of ["g1", "g2"]) {
-      const { block } = await c.addListedBlock({ road: other, count: 1, title: "", technical: false, group, origin: "o" });
+      const { block } = await c.addListedBlock({ road: other, count: 1, title: "", technical: false, group, origin: "o", early: false });
       await c.addOption({ block, subject: "S" });
     }
     await c.pin({ road: other, subject: "S", year: 2026, term: "FALL" });
@@ -1518,5 +1518,231 @@ describe("_findPath plans", () => {
     const finishes = plans.map(lastSeason);
     expect(finishes).toEqual([...finishes].sort((a, b) => a - b));
     expect(plans[0].map((r) => r.subject)).toEqual(["A"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Open blocks and slots, and plans that differ
+// ---------------------------------------------------------------------------
+
+/*
+ * open blocks (more than 100 options) in _findPath
+ *   partition on open blocks: one; nested in another of a different group; partly met by a pin
+ *   partition on caps: none, binding (a slot takes room)
+ * _slotOptions
+ *   partition on a subject: option of every block of the slot or not; runs in the season or not;
+ *     prerequisites met or not; taken or not
+ * groups in _findPath: two blocks of one group sharing options get distinct subjects
+ * plans that differ: a block with spare options gives a plan with none of the first plan's picks
+ */
+describe("open blocks and slots", () => {
+  const A = Array.from({ length: 101 }, (_, i) => `HA.${i}`);
+  const S = Array.from({ length: 101 }, (_, i) => `HS.${i}`);
+
+  async function listedBlock(road: string, count: number, title: string, group: string, options: string[]) {
+    const { block } = await c.addListedBlock({ road, count, title, technical: false, group, origin: title, early: false });
+    for (const s of options) {
+      if (!known.has(s)) await addSubject(s, 12);
+      await c.addOption({ block, subject: s });
+    }
+    return block;
+  }
+
+  /** HASS-A and HASS-S (one subject each) inside 3 HASS subjects, each its own group, as in the GIRs. */
+  async function hassRoad() {
+    const road = await makeRoad();
+    const a = await listedBlock(road, 1, "A", "a", A);
+    const s = await listedBlock(road, 1, "S", "s", S);
+    const hass = await listedBlock(road, 3, "HASS", "hass", [...A, ...S]);
+    return { road, a, s, hass };
+  }
+
+  const slotsOf = (plan: (PlanRow & { slot: string; title: string })[]) => plan.filter((r) => r.slot);
+
+  it("covers an open block: slots instead of subjects, one per semester in turn", async () => {
+    const road = await makeRoad();
+    const hass = await listedBlock(road, 2, "HASS", "hass", A);
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 3 })) as any;
+    expect(plan).toEqual([
+      { plan: 1, year: 2026, term: "FALL", subject: "", slot: hass, title: "HASS", units: 12, counts: hass },
+      { plan: 1, year: 2027, term: "SPRING", subject: "", slot: hass, title: "HASS", units: 12, counts: hass },
+    ]);
+    expect(await satisfied(road)).toBe(false); // slots are not subjects
+  });
+
+  it("covers nested open blocks sharing slots, and a pin filling part of them", async () => {
+    const { road, a, s, hass } = await hassRoad();
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 })) as any;
+    // A and S have as many options, so either may come first.
+    expect(sorted(slotsOf(plan).map((r) => r.slot))).toEqual(sorted([`${a},${hass}`, `${s},${hass}`, hass]));
+    expect(sorted(slotsOf(plan).map((r) => r.title))).toEqual(["A · HASS", "HASS", "S · HASS"]);
+
+    await c.pin({ road, subject: "HA.5", year: 2026, term: "FALL" });
+    const [after] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 })) as any;
+    expect(sorted(slotsOf(after).map((r) => r.title))).toEqual(["HASS", "S · HASS"]);
+  });
+
+  it("covers a slot taking room under a cap", async () => {
+    const road = await makeRoad();
+    await listedBlock(road, 1, "HASS", "hass", A);
+    await addSubject("X", 12, ["FALL"]);
+    await addBlock(road, 1, ["X"]);
+    await c.setCap({ road, year: 2026, term: "FALL", capType: "total", limit: 12 });
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(keys(plan)).toEqual(["2026-FALL-", "2027-FALL-X"]);
+  });
+
+  it("covers _slotOptions: common options that can go in the season", async () => {
+    const { road, a, hass } = await hassRoad();
+    await c.removeListingTerm({ subject: "HA.0", term: "FALL" }); // does not run in the fall
+    await addSubject("Z", 12);
+    await prerequisite("HA.1", ["Z"]); // needs Z first
+    await c.pin({ road, subject: "HA.2", year: 2027, term: "SPRING" }); // taken
+    const fall = (await c._slotOptions({ road, blocks: `${a},${hass}`, year: 2026, term: "FALL" })).map((r) => r.subject);
+    expect(fall).toHaveLength(98);
+    expect(fall.slice(0, 3)).toEqual(["HA.3", "HA.4", "HA.5"]);
+    expect(fall.some((x) => x.startsWith("HS."))).toBe(false); // not an option of A
+    const spring = (await c._slotOptions({ road, blocks: a, year: 2027, term: "SPRING" })).map((r) => r.subject);
+    expect(spring.slice(0, 2)).toEqual(["HA.0", "HA.3"]);
+    expect(await c._slotOptions({ road, blocks: "nope", year: 2026, term: "FALL" })).toEqual([]);
+  });
+
+  it("covers two blocks of one group sharing options: distinct subjects", async () => {
+    const road = await makeRoad();
+    await listedBlock(road, 1, "Application CI-M", "major", ["P", "Q"]);
+    await listedBlock(road, 1, "Mandatory Application CI-M", "major", ["P", "Q"]);
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(sorted(plan.map((r) => r.subject))).toEqual(["P", "Q"]);
+  });
+
+  it("covers plans that differ: the next plan takes other options of a block", async () => {
+    const road = await makeRoad();
+    for (const x of ["A", "B", "C", "D"]) await addSubject(x, 12);
+    await addBlock(road, 2, ["A", "B", "C", "D"]);
+    const plans = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 2 }));
+    expect(sorted(plans[0].map((r) => r.subject))).toEqual(["A", "B"]);
+    expect(sorted(plans[1].map((r) => r.subject))).toEqual(["C", "D"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Which options plans prefer, and early blocks
+// ---------------------------------------------------------------------------
+
+/*
+ * setPopularity: partition on subject: has a Listing, has none
+ * choosing: partition on equal-cost options: different popularity
+ *   partition on a group that may share: shares a subject chosen for another group; none to share
+ *   partition on an elective's prerequisite: a subject every plan takes, a new subject
+ * early blocks: partition on room: enough for early subjects first; only if the plan finishes later
+ */
+describe("preferences and early blocks", () => {
+  async function listedBlock(road: string, count: number, group: string, options: string[], early = false) {
+    const { block } = await c.addListedBlock({ road, count, title: group, technical: !early, group, origin: group, early });
+    for (const s of options) await c.addOption({ block, subject: s });
+    return block;
+  }
+
+  it("covers setPopularity, and the more popular of two equal options taken", async () => {
+    await expectRefusal("setPopularity", "NO_LISTING", c.setPopularity({ subject: "nope", popularity: 3 }));
+    const road = await makeRoad();
+    await addSubject("A.1", 12);
+    await addSubject("Z.9", 12);
+    expect(await c.setPopularity({ subject: "Z.9", popularity: 300 })).toEqual({});
+    await addBlock(road, 1, ["A.1", "Z.9"]);
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(plan.map((r) => r.subject)).toEqual(["Z.9"]);
+  });
+
+  it("covers a group that may share taking a subject chosen for another group", async () => {
+    const road = await makeRoad();
+    for (const s of ["CORE", "CIM.A", "CIM.B"]) await addSubject(s, 12);
+    await c.setPopularity({ subject: "CIM.A", popularity: 1000 }); // would win on its own
+    await listedBlock(road, 1, "major", ["CORE", "CIM.B"]);
+    await listedBlock(road, 1, "cim", ["CIM.A", "CIM.B"]); // fewer spare options: chosen first
+    await c.setPopularity({ subject: "CIM.B", popularity: 10 });
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(plan.map((r) => r.subject)).toEqual(["CIM.B"]); // one subject meets both
+  });
+
+  it("covers an elective whose prerequisite every plan takes costing no more than one without", async () => {
+    const road = await makeRoad();
+    for (const s of ["CORE", "AFTER", "ALONE", "LAST"]) await addSubject(s, 12);
+    await prerequisite("AFTER", ["CORE"]);
+    await c.setPopularity({ subject: "AFTER", popularity: 50 });
+    await addBlock(road, 1, ["CORE"]);
+    await addBlock(road, 1, ["AFTER", "ALONE"]);
+    await c.pin({ road, subject: "LAST", year: 2027, term: "SPRING" }); // both choices finish then
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(sorted(plan.map((r) => r.subject))).toEqual(["AFTER", "CORE", "LAST"]);
+  });
+
+  it("covers early subjects placed first when room allows, but not at the cost of finishing later", async () => {
+    const road = await makeRoad();
+    await addSubject("GIR", 12);
+    await addSubject("M1", 12, ["FALL"]);
+    await addSubject("M2", 12, ["FALL"]);
+    await prerequisite("M2", ["M1"]);
+    await listedBlock(road, 1, "girs/1", ["GIR"], true);
+    await addBlock(road, 1, ["M2"]);
+    for (const [year, term] of [[2026, "FALL"], [2027, "SPRING"], [2027, "FALL"]] as const) {
+      await c.setCap({ road, year, term, capType: "total", limit: 12 });
+    }
+    await c.setEnd({ road, year: 2027, term: "FALL" });
+    // Room for one subject a semester, and M1 and M2 only run in the fall: GIR first
+    // would push them a year later, past the end, so it waits.
+    let [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(keys(plan)).toEqual(["2026-FALL-M1", "2027-SPRING-GIR", "2027-FALL-M2"]);
+
+    await c.setCap({ road, year: 2026, term: "FALL", capType: "total", limit: 24 });
+    [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(keys(plan).slice(0, 2).sort()).toEqual(["2026-FALL-GIR", "2026-FALL-M1"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Electives last, and what each subject counts toward
+// ---------------------------------------------------------------------------
+
+/*
+ * electives in _findPath: partition on an elective: nothing waits on it (placed from the end
+ *   backwards); another subject needs it (placed as early as it can go); only if it finishes later
+ * counts in _findPath rows: partition on a subject: counted toward a block; only a prerequisite
+ */
+describe("electives and counts", () => {
+  it("covers an elective nothing waits on placed in the last semester, a required subject first", async () => {
+    const road = await makeRoad();
+    for (const s of ["CORE", "E1", "E2"]) await addSubject(s, 12);
+    await addBlock(road, 1, ["CORE"]);
+    await addBlock(road, 1, ["E1", "E2"]);
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(keys(plan)).toEqual(["2026-FALL-CORE", "2030-SPRING-E1"]);
+  });
+
+  it("covers an elective another subject needs placed early, and counts of each subject", async () => {
+    const road = await makeRoad();
+    for (const s of ["E1", "E2", "LATER", "PRE"]) await addSubject(s, 12);
+    await prerequisite("LATER", ["E1"]);
+    await prerequisite("E1", ["PRE"]);
+    const electives = await addBlock(road, 1, ["E1", "E2"]);
+    const later = await addBlock(road, 1, ["LATER"]);
+    const rows = (await c._findPath({ road, includeIAPAndSummer: false, limit: 1 })) as (PlanRow & { counts: string })[];
+    expect(keys(rows)).toEqual(["2026-FALL-PRE", "2027-SPRING-E1", "2027-FALL-LATER"]);
+    expect(Object.fromEntries(rows.map((r) => [r.subject, r.counts]))).toEqual({ PRE: "", E1: electives, LATER: later });
+  });
+
+  it("covers electives taken early when deferring them would finish later", async () => {
+    const road = await makeRoad();
+    await c.setEnd({ road, year: 2027, term: "SPRING" });
+    for (const s of ["A", "B", "E1", "E2"]) await addSubject(s, 12);
+    await addBlock(road, 2, ["A", "B"]);
+    await addBlock(road, 1, ["E1", "E2"]);
+    for (const [year, term] of [[2026, "FALL"], [2027, "SPRING"]] as const) {
+      await c.setCap({ road, year, term, capType: "total", limit: 24 });
+    }
+    // Deferred, E1 would wait for SPRING 2027, which A and B fill: it goes in FALL 2026 instead.
+    const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
+    expect(lastSeason(plan)).toBe(rank(2027, "SPRING"));
+    expect(plan).toHaveLength(3);
   });
 });

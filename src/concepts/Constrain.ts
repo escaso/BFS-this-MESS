@@ -60,6 +60,11 @@ export class NoListing extends Refusal {
     super("NO_LISTING", message);
   }
 }
+export class NoSnapshot extends Refusal {
+  constructor(message = "A catalog snapshot needs an id.") {
+    super("NO_SNAPSHOT", message);
+  }
+}
 export class AlreadyPrior extends Refusal {
   constructor(message = "That subject is already prior credit.") {
     super("ALREADY_PRIOR", message);
@@ -124,6 +129,7 @@ interface Block {
   technical?: boolean;
   group?: string;
   origin?: string;
+  early?: boolean;
 }
 
 interface Semester {
@@ -152,6 +158,7 @@ interface Listing {
   _id: string; // subject
   units: number;
   terms: Term[];
+  popularity?: number; // absent on listings made before it existed: 0
 }
 
 interface DependencyRecord {
@@ -239,7 +246,10 @@ interface Ctx {
   endKey: number;
   prior: Set<string>;
   blocks: Block[]; // only blocks with options
+  closed: Block[]; // the blocks plans choose subjects for
+  open: Block[]; // the blocks plans leave slots for
   technical: Set<string>; // technical(road, subject): options of technical blocks
+  early: Map<string, number>; // options of early blocks -> 0 if in a narrow one (a science GIR), else 1
   pins: Placed;
   semesters: Map<number, Semester>;
   listings: Map<string, Listing>;
@@ -322,10 +332,14 @@ function canGoIn(
  */
 function matching(blocks: Block[], subjects: Set<string>, prefer?: (options: string[]) => string[]) {
   const slots: string[][] = [];
-  for (const b of blocks) {
+  const blockOf: number[] = [];
+  blocks.forEach((b, j) => {
     const options = prefer ? prefer(b.options) : b.options;
-    for (let i = 0; i < Math.min(b.count, b.options.length); i++) slots.push(options);
-  }
+    for (let i = 0; i < Math.min(b.count, b.options.length); i++) {
+      slots.push(options);
+      blockOf.push(j);
+    }
+  });
   const slotOf = new Map<string, number>();
   const assign = (slot: number, seen: Set<string>): boolean => {
     for (const s of slots[slot]) {
@@ -341,7 +355,10 @@ function matching(blocks: Block[], subjects: Set<string>, prefer?: (options: str
   };
   let size = 0;
   for (let i = 0; i < slots.length; i++) if (assign(i, new Set())) size++;
-  return { size, matched: new Set(slotOf.keys()) };
+  const perBlock = blocks.map(() => 0);
+  for (const slot of slotOf.values()) perBlock[blockOf[slot]]++;
+  const assigned = new Map([...slotOf].map(([s, slot]) => [s, blocks[blockOf[slot]]]));
+  return { size, matched: new Set(slotOf.keys()), perBlock, assigned };
 }
 
 const groupOf = (b: Block) => b.group ?? "";
@@ -353,17 +370,17 @@ function byGroup(blocks: Block[]): Block[][] {
 }
 
 /** Within each group a subject counts toward one block; across groups it may count again. */
-function coverage(ctx: Ctx, subjects: Set<string>): number {
-  return byGroup(ctx.blocks).reduce((n, blocks) => n + matching(blocks, subjects).size, 0);
+function coverage(blocks: Block[], subjects: Set<string>): number {
+  return byGroup(blocks).reduce((n, group) => n + matching(group, subjects).size, 0);
 }
 
-function covered(ctx: Ctx, subjects: Set<string>): boolean {
-  return coverage(ctx, subjects) === ctx.blocks.reduce((n, b) => n + Math.min(b.count, b.options.length), 0) &&
-    ctx.blocks.every((b) => b.options.length >= b.count);
+function covered(ctx: Ctx, subjects: Set<string>, blocks = ctx.blocks): boolean {
+  return coverage(blocks, subjects) === blocks.reduce((n, b) => n + Math.min(b.count, b.options.length), 0) &&
+    blocks.every((b) => b.options.length >= b.count);
 }
 
 function blockOptions(ctx: Ctx): string[] {
-  return [...new Set(ctx.blocks.flatMap((b) => b.options))].sort();
+  return [...new Set(ctx.closed.flatMap((b) => b.options))].sort();
 }
 
 /** Options of every dependency of the given subjects, followed transitively. */
@@ -411,8 +428,8 @@ function reachable(ctx: Ctx, placed: Placed): Set<string> {
   return reach;
 }
 
-function satisfies(ctx: Ctx, placed: Placed): boolean {
-  if (!covered(ctx, takenSet(ctx, placed))) return false;
+function satisfies(ctx: Ctx, placed: Placed, blocks = ctx.blocks): boolean {
+  if (!covered(ctx, takenSet(ctx, placed), blocks)) return false;
   for (const [subject, k] of placed) {
     if (!canRun(ctx, subject, k) || !dependenciesMet(ctx, placed, subject, k)) return false;
     const r = room(ctx, placed, k);
@@ -426,12 +443,89 @@ const signature = (placed: Placed) =>
 
 const HORIZON_YEARS = 4; // how far past the end of the road _findPath may look
 const MAX_ATTEMPTS = 40; // plans built before choosing the best
+const OPEN = 100; // a block with more options than this is open: plans leave slots for it
+const SLOT_UNITS = 12;
+const SLOT_CHOICES = 10; // the fewest subjects that may fill a slot
+
+// A slot stands in the plan as a subject whose id holds its blocks: "<block>,<block>#<n>".
+const isSlot = (s: string) => s.includes("#");
+const slotBlocks = (s: string) => s.slice(0, s.indexOf("#"));
+
+/**
+ * slots(road, subjects): what the open blocks still need once taken and chosen subjects
+ * count toward them, as slots. A slot takes one block of a group at most, and its blocks
+ * keep at least SLOT_CHOICES options in common, so that the student can fill it with one
+ * subject. Each slot is registered in ctx as a listing, so that it takes room.
+ */
+function makeSlots(ctx: Ctx, chosen: Set<string>): string[] {
+  if (ctx.open.length === 0) return [];
+  const have = new Set([...takenSet(ctx, ctx.pins), ...chosen]);
+  const need = new Map<Block, number>();
+  for (const group of byGroup(ctx.blocks)) {
+    const { perBlock } = matching(group, have);
+    group.forEach((b, j) => {
+      if (ctx.open.includes(b)) need.set(b, Math.min(b.count, b.options.length) - perBlock[j]);
+    });
+  }
+  const slots: { blocks: Block[]; common: Set<string> }[] = [];
+  for (const b of [...ctx.open].sort((x, y) => x.options.length - y.options.length || (x.id < y.id ? -1 : 1))) {
+    let left = need.get(b) ?? 0;
+    for (const slot of slots) {
+      if (left === 0) break;
+      if (slot.blocks.some((x) => groupOf(x) === groupOf(b))) continue;
+      const common = new Set(b.options.filter((o) => slot.common.has(o)));
+      if (common.size < SLOT_CHOICES) continue;
+      slot.blocks.push(b);
+      slot.common = common;
+      left--;
+    }
+    for (; left > 0; left--) slots.push({ blocks: [b], common: new Set(b.options) });
+  }
+  const seen = new Map<string, number>();
+  return slots.map(({ blocks }) => {
+    const ids = blocks.map((b) => b.id).join(",");
+    const id = `${ids}#${(seen.get(ids) ?? 0) + 1}`;
+    seen.set(ids, (seen.get(ids) ?? 0) + 1);
+    ctx.listings.set(id, { _id: id, units: SLOT_UNITS, terms: TERMS });
+    if (blocks.some((x) => x.technical ?? true)) ctx.technical.add(id);
+    return id;
+  });
+}
 
 /**
  * cost(s): about how many subjects not yet taken a plan needs in order to take s, s included:
  * 1 plus the cheapest options of each of its dependencies, followed down. Infinity when s
  * cannot be taken (no listing, or a dependency that cannot be met).
  */
+const NARROW_EARLY = 20; // an early block with at most this many options is taken first of all
+
+/** Options of early blocks: 0 if one of its early blocks is narrow (a science GIR), else 1 (REST, the lab). */
+function earlyOptions(blocks: Block[]): Map<string, number> {
+  const out = new Map<string, number>();
+  // Blocks made before early existed: listed and not technical (the GIRs).
+  for (const b of blocks.filter((b) => b.early ?? (!!b.origin && b.technical === false))) {
+    const tier = b.options.length <= NARROW_EARLY ? 0 : 1;
+    for (const o of b.options) out.set(o, Math.min(out.get(o) ?? 1, tier));
+  }
+  return out;
+}
+
+/** How schedule orders early subjects: narrow ones, then the rest, first; all of them first; or not at all. */
+type EarlyMode = "tiered" | "flat" | "none";
+
+const popularity = (ctx: Ctx, s: string) => ctx.listings.get(s)?.popularity ?? 0;
+
+/** More popular first, then by subject. */
+const byPopularity = (ctx: Ctx) => (a: string, b: string) =>
+  popularity(ctx, b) - popularity(ctx, a) || (a < b ? -1 : a > b ? 1 : 0);
+
+/** Subjects every plan takes: taken, and the only options of closed blocks. */
+function required(ctx: Ctx): Set<string> {
+  const out = takenSet(ctx, ctx.pins);
+  for (const b of ctx.closed) if (b.options.length <= b.count) for (const o of b.options) out.add(o);
+  return out;
+}
+
 function costs(ctx: Ctx, given: Set<string>) {
   const memo = new Map<string, number>();
   const visiting = new Set<string>();
@@ -461,22 +555,39 @@ function chooseSubjects(ctx: Ctx, cost: (s: string) => number, banned: Set<strin
   const taken = takenSet(ctx, ctx.pins);
   const chosen = new Set<string>();
   // Groups with the fewest options to spare go first, so that their picks can be shared.
-  const groups = byGroup(ctx.blocks).sort(
+  const groups = byGroup(ctx.closed).sort(
     (a, b) => a.reduce((n, x) => n + x.options.length - x.count, 0) - b.reduce((n, x) => n + x.options.length - x.count, 0),
   );
-  for (const blocks of groups) {
+  const popular = byPopularity(ctx);
+  const pick = (blocks: Block[], others: Set<string>) => {
     const usable = new Set(blocks.flatMap((b) => b.options).filter((o) => taken.has(o) || (!banned.has(o) && cost(o) < Infinity)));
     const prefer = (options: string[]) =>
       [...options].sort((a, b) => {
-        const have = (s: string) => (taken.has(s) ? 0 : chosen.has(s) ? 1 : 2);
-        return have(a) - have(b) || cost(a) - cost(b) || (a < b ? -1 : a > b ? 1 : 0);
+        const have = (s: string) => (taken.has(s) ? 0 : others.has(s) ? 1 : 2);
+        return have(a) - have(b) || cost(a) - cost(b) || popular(a, b);
       });
     // Fewer options first, so that a narrow block is not starved by a broad one.
     const ordered = [...blocks].sort((a, b) => a.options.length - b.options.length);
     const { size, matched } = matching(ordered, usable, prefer);
     if (size < ordered.reduce((n, b) => n + b.count, 0)) return null;
-    for (const s of matched) if (!taken.has(s)) chosen.add(s);
+    return new Set([...matched].filter((s) => !taken.has(s)));
+  };
+  // First pass: each group in turn, sharing what earlier groups chose.
+  const picks: Set<string>[] = [];
+  for (const blocks of groups) {
+    const mine = pick(blocks, chosen);
+    if (!mine) return null;
+    picks.push(mine);
+    for (const s of mine) chosen.add(s);
   }
+  // Second pass: each group again, now sharing what every other group chose, so that a group
+  // that went early (such as CI-M) can take the subjects a later one (the major) chose.
+  groups.forEach((blocks, i) => {
+    const others = new Set(picks.flatMap((p, j) => (j === i ? [] : [...p])));
+    picks[i] = pick(blocks, others) ?? picks[i];
+  });
+  chosen.clear();
+  for (const p of picks) for (const s of p) chosen.add(s);
 
   // Complete: the cheapest options of every dependency that is not met yet.
   const plan = new Set([...chosen, ...ctx.pins.keys()]);
@@ -488,7 +599,7 @@ function chooseSubjects(ctx: Ctx, cost: (s: string) => number, banned: Set<strin
       if (have >= d.count) continue;
       const extra = d.options
         .filter((o) => !ctx.prior.has(o) && !plan.has(o) && cost(o) < Infinity)
-        .sort((a, b) => cost(a) - cost(b) || (a < b ? -1 : 1))
+        .sort((a, b) => cost(a) - cost(b) || popular(a, b))
         .slice(0, d.count - have);
       if (extra.length < d.count - have) return null;
       for (const o of extra) {
@@ -501,8 +612,27 @@ function chooseSubjects(ctx: Ctx, cost: (s: string) => number, banned: Set<strin
   return plan;
 }
 
-/** Step 3 of _findPath: place the subjects season by season, or null if some cannot be placed. */
-function schedule(ctx: Ctx, subjects: Set<string>, includeIAPAndSummer: boolean, reverse: boolean): Placed | null {
+/** Step 3 of _findPath: place the slots one per FALL or SPRING season in turn, where they fit. */
+function placeSlots(ctx: Ctx, placed: Placed, slots: string[], horizon: number): boolean {
+  const usable = (a: number, b: number) => seasonKeys(a, b, false).filter((k) => !semesterOf(ctx, k).locked);
+  const within = usable(ctx.startKey, ctx.endKey);
+  const after = usable(ctx.endKey + 1, horizon);
+  let next = 0;
+  for (const slot of slots) {
+    const turn = [...within.slice(next), ...within.slice(0, next)];
+    const k = [...turn, ...after].find((k) => canGoIn(ctx, placed, slot, k, { endKey: horizon }));
+    if (k === undefined) return false;
+    placed.set(slot, k);
+    if (within.includes(k)) next = (within.indexOf(k) + 1) % within.length;
+  }
+  return true;
+}
+
+/** Steps 3 and 4 of _findPath: place the slots, then the subjects season by season, or null if some cannot be placed. */
+function schedule(
+  ctx: Ctx, subjects: Set<string>, slots: string[], includeIAPAndSummer: boolean, reverse: boolean, mode: EarlyMode,
+  defer = true,
+): Placed | null {
   const horizon = ctx.endKey + HORIZON_YEARS * 4;
   const all = new Set([...subjects, ...ctx.pins.keys()]);
   // Who waits on whom, within the plan.
@@ -528,15 +658,39 @@ function schedule(ctx: Ctx, subjects: Set<string>, includeIAPAndSummer: boolean,
   };
   for (const [p, k] of ctx.pins) for (const d of ctx.deps.get(p) ?? []) for (const o of d.options) if (subjects.has(o)) pass(o, k);
 
+  // Early subjects, and what they need within the plan, by tier: a science GIR before REST or
+  // the lab, which students take later.
+  const early = new Map<string, number>();
+  if (mode !== "none") {
+    const tier = (s: string) => (mode === "tiered" ? ctx.early.get(s)! : 0);
+    const queue = [...subjects].filter((s) => ctx.early.has(s)).map((s) => [s, tier(s)] as const);
+    while (queue.length > 0) {
+      const [s, rank] = queue.pop()!;
+      if ((early.get(s) ?? Infinity) <= rank) continue;
+      early.set(s, rank);
+      for (const d of ctx.deps.get(s) ?? []) for (const o of d.options) if (subjects.has(o)) queue.push([o, rank]);
+    }
+  }
   const order = [...subjects].sort(
     (a, b) =>
       (deadline.get(a) ?? Infinity) - (deadline.get(b) ?? Infinity) ||
+      (early.get(a) ?? Infinity) - (early.get(b) ?? Infinity) ||
       chainOf(b) - chainOf(a) ||
+      popularity(ctx, b) - popularity(ctx, a) ||
       (reverse ? (a < b ? 1 : -1) : a < b ? -1 : 1),
   );
 
+  // Electives wait until last (placeElectives): nothing in the plan needs them, so they
+  // should not take the early semesters from what later subjects need.
+  const electives = new Set(
+    !defer ? [] : order.filter((s) =>
+      !ctx.early.has(s) && !(dependents.get(s)?.length) &&
+      ctx.closed.some((b) => b.options.length > b.count && b.options.includes(s))),
+  );
+
   const placed: Placed = new Map(ctx.pins);
-  let left = order;
+  if (!placeSlots(ctx, placed, slots, horizon)) return null;
+  let left = order.filter((s) => !electives.has(s));
   for (const k of seasonKeys(ctx.startKey, horizon, includeIAPAndSummer)) {
     if (left.length === 0) break;
     if (semesterOf(ctx, k).locked) continue;
@@ -564,18 +718,53 @@ function schedule(ctx: Ctx, subjects: Set<string>, includeIAPAndSummer: boolean,
       left = left.filter((s) => !placed.has(s));
     }
   }
-  return left.length === 0 && satisfies(ctx, placed) ? placed : null;
+  if (left.length > 0 || !placeElectives(ctx, placed, order.filter((s) => electives.has(s)), horizon, includeIAPAndSummer)) {
+    return null;
+  }
+  // The slots stand for the open blocks, so only the closed ones are checked.
+  return satisfies(ctx, placed, ctx.closed) ? placed : null;
+}
+
+/**
+ * Places electives from the end backwards, one per FALL or SPRING season in turn, each in the
+ * latest season up to the later of the road's end and the plan's last season where it can go;
+ * failing that, in the first season where it can.
+ */
+function placeElectives(ctx: Ctx, placed: Placed, electives: string[], horizon: number, includeIAPAndSummer: boolean) {
+  const last = Math.max(ctx.endKey, finish(ctx, placed));
+  const back = seasonKeys(ctx.startKey, last, false).filter((k) => !semesterOf(ctx, k).locked).reverse();
+  let next = 0;
+  for (const s of electives) {
+    const turn = [...back.slice(next), ...back.slice(0, next)];
+    const k = turn.find((k) => canGoIn(ctx, placed, s, k, { endKey: horizon })) ??
+      seasonKeys(ctx.startKey, horizon, includeIAPAndSummer).find((k) => canGoIn(ctx, placed, s, k, { endKey: horizon }));
+    if (k === undefined) return false;
+    placed.set(s, k);
+    if (back.includes(k)) next = (back.indexOf(k) + 1) % back.length;
+  }
+  return true;
+}
+
+/** What each subject of a plan is counted toward: subject -> ids of blocks, one per group at most. */
+function countsOf(ctx: Ctx, placed: Placed): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const subjects = takenSet(ctx, placed);
+  for (const group of byGroup(ctx.blocks)) {
+    for (const [s, b] of matching(group, subjects).assigned) out.set(s, [...(out.get(s) ?? []), b.id]);
+  }
+  return out;
 }
 
 const finish = (ctx: Ctx, placed: Placed) => Math.max(ctx.startKey, ...placed.values());
+const subjectsOf = (placed: Placed) => [...placed.keys()].filter((s) => !isSlot(s));
 
 /** Builds plans with different choices of options and answers the best, breadth-first. */
 function findPlans(ctx: Ctx, includeIAPAndSummer: boolean, limit: number): Placed[] {
   const start: Placed = new Map(ctx.pins);
   if (satisfies(ctx, start)) return [start];
 
-  const cost = costs(ctx, takenSet(ctx, ctx.pins));
-  const found = new Map<string, Placed>();
+  const cost = costs(ctx, required(ctx));
+  const found = new Map<string, Placed>(); // by the subjects taken, so that a plan counts once
   const attempts: Attempt[] = [{ banned: new Set(), reverse: false }, { banned: new Set(), reverse: true }];
   const tried = new Set<string>();
 
@@ -587,21 +776,62 @@ function findPlans(ctx: Ctx, includeIAPAndSummer: boolean, limit: number): Place
 
     const subjects = chooseSubjects(ctx, cost, banned);
     if (!subjects) continue;
-    const placed = schedule(ctx, subjects, includeIAPAndSummer, reverse);
-    if (placed) found.set(signature(placed), placed);
+    const slots = makeSlots(ctx, subjects);
+    // Early blocks (the GIRs) first and electives last, unless that runs later past the end
+    // of the road: the first of these that finishes earliest, counting any finish by the end
+    // as on time.
+    const due = (p: Placed) => Math.max(finish(ctx, p), ctx.endKey);
+    let placed: Placed | null = null;
+    for (const defer of [true, false]) {
+      for (const mode of ["tiered", "flat", "none"] as const) {
+        const p = schedule(ctx, subjects, slots, includeIAPAndSummer, reverse, mode, defer);
+        if (p && (!placed || due(p) < due(placed))) placed = p;
+      }
+    }
+    if (placed) {
+      const key = subjectsOf(placed).sort().join(",");
+      const before = found.get(key);
+      if (!before || finish(ctx, placed) < finish(ctx, before)) found.set(key, placed);
+    }
 
-    // Other plans: leave out, one at a time, a subject chosen for a block that has other options.
+    // Other plans: leave out every subject chosen for one block that has other options, then
+    // one such subject at a time.
     if (banned.size === 0 && !reverse) {
-      const flexible = ctx.blocks.filter((b) => b.options.length > b.count).flatMap((b) => b.options).filter((o) => subjects.has(o));
-      for (const s of [...new Set(flexible)].sort((a, b) => cost(a) - cost(b))) attempts.push({ banned: new Set([s]), reverse: false });
+      const taken = takenSet(ctx, ctx.pins);
+      const flexible = ctx.closed.filter((b) => b.options.length > b.count);
+      for (const b of flexible) {
+        const mine = b.options.filter((o) => subjects.has(o) && !taken.has(o));
+        if (mine.length > 1) attempts.push({ banned: new Set(mine), reverse: false });
+      }
+      const single = flexible.flatMap((b) => b.options).filter((o) => subjects.has(o));
+      for (const s of [...new Set(single)].sort((a, b) => cost(a) - cost(b))) attempts.push({ banned: new Set([s]), reverse: false });
     }
   }
 
-  const plans = [...found.values()].sort(
-    (a, b) => finish(ctx, a) - finish(ctx, b) || a.size - b.size || (signature(a) < signature(b) ? -1 : 1),
-  );
+  // Ties keep the order the plans were built in, so the preferred choices come first.
+  const plans = [...found.values()].sort((a, b) => finish(ctx, a) - finish(ctx, b) || a.size - b.size);
   const byEnd = plans.filter((p) => finish(ctx, p) <= ctx.endKey);
-  return (byEnd.length > 0 ? byEnd : plans).slice(0, limit);
+  const pool = byEnd.length > 0 ? byEnd : plans;
+
+  // Earliest finish first; among plans that finish together, the one with the most subjects
+  // no plan answered so far has.
+  const answered: Placed[] = [];
+  const seen = new Set<string>();
+  while (answered.length < limit && pool.length > 0) {
+    const first = finish(ctx, pool[0]);
+    let best = 0;
+    let most = -1;
+    pool.forEach((p, i) => {
+      // The first plan answered is the best one; the next ones are chosen to differ.
+      if (finish(ctx, p) !== first || (answered.length === 0 && i > 0)) return;
+      const fresh = subjectsOf(p).filter((s) => !seen.has(s)).length;
+      if (fresh > most) [best, most] = [i, fresh];
+    });
+    const [plan] = pool.splice(best, 1);
+    answered.push(plan);
+    for (const s of subjectsOf(plan)) seen.add(s);
+  }
+  return answered;
 }
 
 export class ConstrainConcept {
@@ -609,6 +839,7 @@ export class ConstrainConcept {
   private readonly listings: Collection<Listing>;
   private readonly dependencies: Collection<DependencyRecord>;
   private readonly cancellations: Collection<Cancellation>;
+  private readonly catalog: Collection<{ snapshot: string }>;
   private indexed = false;
 
   constructor(db: Db) {
@@ -616,6 +847,7 @@ export class ConstrainConcept {
     this.listings = db.collection<Listing>("constrain.listings");
     this.dependencies = db.collection<DependencyRecord>("constrain.dependencies");
     this.cancellations = db.collection<Cancellation>("constrain.cancellations");
+    this.catalog = db.collection("constrain.catalog");
   }
 
   async #requireRoad(road: string): Promise<RoadRecord> {
@@ -636,12 +868,13 @@ export class ConstrainConcept {
     return listing;
   }
 
-  async #loadCtx(record: RoadRecord): Promise<Ctx> {
+  async #loadCtx(record: RoadRecord, also: string[] = []): Promise<Ctx> {
     const blocks = record.blocks.filter((b) => b.options.length > 0);
-    // The relevant subjects are the pins, the block options, and everything they
-    // depend on, followed transitively (candidates(road) in the spec), so load
-    // dependencies level by level until no new subject appears.
-    const relevant = new Set([...record.pins.map((p) => p.subject), ...blocks.flatMap((b) => b.options)]);
+    const closed = blocks.filter((b) => b.options.length <= OPEN);
+    // The relevant subjects are the pins, the options of closed blocks, any others asked
+    // for, and everything they depend on, followed transitively (candidates(road) in the
+    // spec), so load dependencies level by level until no new subject appears.
+    const relevant = new Set([...record.pins.map((p) => p.subject), ...closed.flatMap((b) => b.options), ...also]);
     const deps: DependencyRecord[] = [];
     let frontier = [...relevant];
     while (frontier.length > 0) {
@@ -669,7 +902,10 @@ export class ConstrainConcept {
       endKey: keyOf(record.endYear, record.endTerm),
       prior: new Set(record.prior),
       blocks,
+      closed,
+      open: blocks.filter((b) => b.options.length > OPEN),
       technical: new Set(blocks.filter((b) => b.technical ?? true).flatMap((b) => b.options)),
+      early: earlyOptions(blocks),
       pins: new Map(record.pins.map((p) => [p.subject, pinKey(p)])),
       semesters: new Map(record.semesters.map((s) => [keyOf(s.year, s.term), s])),
       listings: new Map(listings.map((l) => [l._id, l])),
@@ -772,19 +1008,19 @@ export class ConstrainConcept {
   }
 
   async addBlock({ road, count, technical }: { road: string; count: number; technical: boolean }) {
-    return this.addListedBlock({ road, count, title: "", technical, group: "", origin: "" });
+    return this.addListedBlock({ road, count, title: "", technical, group: "", origin: "", early: false });
   }
 
   async addListedBlock(
-    { road, count, title, technical, group, origin }:
-      { road: string; count: number; title: string; technical: boolean; group: string; origin: string },
+    { road, count, title, technical, group, origin, early }:
+      { road: string; count: number; title: string; technical: boolean; group: string; origin: string; early: boolean },
   ) {
     await this.#requireRoad(road);
     if (!(count >= 1)) throw new BadCount();
     const block = crypto.randomUUID();
     await this.roads.updateOne(
       { _id: road },
-      { $push: { blocks: { id: block, options: [], count, title, technical, group, origin } } },
+      { $push: { blocks: { id: block, options: [], count, title, technical, group, origin, early } } },
     );
     return { block };
   }
@@ -812,9 +1048,12 @@ export class ConstrainConcept {
   }
 
   async addOption({ block, subject }: { block: string; subject: string }) {
-    await this.#requireBlock(block);
+    // Listing a major adds thousands of options, so read only the road's id and add each in place.
+    const record = await this.roads.findOne({ "blocks.id": block }, { projection: { _id: 1 } });
+    if (!record) throw new NoSuchBlock();
     await this.#requireListing(subject);
-    return this.#editBlock(block, (b) => ({ ...b, options: [...new Set([...b.options, subject])] }));
+    await this.roads.updateOne({ _id: record._id, "blocks.id": block }, { $addToSet: { "blocks.$.options": subject } });
+    return {};
   }
 
   async removeOption({ block, subject }: { block: string; subject: string }) {
@@ -922,6 +1161,12 @@ export class ConstrainConcept {
     return {};
   }
 
+  async setPopularity({ subject, popularity }: { subject: string; popularity: number }) {
+    await this.#requireListing(subject);
+    await this.listings.updateOne({ _id: subject }, { $set: { popularity } });
+    return {};
+  }
+
   async addListingTerm({ subject, term }: { subject: string; term: Term }) {
     await this.#requireListing(subject);
     await this.listings.updateOne({ _id: subject }, { $addToSet: { terms: term } });
@@ -981,6 +1226,12 @@ export class ConstrainConcept {
     return {};
   }
 
+  async markCatalog({ snapshot }: { snapshot: string }) {
+    if (!snapshot) throw new NoSnapshot();
+    await this.catalog.updateOne({}, { $set: { snapshot } }, { upsert: true });
+    return {};
+  }
+
   // Queries
 
   async _road({ road }: { road: string }) {
@@ -1004,6 +1255,7 @@ export class ConstrainConcept {
         technical: b.technical ?? true,
         group: b.group ?? "",
         origin: b.origin ?? "",
+        early: b.early ?? (!!b.origin && b.technical === false),
       })),
     );
   }
@@ -1049,7 +1301,7 @@ export class ConstrainConcept {
       for (const subject of subjects) {
         if (!canGoIn(ctx, ctx.pins, subject, k)) continue;
         const withIt: Placed = new Map(ctx.pins).set(subject, k);
-        rows.push({ ...seasonOf(k), subject, fitsByEnd: covered(ctx, reachable(ctx, withIt)) });
+        rows.push({ ...seasonOf(k), subject, fitsByEnd: covered(ctx, reachable(ctx, withIt), ctx.closed) });
       }
     }
     return rows;
@@ -1061,11 +1313,43 @@ export class ConstrainConcept {
     const record = await this.#requireRoad(road);
     if (!(limit >= 1)) throw new Refusal("BAD_LIMIT", "The limit must be at least 1.");
     const ctx = await this.#loadCtx(record);
-    return findPlans(ctx, includeIAPAndSummer, limit).flatMap((placed, i) =>
-      [...placed.entries()]
-        .sort((a, b) => a[1] - b[1] || (a[0] < b[0] ? -1 : 1))
-        .map(([subject, k]) => ({ plan: i + 1, ...seasonOf(k), subject })),
+    const titleOf = new Map(ctx.blocks.map((b) => [b.id, b.title || "Open requirement"]));
+    return findPlans(ctx, includeIAPAndSummer, limit).flatMap((placed, i) => {
+      const counts = countsOf(ctx, placed);
+      return [...placed.entries()]
+        .sort((a, b) => a[1] - b[1] || Number(isSlot(a[0])) - Number(isSlot(b[0])) || (a[0] < b[0] ? -1 : 1))
+        .map(([s, k]) => {
+          const units = ctx.listings.get(s)?.units ?? SLOT_UNITS;
+          if (!isSlot(s)) {
+            return { plan: i + 1, ...seasonOf(k), subject: s, slot: "", title: "", units, counts: (counts.get(s) ?? []).join(",") };
+          }
+          const slot = slotBlocks(s);
+          const title = slot.split(",").map((b) => titleOf.get(b)).join(" · ");
+          return { plan: i + 1, ...seasonOf(k), subject: "", slot, title, units, counts: slot };
+        });
+    });
+  }
+
+  async _slotOptions({ road, blocks, year, term }: { road: string; blocks: string; year: number; term: Term }) {
+    const record = await this.#requireRoad(road);
+    const ids = blocks.split(",").filter(Boolean);
+    const chosen = ids.map((id) => record.blocks.find((b) => b.id === id));
+    if (chosen.length === 0 || chosen.some((b) => !b)) return [];
+    const common = chosen.slice(1).reduce(
+      (left, b) => left.filter((o) => b!.options.includes(o)),
+      chosen[0]!.options,
     );
+    const ctx = await this.#loadCtx(record, common);
+    const k = keyOf(year, term);
+    return common
+      .filter((subject) => canGoIn(ctx, ctx.pins, subject, k))
+      .sort((a, b) => a.localeCompare(b, "en", { numeric: true }))
+      .map((subject) => ({ subject }));
+  }
+
+  async _loadedCatalog(_: Record<string, never> = {}) {
+    const record = await this.catalog.findOne({});
+    return record?.snapshot ? { found: true, id: record.snapshot } : { found: false, id: "" };
   }
 
   async _roadOfBlock({ block }: { block: string }) {

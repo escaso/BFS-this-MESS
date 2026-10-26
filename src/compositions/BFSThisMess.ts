@@ -230,11 +230,25 @@ const RoadConstraints = former(
 
 const RoadPaths = former(
   "the paths of a road",
-  ({ road, includeIAPAndSummer, limit }, { plan, year, term, subject }) =>
+  ({ road, includeIAPAndSummer, limit }, { plan, year, term, subject, slot, title, units, counts }) =>
     form({
       plans: each(
-        Constrain._findPath({ road, includeIAPAndSummer, limit }).is({ plan, year, term, subject }),
-      ).form({ plan, year, term, subject }),
+        Constrain._findPath({ road, includeIAPAndSummer, limit }).is({ plan, year, term, subject, slot, title, units, counts }),
+      ).form({ plan, year, term, subject, slot, title, units, counts }),
+    }),
+);
+
+// A slot's subjects whose name or description has the topic in it.
+const SlotSubjects = former(
+  "the subjects for a slot",
+  ({ road, blocks, year, term, topic }, { subject, name, units }) =>
+    form({
+      subjects: each(Constrain._slotOptions({ road, blocks, year, term }).is({ subject }))
+        .where(
+          CourseOffering._matches({ course: subject, query: topic }).is({ matches: true }),
+          CourseOffering._course({ course: subject }).is({ name, units }),
+        )
+        .form({ subject, name, units }),
     }),
 );
 
@@ -400,22 +414,24 @@ const ForgetChoices = reaction(({ road }) =>
 
 // ---------- Degree requirements ----------
 // Removing a road's listed blocks (in NewRoad, SetMajor and ChooseAlternative) lists them
-// again from the road's major and the GIRs, as its choices now stand. Each listed block is
-// a group of its own: a degree chart lets one subject meet several of its requirements.
+// again from the road's major and the GIRs, as its choices now stand. Requirements gives
+// each its group: a major's blocks ask for distinct subjects, except CI-M and the like, and
+// a subject may meet a GIR and the major at once.
 
-const ListMajorBlocks = reaction(({ road, major, item, title, count, technical }) =>
+const ListMajorBlocks = reaction(({ road, major, item, title, count, technical, group }) =>
   when(Constrain.removeListedBlocks({ road }).responds({}))
     .where(
       Constrain._road({ road }).is({ major }),
-      Requirements._activeBlocks({ list: major, road }).is({ item, title, count, technical }),
+      Requirements._activeBlocks({ list: major, road }).is({ item, title, count, technical, group }),
     )
-    .then(Constrain.addListedBlock({ road, count, title, technical, group: item, origin: item })),
+    .then(Constrain.addListedBlock({ road, count, title, technical, group, origin: item, early: false })),
 );
 
-const ListGirBlocks = reaction(({ road, item, title, count, technical }) =>
+const ListGirBlocks = reaction(({ road, item, title, count, technical, group }) =>
   when(Constrain.removeListedBlocks({ road }).responds({}))
-    .where(Requirements._activeBlocks({ list: "girs", road }).is({ item, title, count, technical }))
-    .then(Constrain.addListedBlock({ road, count, title, technical, group: item, origin: item })),
+    .where(Requirements._activeBlocks({ list: "girs", road }).is({ item, title, count, technical, group }))
+    // The GIRs are early: plans take them first when they can.
+    .then(Constrain.addListedBlock({ road, count, title, technical, group, origin: item, early: true })),
 );
 
 const ListBlockOptions = reaction(({ block, origin, subject }) =>
@@ -447,6 +463,23 @@ const ChooseAlternativeRefused = endpoint(
       hiddenRoad(session, user, road),
       viewerOnly(session, user, road),
     ),
+);
+
+// Lists the road's blocks again from the requirements as they are now (after a catalog refresh).
+const RefreshRequirements = endpoint("/bfsthismess/refreshRequirements", ({ session, user, road }) =>
+  receive({ session, road })
+    .where(Authentication._authenticate({ session }).is({ user }), Share._isOwner({ road, user }).is({ owner: true }))
+    .then(Constrain.removeListedBlocks({ road }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+
+const RefreshRequirementsRefused = endpoint("/bfsthismess/refreshRequirements", ({ session, user, road }) =>
+  receive({ session, road }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    viewerOnly(session, user, road),
+  ),
 );
 
 const RenameRoad = endpoint("/bfsthismess/renameRoad", ({ session, user, road, name }) =>
@@ -803,6 +836,18 @@ const PreviewEndChange = endpoint(
     ),
 );
 
+const ViewSlotOptions = endpoint(
+  "/bfsthismess/viewSlotOptions",
+  ({ session, user, road, blocks, year, term, topic }) =>
+    receive({ session, road, blocks, year, term, topic }).then(
+      noSession(session),
+      hiddenRoad(session, user, road),
+      asViewer(session, user, road)
+        .then(respond({ subjects: SlotSubjects({ road, blocks, year, term, topic }) }))
+        .named("viewer"),
+    ),
+);
+
 export const composition = {
   MajorList,
   RoadRequirements,
@@ -813,6 +858,8 @@ export const composition = {
   ListMajors,
   ChooseAlternative,
   ChooseAlternativeRefused,
+  RefreshRequirements,
+  RefreshRequirementsRefused,
   MatchingCourses,
   CourseDetails,
   CourseRatings,
@@ -820,6 +867,7 @@ export const composition = {
   RoadConstraints,
   RoadPaths,
   RoadOptions,
+  SlotSubjects,
   PlanVerdict,
   PinsLostByStart,
   PinsLostByEnd,
@@ -866,4 +914,5 @@ export const composition = {
   CheckPlan,
   PreviewStartChange,
   PreviewEndChange,
+  ViewSlotOptions,
 };

@@ -11,7 +11,7 @@ import {
 } from "./concepts/Share.ts";
 import {
   NoSuchRoad as ConstrainNoSuchRoad, PinNotFound, EmptyName, BadStart, EndBeforeStart, EmptyMajor, NotPrior, BadCount,
-  NoSuchBlock, NotAnOption, NoListing, AlreadyPrior, OutOfSpan, LockedSeason, BadCapType, NegativeLimit, NoSuchSemester,
+  NoSuchBlock, NotAnOption, NoListing, NoSnapshot, AlreadyPrior, OutOfSpan, LockedSeason, BadCapType, NegativeLimit, NoSuchSemester,
   NotATerm, NoSuchDependency, NotCancelled, ConstrainConcept,
 } from "./concepts/Constrain.ts";
 import { LoadFailed, CourseOfferingConcept } from "./concepts/CourseOffering.ts";
@@ -49,6 +49,7 @@ const constrain = registerConcept({
     NO_SUCH_BLOCK: NoSuchBlock,
     NOT_AN_OPTION: NotAnOption,
     NO_LISTING: NoListing,
+    NO_SNAPSHOT: NoSnapshot,
     ALREADY_PRIOR: AlreadyPrior,
     OUT_OF_SPAN: OutOfSpan,
     LOCKED_SEASON: LockedSeason,

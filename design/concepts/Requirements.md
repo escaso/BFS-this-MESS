@@ -6,7 +6,7 @@ Hold the degree requirements of each major and of the General Institute Requirem
 
 ## Principle
 
-Once a semester, the maintainer builds a snapshot of the requirement lists (taken from [Fireroad](https://github.com/sipb/fireroad-server), which encodes MIT's degree charts) and loads it. A student who is planning a road picks the 6-3 major. The requirements of 6-3 and of the GIRs are then known as blocks, each asking for some number of subjects from a list of options. Where 6-3 offers a choice, such as which tracks to take subjects from, the first alternatives are assumed until the student chooses others for that road. What cannot be said as a block, such as "2 history subjects", is kept as a note that is shown but not planned.
+Once a semester, the maintainer builds a snapshot of the requirement lists (taken from [Fireroad](https://github.com/sipb/fireroad-server), which encodes MIT's degree charts) and loads it. A student who is planning a road picks the 6-3 major. The requirements of 6-3 and of the GIRs are then known as blocks, each asking for some number of subjects from a list of options. Where 6-3 offers a choice, such as which tracks to take subjects from, the first alternatives are assumed until the student chooses others for that road. Some subjects count toward several requirements: a GIR subject can also meet a requirement of the major, and so can a communication-intensive subject of the major, but two other requirements of the major ask for different subjects. What cannot be said as a block, such as "2 history subjects", is kept as a note that is shown but not planned.
 
 ## Types
 
@@ -44,6 +44,7 @@ a set of Items with
   an options set of Subject
   an approximate Flag
   a technical Flag
+  an overlay Flag
   an order Number
 
 a set of Selections with
@@ -58,11 +59,13 @@ a Catalog with
 Rule: id is Fireroad's list id, e.g. "major6-3" or "girs". shortTitle is e.g. "6-3"; title is e.g. "Bachelor of Science in Computer Science and Engineering".
 Rule: The items of a list form a tree through parent; order orders them depth first, so a parent comes before its children and siblings keep the order of the degree chart. A top-level item has no parent.
 Rule: The children of a CHOICE are GROUPs (its alternatives). A GROUP has a CHOICE, a GROUP or nothing as its parent; any other item has a GROUP or nothing. Only BLOCKs and NOTEs have options. A BLOCK or a CHOICE has a count of at least 1, a BLOCK has at least count options, and a GROUP has a count of 0.
-Rule: approximate means the block says less than the degree chart (e.g. "36 units" read as 3 subjects, or a pair of subjects that must be taken together read as two options). A NOTE with options is a block with too many options to plan (e.g. 8 HASS subjects); a NOTE without options is free text.
+Rule: approximate means the block says less than the degree chart (e.g. "36 units" read as 3 subjects, or a pair of subjects that must be taken together read as two options). A NOTE with options is an optional requirement that only counts toward its parent; a NOTE without options is free text.
 Rule: technical holds for the items of a major and not for those of the GIRs.
+Rule: overlay holds for a top-level BLOCK of a major that a subject may meet while it also meets another requirement of the major: communication-intensive (CI-M) and independent inquiry requirements. It is false for every other item.
+Rule: group(item) is the key of item when its list is the GIRs or item is an overlay, and the id of its list otherwise. Subjects counted toward the blocks of one group are distinct; a subject may count again in another group.
 Rule: active(road, list) is every item of the list that is not inside an alternative the road has not taken. A CHOICE that has no Selection for road takes its first count alternatives in order.
 Rule: alternatives holds at most count of the children of choice, in the order they were chosen.
-Rule: snapshot is the id of the last snapshot loaded, so that the same snapshot is not loaded twice.
+Rule: snapshot is the id of the last snapshot loaded, so that the same snapshot is not loaded twice. Whoever loads a snapshot may make its id include a digest of its contents, so that a snapshot edited under the same id is loaded again.
 ```
 
 ## Actions
@@ -112,8 +115,8 @@ _lists() : many (list: String, title: String, shortTitle: String, mediumTitle: S
 _list(list: String) : one (found: Flag, title: String, shortTitle: String, mediumTitle: String, kind: ListKind)
   If list is the id of a List, answers found = true with its titles and kind; otherwise answers found = false, empty titles and kind MAJOR.
 
-_activeBlocks(list: String, road: Road) : many (item: Item, title: String, count: Number, technical: Flag)
-  Answers every BLOCK in active(road, list), in order, or no rows if list is not a List.
+_activeBlocks(list: String, road: Road) : many (item: Item, title: String, count: Number, technical: Flag, group: String)
+  Answers every BLOCK in active(road, list), in order, with group(item), or no rows if list is not a List.
 
 _options(item: Item) : many (subject: Subject)
   Answers each option of item, in the order of the snapshot, or no rows if item is not an Item or has none.
