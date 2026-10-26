@@ -103,4 +103,4 @@ const totals = Object.values(requirements.stats).reduce(
 );
 console.log(`Wrote ${requirements.snapshot.lists.length} requirement lists to ${REQUIREMENTS_PATH} (id ${requirements.snapshot.id})`);
 console.log(`  blocks: ${totals.blocks}, choices: ${totals.choices}, approximate blocks: ${totals.approximate}`);
-console.log(`  notes (free text, not planned): ${totals.notes}, groups too broad to plan (over ${BROAD} options): ${totals.broad}`);
+console.log(`  notes (free text, not planned): ${totals.notes}, open blocks left to the student (over ${BROAD} options): ${totals.broad}`);

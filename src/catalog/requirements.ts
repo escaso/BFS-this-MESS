@@ -30,11 +30,14 @@ export type FireroadRequirement = {
 };
 
 /**
- * A block with more options than this is shown as a note instead of being planned: the
- * planner considers every option of every block, and groups like HASS (about 1,400
- * subjects) would swamp it.
+ * A block with more options than this is open: plans leave slots for it that the student
+ * fills, instead of choosing among groups like HASS (about 1,200 subjects). Constrain
+ * draws the same line; here it only counts them.
  */
 export const BROAD = 100;
+
+// Requirements a subject may meet while it meets another of the major (CI-M, independent inquiry).
+const OVERLAY = /communication[- ]intensive|\bCI-?M\b|independent inquiry/i;
 
 export type RequirementsStats = Record<string, { blocks: number; choices: number; notes: number; approximate: number; broad: number }>;
 
@@ -96,7 +99,6 @@ export class Flattener {
     // An optional item (count 0) only counts toward its parent's threshold; alone it asks for nothing.
     if (count === 0) return { kind: "NOTE", title: `${title} (optional)`, count, options, approximate };
     if (options.length === 0) return { kind: "NOTE", title, count, options, approximate };
-    if (options.length > BROAD) return { kind: "NOTE", title: `${count} subject${count === 1 ? "" : "s"}: ${title}`, count, options, approximate };
     return { kind: "BLOCK", title, count: Math.min(count, options.length), options, approximate: approximate || count > options.length };
   }
 
@@ -217,12 +219,13 @@ export function fromFireroadRequirements(
     let order = 0;
 
     const emit = (piece: Piece, key: string, parent: string | null) => {
-      const base = { key, list: listId, parent, title: piece.title, order: order++, technical: kind === "MAJOR" };
+      const base = { key, list: listId, parent, title: piece.title, order: order++, technical: kind === "MAJOR", overlay: false };
       if (piece.kind === "BLOCK" || piece.kind === "NOTE") {
-        items.push({ ...base, kind: piece.kind, count: piece.count, options: piece.options, approximate: piece.approximate });
-        if (piece.kind === "BLOCK") s.blocks++;
+        const overlay = piece.kind === "BLOCK" && kind === "MAJOR" && parent === null && OVERLAY.test(piece.title);
+        items.push({ ...base, kind: piece.kind, count: piece.count, options: piece.options, approximate: piece.approximate, overlay });
+        if (piece.kind === "NOTE") s.notes++;
         else if (piece.options.length > BROAD) s.broad++;
-        else s.notes++;
+        else s.blocks++;
         if (piece.approximate) s.approximate++;
         return;
       }

@@ -19,6 +19,7 @@ import { BROAD, fromFireroadRequirements, isPlannedList, type FireroadRequiremen
  *   "all" whose threshold is less than its children; "all" with optional children; units
  *   threshold; "at most" threshold; a block over BROAD options
  * partition on the list: a major (technical), the GIRs (not technical)
+ * partition on overlay: top-level CI-M or independent inquiry of a major; nested; other title; GIRs
  * partition on keys and order: nested keys, depth-first order, parents before children
  */
 
@@ -37,8 +38,8 @@ const index = indexCatalog(CATALOG);
 
 function flatten(reqs: FireroadRequirement[], id = "majorX") {
   const { snapshot } = fromFireroadRequirements({ [id]: { title: "Test degree", "short-title": "X", reqs } }, index, { id: "test" });
-  return snapshot.items.map(({ key, parent, kind, title, count, options, approximate, technical }) => ({
-    key, parent, kind, title, count, options, approximate, technical,
+  return snapshot.items.map(({ key, parent, kind, title, count, options, approximate, technical, overlay }) => ({
+    key, parent, kind, title, count, options, approximate, technical, overlay,
   }));
 }
 const only = (reqs: FireroadRequirement[]) => {
@@ -71,9 +72,9 @@ describe("leaves", () => {
     expect(only([{ req: "2 history subjects", "plain-string": true }])).toMatchObject({ kind: "NOTE", title: "2 history subjects", options: [] });
   });
 
-  test(`more than ${BROAD} options -> a note that keeps them, not a block`, () => {
+  test(`more than ${BROAD} options -> still a block (the planner leaves it open)`, () => {
     const item = only([{ req: "HASS-H" }]);
-    expect(item.kind).toBe("NOTE");
+    expect(item).toMatchObject({ kind: "BLOCK", title: "HASS-H", count: 1 });
     expect(item.options).toHaveLength(BROAD + 1);
   });
 });
@@ -183,6 +184,24 @@ describe("lists", () => {
     expect(flatten([{ req: "A.1" }], "majorX")[0].technical).toBe(true);
     expect(flatten([{ req: "A.1" }], "girs")[0].technical).toBe(false);
     expect(["major6-3", "girs", "minor21M", "master6"].filter(isPlannedList)).toEqual(["major6-3", "girs"]);
+  });
+
+  test("overlay: top-level CI-M and independent inquiry blocks of a major only", () => {
+    const ci = { "connection-type": "any" as const, reqs: [{ req: "A.1" }, { req: "A.2" }] };
+    const items = flatten([
+      { ...ci, title: "Communication-Intensive" },
+      { ...ci, title: "Independent Inquiry" },
+      { ...ci, title: "Theory" },
+      { title: "Electives", reqs: [{ ...ci, title: "Mandatory Application CI-M" }] },
+    ]);
+    expect(items.map((i) => [i.title, i.overlay])).toEqual([
+      ["Communication-Intensive", true],
+      ["Independent Inquiry", true],
+      ["Theory", false],
+      ["Electives", false],
+      ["Mandatory Application CI-M", false],
+    ]);
+    expect(flatten([{ ...ci, title: "Communication-Intensive" }], "girs")[0].overlay).toBe(false);
   });
 
   test("list titles and kinds", () => {

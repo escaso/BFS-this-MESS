@@ -27,6 +27,8 @@ export type FireroadCourse = {
   corequisites?: string;
   schedule?: string;
   rating?: number;
+  /** Students who usually take it in a term. */
+  enrollment_number?: number;
   gir_attribute?: string;
   hass_attribute?: string;
   communication_requirement?: string;
@@ -38,7 +40,7 @@ export const FIREROAD_URL = "https://fireroad.mit.edu/courses/all?full=true";
 
 /** What was left out while building a snapshot, so the build can report it. */
 export type BuildStats = {
-  /** Groups dropped because they can be met without a subject, e.g. ''permission of instructor''. */
+  /** Groups dropped because they can be met without a subject: only free text, e.g. ''permission of instructor''. */
   freeTextGroups: number;
   /** Options dropped because the subject is not in the catalog. */
   unknownSubjects: number;
@@ -174,9 +176,12 @@ export function toClauses(req: Requirement, gir: (attribute: string) => string[]
     case "and":
       return simplify(req.parts.flatMap((p) => toClauses(p, gir)));
     case "or": {
+      // A plan takes the subjects rather than count on free text such as permission of
+      // instructor, so free text is only an alternative when nothing else is.
+      const parts = req.parts.some((p) => p.kind !== "text") ? req.parts.filter((p) => p.kind !== "text") : req.parts;
       // (a1 ∧ a2) ∨ (b1 ∧ b2) = (a1 ∨ b1) ∧ (a1 ∨ b2) ∧ (a2 ∨ b1) ∧ (a2 ∨ b2)
       let product: Clause[] = [new Set()];
-      for (const part of req.parts) {
+      for (const part of parts) {
         const clauses = toClauses(part, gir);
         const next: Clause[] = [];
         for (const left of product) for (const right of clauses) next.push(new Set([...left, ...right]));
@@ -201,9 +206,10 @@ function simplify(clauses: Clause[]): Clause[] {
 }
 
 /**
- * The dependencies of a requirement string. A group that can be met without a subject
- * (free text such as ''permission of instructor'') is dropped, as are options that are not
- * in the catalog; a group left with no options is dropped too.
+ * The dependencies of a requirement string. Free text in a group that names subjects is left
+ * out of it (see toClauses); a group that can still be met without a subject (only free text,
+ * such as ''permission of instructor'', or an unknown GIR) is dropped, as are options that are
+ * not in the catalog; a group left with no options is dropped too.
  */
 export function dependenciesOf(source: string | undefined, index: CatalogIndex, stats: BuildStats): SnapshotDependency[] {
   if (!source?.trim()) return [];
@@ -360,6 +366,7 @@ export function fromFireroad(
       corequisites: dependenciesOf(c.corequisites, index, stats),
       ...(typeof c.rating === "number" ? { rating: { classRating: c.rating, url: evaluationUrl(c.subject_id) } } : {}),
       totalUnits,
+      enrollment: Math.round(c.enrollment_number ?? 0),
     };
   });
 

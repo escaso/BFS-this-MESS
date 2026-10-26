@@ -15,7 +15,8 @@ import {
  *   partition on shape: one subject; and; or; nested or-of-ands; GIR; quoted text; unquoted text;
  *     "AND"/"OR" written as words; malformed (unbalanced parentheses, dangling operator)
  * dependenciesOf:
- *   partition on groups: all subjects; some free text (dropped); some unknown subjects (dropped);
+ *   partition on groups: all subjects; free text as an alternative to subjects (left out, the subjects
+ *     needed); only free text (dropped); some unknown subjects (dropped);
  *     a group left empty (dropped); empty or missing source; unparsable source (counted)
  *   partition on an option: current number; old number (renumbered); has a joint subject
  * indexCatalog:
@@ -92,12 +93,25 @@ describe("dependenciesOf", () => {
     ]);
   });
 
-  test("a group that can be met by permission is dropped and counted", () => {
+  test("permission of instructor as an alternative to subjects -> the subjects are needed", () => {
     const s = stats();
     expect(dependenciesOf("6.100A, (18.03/''permission of instructor'')", index, s)).toEqual([
       { count: 1, options: ["6.100A"] },
+      { count: 1, options: ["18.03"] },
     ]);
-    expect(s.freeTextGroups).toBe(1);
+    expect(dependenciesOf("(6.1000, 18.03)/''permission of instructor''", index, s)).toEqual([
+      { count: 1, options: ["6.1000"] },
+      { count: 1, options: ["18.03"] },
+    ]);
+    expect(dependenciesOf("(6.100A/''x'')/18.06", index, s)).toEqual([{ count: 1, options: ["6.100A", "18.06"] }]);
+    expect(s.freeTextGroups).toBe(0);
+  });
+
+  test("a group that is only free text is dropped and counted", () => {
+    const s = stats();
+    expect(dependenciesOf("''permission of instructor''", index, s)).toEqual([]);
+    expect(dependenciesOf("6.100A, ''permission of instructor''", index, s)).toEqual([{ count: 1, options: ["6.100A"] }]);
+    expect(s.freeTextGroups).toBe(2);
   });
 
   test("unknown subjects are dropped from a group, and an emptied group is dropped", () => {
@@ -185,6 +199,7 @@ describe("fromFireroad", () => {
       subject_id: "8.02", title: "Physics II", description: "Electromagnetism.", instructors: ["A. Prof"], level: "U",
       offered_fall: true, offered_spring: true, total_units: 12, lecture_units: 3, lab_units: 2, preparation_units: 7,
       prerequisites: "GIR:CAL1, GIR:PHY1", schedule: "Lecture,32-082/MW/0/9-10.30", rating: 5.38,
+      enrollment_number: 412.6,
     },
     { subject_id: "18.01", title: "Calculus", level: "U", gir_attribute: "CAL1", offered_fall: true, total_units: 12 },
     { subject_id: "8.01", title: "Physics I", level: "U", gir_attribute: "PHY1", offered_fall: true, total_units: 12 },
@@ -212,6 +227,7 @@ describe("fromFireroad", () => {
       corequisites: [],
       rating: { classRating: 5.38, url: expect.stringContaining("subjectCode=8.02") },
       totalUnits: 12,
+      enrollment: 413,
     });
   });
 
@@ -225,6 +241,7 @@ describe("fromFireroad", () => {
     });
     expect(get("18.01A")).toMatchObject({ offering: "Not currently listed", level: "" });
     expect(get("18.01")).not.toHaveProperty("rating");
+    expect(get("18.01").enrollment).toBe(0); // unknown
     expect(stats.unparsed).toEqual([]);
   });
 });
