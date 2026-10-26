@@ -25,8 +25,18 @@ const hiddenRoad = (session: Var, user: Var, road: Var) =>
     .then(respond({ error: "NO_SUCH_ROAD" }))
     .named("hidden-road");
 
-// 3. Someone the road is shared with asks for something only the owner may do.
-const viewerOnly = (session: Var, user: Var, road: Var) =>
+// 3a. A viewer asks to change the road: only the owner and editors may.
+const viewOnly = (session: Var, user: Var, road: Var) =>
+  where(
+    Authentication._authenticate({ session }).is({ user }),
+    Share._canView({ road, user }).is({ allowed: true }),
+    Share._canEdit({ road, user }).is({ allowed: false }),
+  )
+    .then(respond({ error: "NOT_AN_EDITOR" }))
+    .named("view-only");
+
+// 3b. An editor or a viewer asks for something only the owner may do.
+const notOwner = (session: Var, user: Var, road: Var) =>
   where(
     Authentication._authenticate({ session }).is({ user }),
     Share._canView({ road, user }).is({ allowed: true }),
@@ -39,6 +49,14 @@ const asOwner = (session: Var, user: Var, road: Var, ...more: Parameters<typeof 
   where(
     Authentication._authenticate({ session }).is({ user }),
     Share._isOwner({ road, user }).is({ owner: true }),
+    ...more,
+  );
+
+// The owner or an editor.
+const asEditor = (session: Var, user: Var, road: Var, ...more: Parameters<typeof where>) =>
+  where(
+    Authentication._authenticate({ session }).is({ user }),
+    Share._canEdit({ road, user }).is({ allowed: true }),
     ...more,
   );
 
@@ -60,21 +78,21 @@ const hiddenBlock = (session: Var, user: Var, block: Var, road: Var) =>
     .then(respond({ error: "NO_SUCH_BLOCK" }))
     .named("hidden-block");
 
-const blockViewerOnly = (session: Var, user: Var, block: Var, road: Var) =>
+const blockViewOnly = (session: Var, user: Var, block: Var, road: Var) =>
   where(
     Authentication._authenticate({ session }).is({ user }),
     Constrain._roadOfBlock({ block }).is({ road }),
     Share._canView({ road, user }).is({ allowed: true }),
-    Share._isOwner({ road, user }).is({ owner: false }),
+    Share._canEdit({ road, user }).is({ allowed: false }),
   )
-    .then(respond({ error: "NOT_AN_OWNER" }))
-    .named("not-owner");
+    .then(respond({ error: "NOT_AN_EDITOR" }))
+    .named("view-only");
 
-const asBlockOwner = (session: Var, user: Var, block: Var, road: Var) =>
+const asBlockEditor = (session: Var, user: Var, block: Var, road: Var) =>
   where(
     Authentication._authenticate({ session }).is({ user }),
     Constrain._roadOfBlock({ block }).is({ road }),
-    Share._isOwner({ road, user }).is({ owner: true }),
+    Share._canEdit({ road, user }).is({ allowed: true }),
   );
 
 // A road's major must be one of the majors of Requirements.
@@ -286,24 +304,62 @@ const PinsLostByEnd = former(
     }),
 );
 
-const RoadViewers = former("the people a road is shared with", ({ road }, { user, username }) =>
+// The people requester may see on a road: everyone for the owner, their own invitees for an editor.
+const RoadPeople = former(
+  "the people a road is shared with",
+  ({ road, requester }, { user, role, addedBy, username, addedByName }) =>
+    form({
+      people: each(Share._grantsVisibleTo({ road, requester }).is({ user, role, addedBy }))
+        .where(
+          Authentication._username({ user }).is({ username }),
+          Authentication._username({ user: addedBy }).is({ username: addedByName }),
+        )
+        .form({ username, role, addedBy: addedByName }),
+    }),
+);
+
+// Usernames starting with prefix that requester does not already know to have access.
+const MatchingPeople = former("the people who match", ({ road, requester, prefix }, { user, username }) =>
   form({
-    viewers: each(Share._viewers({ road }).is({ user }))
-      .where(Authentication._username({ user }).is({ username }))
+    people: each(Authentication._matching({ prefix }).is({ user, username }))
+      .where(Share._known({ road, requester, user }).is({ known: false }))
+      .form({ username }),
+  }),
+);
+
+const RoadLinks = former("the links of a road", ({ road, requester }, { role, token, enabled }) =>
+  form({
+    links: each(Share._links({ road, requester }).is({ role, token, enabled })).form({ role, token, enabled }),
+  }),
+);
+
+// A person's role on a road, and the owner's username only where Share._ownerVisibleTo allows.
+const RoadAccess = former("their access to a road", ({ road, user }, { role, owner, username }) =>
+  where(Share._role({ road, user }).is({ role })).form({
+    role,
+    sharedBy: each(Share._ownerVisibleTo({ road, user }).is({ owner }))
+      .where(Authentication._username({ user: owner }).is({ username }))
       .form({ username }),
   }),
 );
 
 const UserRoads = former(
   "the roads of a user",
-  ({ user }, { owned, ownedName, ownedMajor, shared, sharedName, sharedMajor }) =>
+  ({ user }, { owned, ownedName, ownedMajor, shared, sharedName, sharedMajor, sharedRole, shown, owner, ownerName }) =>
     form({
       owned: each(Share._roadsOwnedBy({ user }).is({ road: owned }))
         .where(Constrain._road({ road: owned }).is({ name: ownedName, major: ownedMajor }))
         .form({ road: owned, name: ownedName, major: ownedMajor }),
-      shared: each(Share._roadsSharedWith({ user }).is({ road: shared }))
+      shared: each(Share._roadsSharedWith({ user }).is({ road: shared, role: sharedRole }))
         .where(Constrain._road({ road: shared }).is({ name: sharedName, major: sharedMajor }))
-        .form({ road: shared, name: sharedName, major: sharedMajor }),
+        .form({ road: shared, name: sharedName, major: sharedMajor, role: sharedRole }),
+      // The owners shown with shared roads, only where Share._ownerVisibleTo allows.
+      sharedBy: each(Share._roadsSharedWith({ user }).is({ road: shown }))
+        .where(
+          Share._ownerVisibleTo({ road: shown, user }).is({ owner }),
+          Authentication._username({ user: owner }).is({ username: ownerName }),
+        )
+        .form({ road: shown, username: ownerName }),
     }),
 );
 
@@ -395,7 +451,7 @@ const DeleteRoad = endpoint("/bfsthismess/deleteRoad", ({ session, user, road })
   receive({ session, road }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
+    notOwner(session, user, road),
     asOwner(session, user, road)
       .then(Constrain.deleteRoad({ road }).responds({}))
       .then(respond({}))
@@ -447,7 +503,7 @@ const ChooseAlternative = endpoint(
   "/bfsthismess/chooseAlternative",
   ({ session, user, road, choice, alternative }) =>
     receive({ session, road, choice, alternative })
-      .where(Authentication._authenticate({ session }).is({ user }), Share._isOwner({ road, user }).is({ owner: true }))
+      .where(Authentication._authenticate({ session }).is({ user }), Share._canEdit({ road, user }).is({ allowed: true }))
       .then(Requirements.choose({ road, choice, alternative }).responds({}))
       .then(Constrain.removeListedBlocks({ road }).responds({}))
       .afterFlowSettles()
@@ -461,14 +517,14 @@ const ChooseAlternativeRefused = endpoint(
     receive({ session, road, choice, alternative }).then(
       noSession(session),
       hiddenRoad(session, user, road),
-      viewerOnly(session, user, road),
+      viewOnly(session, user, road),
     ),
 );
 
 // Lists the road's blocks again from the requirements as they are now (after a catalog refresh).
 const RefreshRequirements = endpoint("/bfsthismess/refreshRequirements", ({ session, user, road }) =>
   receive({ session, road })
-    .where(Authentication._authenticate({ session }).is({ user }), Share._isOwner({ road, user }).is({ owner: true }))
+    .where(Authentication._authenticate({ session }).is({ user }), Share._canEdit({ road, user }).is({ allowed: true }))
     .then(Constrain.removeListedBlocks({ road }).responds({}))
     .afterFlowSettles()
     .then(respond({})),
@@ -478,7 +534,7 @@ const RefreshRequirementsRefused = endpoint("/bfsthismess/refreshRequirements", 
   receive({ session, road }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
+    viewOnly(session, user, road),
   ),
 );
 
@@ -486,11 +542,11 @@ const RenameRoad = endpoint("/bfsthismess/renameRoad", ({ session, user, road, n
   receive({ session, road, name }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.renameRoad({ road, name }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -498,11 +554,11 @@ const SetStart = endpoint("/bfsthismess/setStart", ({ session, user, road, year,
   receive({ session, road, year, term }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.setStart({ road, year, term }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -510,11 +566,11 @@ const SetEnd = endpoint("/bfsthismess/setEnd", ({ session, user, road, year, ter
   receive({ session, road, year, term }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.setEnd({ road, year, term }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -523,7 +579,7 @@ const SetMajor = endpoint("/bfsthismess/setMajor", ({ session, user, road, major
   receive({ session, road, major })
     .where(
       Authentication._authenticate({ session }).is({ user }),
-      Share._isOwner({ road, user }).is({ owner: true }),
+      Share._canEdit({ road, user }).is({ allowed: true }),
       isMajor(major),
     )
     .then(Constrain.setMajor({ road, major }).responds({}))
@@ -537,8 +593,8 @@ const SetMajorRefused = endpoint("/bfsthismess/setMajor", ({ session, user, road
   receive({ session, road, major }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road, notAMajor(major))
+    viewOnly(session, user, road),
+    asEditor(session, user, road, notAMajor(major))
       .then(respond({ error: "NO_SUCH_MAJOR" }))
       .named("not-a-major"),
   ),
@@ -548,11 +604,11 @@ const AddPrior = endpoint("/bfsthismess/addPrior", ({ session, user, road, subje
   receive({ session, road, subject }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.addPrior({ road, subject }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -560,11 +616,11 @@ const RemovePrior = endpoint("/bfsthismess/removePrior", ({ session, user, road,
   receive({ session, road, subject }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.removePrior({ road, subject }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -572,11 +628,11 @@ const Pin = endpoint("/bfsthismess/pin", ({ session, user, road, subject, year, 
   receive({ session, road, subject, year, term }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.pin({ road, subject, year, term }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -584,11 +640,11 @@ const UnPin = endpoint("/bfsthismess/unPin", ({ session, user, road, subject }) 
   receive({ session, road, subject }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.unPin({ road, subject }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -596,11 +652,11 @@ const SetLocked = endpoint("/bfsthismess/setLocked", ({ session, user, road, yea
   receive({ session, road, year, term, locked }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.setLocked({ road, year, term, locked }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -608,11 +664,11 @@ const SetCap = endpoint("/bfsthismess/setCap", ({ session, user, road, year, ter
   receive({ session, road, year, term, capType, limit }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.setCap({ road, year, term, capType, limit }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -620,11 +676,11 @@ const ClearCap = endpoint("/bfsthismess/clearCap", ({ session, user, road, year,
   receive({ session, road, year, term, capType }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.clearCap({ road, year, term, capType }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -632,11 +688,11 @@ const ResetSemester = endpoint("/bfsthismess/resetSemester", ({ session, user, r
   receive({ session, road, year, term }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.resetSemester({ road, year, term }).responds({}))
       .then(respond({}))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -646,11 +702,11 @@ const AddBlock = endpoint("/bfsthismess/addBlock", ({ session, user, road, count
   receive({ session, road, count, technical }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
-    asOwner(session, user, road)
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
       .then(Constrain.addBlock({ road, count, technical }).responds({ block }))
       .then(respond({ block }))
-      .named("owner"),
+      .named("editor"),
   ),
 );
 
@@ -659,8 +715,8 @@ const SetCount = endpoint("/bfsthismess/setCount", ({ session, user, block, road
     noSession(session),
     missingBlock(session, block),
     hiddenBlock(session, user, block, road),
-    blockViewerOnly(session, user, block, road),
-    asBlockOwner(session, user, block, road)
+    blockViewOnly(session, user, block, road),
+    asBlockEditor(session, user, block, road)
       .then(Constrain.setCount({ block, count }).responds({}))
       .then(respond({}))
       .named("owner"),
@@ -672,8 +728,8 @@ const AddOption = endpoint("/bfsthismess/addOption", ({ session, user, block, ro
     noSession(session),
     missingBlock(session, block),
     hiddenBlock(session, user, block, road),
-    blockViewerOnly(session, user, block, road),
-    asBlockOwner(session, user, block, road)
+    blockViewOnly(session, user, block, road),
+    asBlockEditor(session, user, block, road)
       .then(Constrain.addOption({ block, subject }).responds({}))
       .then(respond({}))
       .named("owner"),
@@ -685,8 +741,8 @@ const RemoveOption = endpoint("/bfsthismess/removeOption", ({ session, user, blo
     noSession(session),
     missingBlock(session, block),
     hiddenBlock(session, user, block, road),
-    blockViewerOnly(session, user, block, road),
-    asBlockOwner(session, user, block, road)
+    blockViewOnly(session, user, block, road),
+    asBlockEditor(session, user, block, road)
       .then(Constrain.removeOption({ block, subject }).responds({}))
       .then(respond({}))
       .named("owner"),
@@ -698,8 +754,8 @@ const RemoveBlock = endpoint("/bfsthismess/removeBlock", ({ session, user, block
     noSession(session),
     missingBlock(session, block),
     hiddenBlock(session, user, block, road),
-    blockViewerOnly(session, user, block, road),
-    asBlockOwner(session, user, block, road)
+    blockViewOnly(session, user, block, road),
+    asBlockEditor(session, user, block, road)
       .then(Constrain.removeBlock({ block }).responds({}))
       .then(respond({}))
       .named("owner"),
@@ -708,16 +764,43 @@ const RemoveBlock = endpoint("/bfsthismess/removeBlock", ({ session, user, block
 
 // ---------- Sharing ----------
 
-const ShareRoad = endpoint("/bfsthismess/shareRoad", ({ session, requester, road, username, user }) =>
-  receive({ session, road, username }).then(
+// Share.share decides what the requester may add (an editor: viewers only, and no leak).
+const ShareRoad = endpoint("/bfsthismess/shareRoad", ({ session, requester, road, username, role, user }) =>
+  receive({ session, road, username, role }).then(
     noSession(session),
     hiddenRoad(session, requester, road),
-    viewerOnly(session, requester, road),
+    viewOnly(session, requester, road),
+    asEditor(session, requester, road, no(Authentication._lookup({ username })))
+      .then(respond({ error: "NO_SUCH_USER" }))
+      .named("no-such-user"),
+    asEditor(session, requester, road, Authentication._lookup({ username }).is({ user }))
+      .then(Share.share({ road, requester, user, role }).responds({}))
+      .then(respond({}))
+      .named("editor"),
+  ),
+);
+
+const FindUsers = endpoint("/bfsthismess/findUsers", ({ session, requester, road, prefix }) =>
+  receive({ session, road, prefix }).then(
+    noSession(session),
+    hiddenRoad(session, requester, road),
+    viewOnly(session, requester, road),
+    asEditor(session, requester, road)
+      .then(respond({ people: MatchingPeople({ road, requester, prefix }) }))
+      .named("editor"),
+  ),
+);
+
+const SetRole = endpoint("/bfsthismess/setRole", ({ session, requester, road, username, role, user }) =>
+  receive({ session, road, username, role }).then(
+    noSession(session),
+    hiddenRoad(session, requester, road),
+    notOwner(session, requester, road),
     asOwner(session, requester, road, no(Authentication._lookup({ username })))
       .then(respond({ error: "NO_SUCH_USER" }))
       .named("no-such-user"),
     asOwner(session, requester, road, Authentication._lookup({ username }).is({ user }))
-      .then(Share.share({ road, requester, user }).responds({}))
+      .then(Share.setRole({ road, requester, user, role }).responds({}))
       .then(respond({}))
       .named("owner"),
   ),
@@ -727,7 +810,7 @@ const UnshareRoad = endpoint("/bfsthismess/unshareRoad", ({ session, requester, 
   receive({ session, road, username }).then(
     noSession(session),
     hiddenRoad(session, requester, road),
-    viewerOnly(session, requester, road),
+    notOwner(session, requester, road),
     asOwner(session, requester, road, no(Authentication._lookup({ username })))
       .then(respond({ error: "NO_SUCH_USER" }))
       .named("no-such-user"),
@@ -742,11 +825,88 @@ const ViewSharing = endpoint("/bfsthismess/viewSharing", ({ session, user, road 
   receive({ session, road }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    viewerOnly(session, user, road),
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
+      .then(respond({ people: RoadPeople({ road, requester: user }) }))
+      .named("editor"),
+  ),
+);
+
+const ViewLinks = endpoint("/bfsthismess/viewLinks", ({ session, user, road }) =>
+  receive({ session, road }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    notOwner(session, user, road),
     asOwner(session, user, road)
-      .then(respond({ viewers: RoadViewers({ road }) }))
+      .then(respond({ links: RoadLinks({ road, requester: user }) }))
       .named("owner"),
   ),
+);
+
+const EnableLink = endpoint("/bfsthismess/enableLink", ({ session, user, road, role }) =>
+  receive({ session, road, role }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    notOwner(session, user, road),
+    asOwner(session, user, road)
+      .then(Share.enableLink({ road, requester: user, role }).responds({}))
+      .then(respond({}))
+      .named("owner"),
+  ),
+);
+
+const DisableLink = endpoint("/bfsthismess/disableLink", ({ session, user, road, role }) =>
+  receive({ session, road, role }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    notOwner(session, user, road),
+    asOwner(session, user, road)
+      .then(Share.disableLink({ road, requester: user, role }).responds({}))
+      .then(respond({}))
+      .named("owner"),
+  ),
+);
+
+const RegenerateLink = endpoint("/bfsthismess/regenerateLink", ({ session, user, road, role }) =>
+  receive({ session, road, role }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    notOwner(session, user, road),
+    asOwner(session, user, road)
+      .then(Share.regenerateLink({ road, requester: user, role }).responds({}))
+      .then(respond({}))
+      .named("owner"),
+  ),
+);
+
+// The token arrives in the request body only (the client keeps it in the URL hash).
+const JoinLink = endpoint("/bfsthismess/joinLink", ({ session, user, token, road }) =>
+  receive({ session, token }).then(
+    noSession(session),
+    where(Authentication._authenticate({ session }).is({ user }))
+      .then(Share.join({ token, user }).responds({ road }))
+      .then(respond({ road }))
+      .named("signed-in"),
+  ),
+);
+
+// A copy is made like a new road: created, then claimed by the requester in a later stage
+// (which reads the session again), with its choices copied. If the claim is refused, the
+// copy is deleted (DeleteUnclaimedRoad). The copy keeps nothing of the original's owner.
+const CopyRoad = endpoint("/bfsthismess/copyRoad", ({ session, user, road, name, copy }) =>
+  receive({ session, road, name })
+    .where(Authentication._authenticate({ session }).is({ user }), Share._canView({ road, user }).is({ allowed: true }))
+    .then(Constrain.copyRoad({ road, name }).responds({ copy }))
+    .afterFlowSettles()
+    .where(Authentication._authenticate({ session }).is({ user }))
+    .then(Share.claim({ road: copy, user }).responds({}))
+    .then(Requirements.copyChoices({ from: road, to: copy }).responds({}))
+    .then(respond({ road: copy })),
+);
+
+// Same path as CopyRoad: the requests it refuses.
+const CopyRoadRefused = endpoint("/bfsthismess/copyRoad", ({ session, user, road, name }) =>
+  receive({ session, road, name }).then(noSession(session), hiddenRoad(session, user, road)),
 );
 
 // ---------- Paths and viewing ----------
@@ -781,6 +941,7 @@ const ViewRoad = endpoint(
       asViewer(session, user, road)
         .then(
           respond({
+            access: RoadAccess({ road, user }),
             constraints: RoadConstraints({ road }),
             requirements: RoadRequirements({ road }),
             paths: RoadPaths({ road, includeIAPAndSummer, limit }),
@@ -871,7 +1032,10 @@ export const composition = {
   PlanVerdict,
   PinsLostByStart,
   PinsLostByEnd,
-  RoadViewers,
+  RoadPeople,
+  MatchingPeople,
+  RoadLinks,
+  RoadAccess,
   UserRoads,
   Register,
   LogIn,
@@ -907,6 +1071,15 @@ export const composition = {
   ShareRoad,
   UnshareRoad,
   ViewSharing,
+  FindUsers,
+  SetRole,
+  ViewLinks,
+  EnableLink,
+  DisableLink,
+  RegenerateLink,
+  JoinLink,
+  CopyRoad,
+  CopyRoadRefused,
   MyRoads,
   FindPaths,
   ViewRoad,

@@ -937,6 +937,23 @@ export class ConstrainConcept {
     return { road };
   }
 
+  async copyRoad({ road, name }: { road: string; name: string }) {
+    const record = await this.#requireRoad(road);
+    if (!name) throw new EmptyName();
+    const copy = crypto.randomUUID();
+    // One insert, so a copy is made whole or not at all. Blocks get new ids; prior credit stays behind.
+    await this.roads.insertOne({
+      ...record,
+      _id: copy,
+      name,
+      prior: [],
+      blocks: record.blocks.map((b) => ({ ...b, id: crypto.randomUUID(), options: [...b.options] })),
+      pins: record.pins.map((p) => ({ ...p })),
+      semesters: record.semesters.map((s) => ({ ...s })),
+    });
+    return { copy };
+  }
+
   async renameRoad({ road, name }: { road: string; name: string }) {
     await this.#requireRoad(road);
     if (!name) throw new EmptyName();

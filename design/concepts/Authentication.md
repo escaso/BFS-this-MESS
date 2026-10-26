@@ -70,4 +70,7 @@ _lookup(username: String) : optional (user: User)
 
 _username(user: User) : one (username: String)
   where user exists. Answers the username of user.
+
+_matching(prefix: String) : many (user: User, username: String)
+  Answers the users whose username starts with prefix, ignoring case, in order of username: at most 8 of them, and none if prefix has fewer than 2 characters. It answers usernames only, so that it can suggest people to share with without listing every user.
 ```

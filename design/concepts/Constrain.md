@@ -135,6 +135,18 @@ newRoad(name: String, major: String, startYear: Number, startTerm: Term) : retur
     create a new road with this name, the specified major, this start, the default end for this start (see the state rules), no prior credit, no blocks, no pins and no semesters
     returns road
 
+copyRoad(road: Road, name: String) : returns (copy: Road)
+  where road does not exist
+  then
+    refuses NO_SUCH_ROAD "There is no such road."
+  where road exists and name is empty
+  then
+    refuses EMPTY_NAME "A road needs a name."
+  where road exists and name is not empty
+  then
+    create a new road copy with this name and the major, start and end of road, a copy of each of its blocks (with the same options, count, title, technical, group, origin and early), of each of its pins and of each of its semesters (with the same locks and caps), and no prior credit
+    returns copy
+
 renameRoad(road: Road, name: String) : returns ()
   where road does not exist
   then

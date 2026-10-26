@@ -288,6 +288,35 @@ describe("newRoad", () => {
   });
 });
 
+describe("copyRoad", () => {
+  it("covers: copies major, span, blocks, pins and semesters, not prior credit; refusals", async () => {
+    const road = await makeRoad();
+    await addSubject("A", 12);
+    await addSubject("B", 12);
+    await c.addPrior({ road, subject: "B" });
+    const block = await addBlock(road, 1, ["A"], true);
+    await c.pin({ road, subject: "A", year: 2026, term: "FALL" });
+    await c.setCap({ road, year: 2027, term: "SPRING", capType: "technical", limit: 24 });
+    await c.setLocked({ road, year: 2026, term: "FALL", locked: true });
+    await c.setEnd({ road, year: 2030, term: "FALL" });
+
+    await expectRefusal("copyRoad", "NO_SUCH_ROAD", c.copyRoad({ road: "nope", name: "X" }));
+    await expectRefusal("copyRoad", "EMPTY_NAME", c.copyRoad({ road, name: "" }));
+    const { copy } = await c.copyRoad({ road, name: "Copy" });
+    expect(copy).not.toBe(road);
+    expect(await c._road({ road: copy })).toEqual({ ...(await c._road({ road })), name: "Copy" });
+    expect(await c._prior({ road: copy })).toEqual([]);
+    expect(await c._pins({ road: copy })).toEqual(await c._pins({ road }));
+    expect(await c._semesters({ road: copy })).toEqual(await c._semesters({ road }));
+    const [copied] = await c._blocks({ road: copy });
+    expect(copied).toMatchObject({ count: 1, subject: "A", technical: true });
+    expect(copied.block).not.toBe(block); // its own block, so changing one leaves the other
+
+    await c.removeBlock({ block: copied.block });
+    expect((await c._blocks({ road })).length).toBe(1);
+  });
+});
+
 describe("renameRoad, setMajor, deleteRoad", () => {
   it("covers existing road with non-empty / empty values", async () => {
     const road = await makeRoad();

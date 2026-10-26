@@ -27,6 +27,7 @@ Defined in [Authentication](../design/concepts/Authentication.md), line 1.
 - `_authenticate(session: String) : optional (user: User)`
 - `_lookup(username: String) : optional (user: User)`
 - `_username(user: User) : one (username: String)`
+- `_matching(prefix: String) : many (user: User, username: String)`
 
 #### Instances
 
@@ -41,6 +42,9 @@ Defined in [Constrain](../design/concepts/Constrain.md), line 1.
 - `newRoad(name: String, major: String, startYear: Number, startTerm: Term) : returns (road: Road)`
   - Refuses `EMPTY_NAME`: A road needs a name.
   - Refuses `BAD_START`: A road must start in a Fall or Spring semester.
+- `copyRoad(road: Road, name: String) : returns (copy: Road)`
+  - Refuses `NO_SUCH_ROAD`: There is no such road.
+  - Refuses `EMPTY_NAME`: A road needs a name.
 - `renameRoad(road: Road, name: String) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `EMPTY_NAME`: A road needs a name.
@@ -186,6 +190,7 @@ Defined in [Requirements](../design/concepts/Requirements.md), line 1.
 - `choose(road: Road, choice: Item, alternative: Item) : returns ()`
   - Refuses `NO_SUCH_CHOICE`: There is no such choice.
   - Refuses `NOT_AN_ALTERNATIVE`: That is not one of the alternatives of this choice.
+- `copyChoices(from: Road, to: Road) : returns ()`
 - `forget(road: Road) : returns ()`
 
 #### Queries
@@ -213,22 +218,48 @@ Defined in [Share](../design/concepts/Share.md), line 1.
   - Refuses `ROAD_ALREADY_OWNED`: This road already has an owner.
 - `release(road: Road) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
-- `share(road: Road, requester: User, user: User) : returns ()`
+- `share(road: Road, requester: User, user: User, role: Role) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
-  - Refuses `NOT_AN_OWNER`: Only the owner can share this road.
+  - Refuses `NOT_AN_EDITOR`: You can only view this road.
+  - Refuses `BAD_ROLE`: A role must be view or edit.
+  - Refuses `EDITORS_ADD_VIEWERS`: Editors can only add viewers.
   - Refuses `SHARE_WITH_OWNER`: The owner already has access to this road.
+- `setRole(road: Road, requester: User, user: User, role: Role) : returns ()`
+  - Refuses `NO_SUCH_ROAD`: There is no such road.
+  - Refuses `NOT_AN_OWNER`: Only the owner can change who a road is shared with.
+  - Refuses `BAD_ROLE`: A role must be view or edit.
+  - Refuses `NOT_SHARED`: That road is not shared with that user.
 - `unshare(road: Road, requester: User, user: User) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `NOT_AN_OWNER`: Only the owner can change who a road is shared with.
   - Refuses `NOT_SHARED`: That road is not shared with that user.
+- `enableLink(road: Road, requester: User, role: Role) : returns ()`
+  - Refuses `NO_SUCH_ROAD`: There is no such road.
+  - Refuses `NOT_AN_OWNER`: Only the owner can manage this road's links.
+  - Refuses `BAD_ROLE`: A role must be view or edit.
+- `disableLink(road: Road, requester: User, role: Role) : returns ()`
+  - Refuses `NO_SUCH_ROAD`: There is no such road.
+  - Refuses `NOT_AN_OWNER`: Only the owner can manage this road's links.
+  - Refuses `BAD_ROLE`: A role must be view or edit.
+- `regenerateLink(road: Road, requester: User, role: Role) : returns ()`
+  - Refuses `NO_SUCH_ROAD`: There is no such road.
+  - Refuses `NOT_AN_OWNER`: Only the owner can manage this road's links.
+  - Refuses `BAD_ROLE`: A role must be view or edit.
+- `join(token: String, user: User) : returns (road: Road)`
+  - Refuses `INVALID_LINK`: This link is no longer valid.
 
 #### Queries
 
 - `_canView(road: Road, user: User) : one (allowed: Flag)`
+- `_canEdit(road: Road, user: User) : one (allowed: Flag)`
 - `_isOwner(road: Road, user: User) : one (owner: Flag)`
+- `_role(road: Road, user: User) : one (role: Access)`
 - `_roadsOwnedBy(user: User) : many (road: Road)`
-- `_roadsSharedWith(user: User) : many (road: Road)`
-- `_viewers(road: Road) : many (user: User)`
+- `_roadsSharedWith(user: User) : many (road: Road, role: Role)`
+- `_grantsVisibleTo(road: Road, requester: User) : many (user: User, role: Role, addedBy: User)`
+- `_ownerVisibleTo(road: Road, user: User) : optional (owner: User)`
+- `_known(road: Road, requester: User, user: User) : one (known: Flag)`
+- `_links(road: Road, requester: User) : many (role: Role, token: String, enabled: Flag)`
 
 #### Instances
 
@@ -250,7 +281,7 @@ _the authored explanation; this section records the generated shape._
 ### the constraints of a road
 
 Authored path: `BFSThisMess.RoadConstraints`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 134.
 
 ```former
 Former "the constraints of a road" — inputs (road); bindings (name, major, startYear, startTerm, endYear, endTerm, priorSubject, block, count, option, blockTitle, blockTechnical, blockOrigin, pinSubject, pinYear, pinTerm, year, term, locked, maxUnits, maxTechnicalUnits); promises exactly one record — forms:
@@ -326,6 +357,21 @@ Former "the details of a course" — inputs (course); bindings (found, name, cou
     units
 ```
 
+### the links of a road
+
+Authored path: `BFSThisMess.RoadLinks`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+
+```former
+Former "the links of a road" — inputs (road, requester); bindings (role, token, enabled); promises exactly one record — forms:
+  a record of
+    links: each Share._links (requester, road) has (enabled, role, token)
+      form a record of
+        enabled
+        role
+        token
+```
+
 ### the majors
 
 Authored path: `BFSThisMess.MajorList`.
@@ -364,7 +410,7 @@ Former "the matching courses" — inputs (query, level, term); bindings (course,
 ### the options of a road
 
 Authored path: `BFSThisMess.RoadOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
 
 ```former
 Former "the options of a road" — inputs (road, includeIAPAndSummer); bindings (year, term, subject, fitsByEnd); promises exactly one record — forms:
@@ -380,7 +426,7 @@ Former "the options of a road" — inputs (road, includeIAPAndSummer); bindings 
 ### the paths of a road
 
 Authored path: `BFSThisMess.RoadPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 113.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 132.
 
 ```former
 Former "the paths of a road" — inputs (road, includeIAPAndSummer, limit); bindings (plan, year, term, subject, slot, title, units, counts); promises exactly one record — forms:
@@ -399,14 +445,31 @@ Former "the paths of a road" — inputs (road, includeIAPAndSummer, limit); bind
 
 ### the people a road is shared with
 
-Authored path: `BFSThisMess.RoadViewers`.
+Authored path: `BFSThisMess.RoadPeople`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+
+```former
+Former "the people a road is shared with" — inputs (road, requester); bindings (user, role, addedBy, username, addedByName); promises exactly one record — forms:
+  a record of
+    people: each Share._grantsVisibleTo (requester, road) has (addedBy, role, user)
+      where Authentication._username (user) has (username)
+      where Authentication._username (user: addedBy) has (username: addedByName)
+      form a record of
+        addedBy: addedByName
+        role
+        username
+```
+
+### the people who match
+
+Authored path: `BFSThisMess.MatchingPeople`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
 
 ```former
-Former "the people a road is shared with" — inputs (road); bindings (user, username); promises exactly one record — forms:
+Former "the people who match" — inputs (road, requester, prefix); bindings (user, username); promises exactly one record — forms:
   a record of
-    viewers: each Share._viewers (road) has (user)
-      where Authentication._username (user) has (username)
+    people: each Authentication._matching (prefix) has (user, username)
+      where Share._known (requester, road, user) has (known: false)
       form a record of
         username
 ```
@@ -414,7 +477,7 @@ Former "the people a road is shared with" — inputs (road); bindings (user, use
 ### the pins lost by moving the end
 
 Authored path: `BFSThisMess.PinsLostByEnd`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
 
 ```former
 Former "the pins lost by moving the end" — inputs (road, year, term); bindings (subject, pinYear, pinTerm); promises exactly one record — forms:
@@ -429,7 +492,7 @@ Former "the pins lost by moving the end" — inputs (road, year, term); bindings
 ### the pins lost by moving the start
 
 Authored path: `BFSThisMess.PinsLostByStart`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
 
 ```former
 Former "the pins lost by moving the start" — inputs (road, year, term); bindings (subject, pinYear, pinTerm); promises exactly one record — forms:
@@ -497,10 +560,10 @@ Former "the requirements of a road" — inputs (road); bindings (major, found, t
 ### the roads of a user
 
 Authored path: `BFSThisMess.UserRoads`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 111.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 130.
 
 ```former
-Former "the roads of a user" — inputs (user); bindings (owned, ownedName, ownedMajor, shared, sharedName, sharedMajor); promises exactly one record — forms:
+Former "the roads of a user" — inputs (user); bindings (owned, ownedName, ownedMajor, shared, sharedName, sharedMajor, sharedRole, shown, owner, ownerName); promises exactly one record — forms:
   a record of
     owned: each Share._roadsOwnedBy (user) has (road: owned)
       where Constrain._road (road: owned) has (major: ownedMajor, name: ownedName)
@@ -508,12 +571,19 @@ Former "the roads of a user" — inputs (user); bindings (owned, ownedName, owne
         major: ownedMajor
         name: ownedName
         road: owned
-    shared: each Share._roadsSharedWith (user) has (road: shared)
+    shared: each Share._roadsSharedWith (user) has (road: shared, role: sharedRole)
       where Constrain._road (road: shared) has (major: sharedMajor, name: sharedName)
       form a record of
         major: sharedMajor
         name: sharedName
         road: shared
+        role: sharedRole
+    sharedBy: each Share._roadsSharedWith (user) has (road: shown)
+      where Share._ownerVisibleTo (road: shown, user) has (owner)
+      where Authentication._username (user: owner) has (username: ownerName)
+      form a record of
+        road: shown
+        username: ownerName
 ```
 
 ### the schedule of a course
@@ -535,7 +605,7 @@ Former "the schedule of a course" — inputs (course); bindings (found, units, m
 ### the subjects for a slot
 
 Authored path: `BFSThisMess.SlotSubjects`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 138.
 
 ```former
 Former "the subjects for a slot" — inputs (road, blocks, year, term, topic); bindings (subject, name, units); promises exactly one record — forms:
@@ -552,7 +622,7 @@ Former "the subjects for a slot" — inputs (road, blocks, year, term, topic); b
 ### the verdict on a plan
 
 Authored path: `BFSThisMess.PlanVerdict`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
 
 ```former
 Former "the verdict on a plan" — inputs (road); bindings (satisfied); promises exactly one record — forms:
@@ -561,7 +631,52 @@ Former "the verdict on a plan" — inputs (road); bindings (satisfied); promises
     satisfied
 ```
 
+### their access to a road
+
+Authored path: `BFSThisMess.RoadAccess`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 134.
+
+```former
+Former "their access to a road" — inputs (road, user); bindings (role, owner, username); promises exactly one record — forms:
+  a record of
+    where Share._role (road, user) has (role)
+    role
+    sharedBy: each Share._ownerVisibleTo (road, user) has (owner)
+      where Authentication._username (user: owner) has (username)
+      form a record of
+        username
+```
+
 ## Reactions
+
+### BFSThisMess.AddBlock:editor
+
+Authored path: `BFSThisMess.AddBlock`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 68.
+
+```reaction
+when RequestBoundary.request (count, path: "/bfsthismess/addBlock", requestId, road, session, technical)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.addBlock (count, road, technical)
+```
+
+### BFSThisMess.AddBlock:editor#2
+
+Authored path: `BFSThisMess.AddBlock`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 68.
+
+```reaction
+when Constrain.addBlock (count, road, technical, block), asked by BFSThisMess.AddBlock:editor
+where
+  earlier, RequestBoundary.request (count, path: "/bfsthismess/addBlock", requestId, road, session, technical)
+then
+  RequestBoundary.respond (block, requestId)
+```
 
 ### BFSThisMess.AddBlock:hidden-road
 
@@ -592,7 +707,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.AddBlock:not-owner
+### BFSThisMess.AddBlock:view-only
 
 Authored path: `BFSThisMess.AddBlock`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
@@ -603,38 +718,9 @@ when RequestBoundary.request (count, path: "/bfsthismess/addBlock", requestId, r
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.AddBlock:owner
-
-Authored path: `BFSThisMess.AddBlock`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 68.
-
-```reaction
-when RequestBoundary.request (count, path: "/bfsthismess/addBlock", requestId, road, session, technical)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  Constrain.addBlock (count, road, technical)
-```
-
-### BFSThisMess.AddBlock:owner#2
-
-Authored path: `BFSThisMess.AddBlock`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 68.
-
-```reaction
-when Constrain.addBlock (count, road, technical, block), asked by BFSThisMess.AddBlock:owner
-where
-  earlier, RequestBoundary.request (count, path: "/bfsthismess/addBlock", requestId, road, session, technical)
-then
-  RequestBoundary.respond (block, requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.AddOption:hidden-block
@@ -682,23 +768,6 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.AddOption:not-owner
-
-Authored path: `BFSThisMess.AddOption`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 70.
-
-```reaction
-when RequestBoundary.request (block, path: "/bfsthismess/addOption", requestId, session, subject)
-where
-  Authentication._authenticate (session) has (user)
-  Constrain._roadOfBlock (block) has (road)
-  Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
-then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
 ### BFSThisMess.AddOption:owner
 
 Authored path: `BFSThisMess.AddOption`.
@@ -710,7 +779,7 @@ when RequestBoundary.request (block, path: "/bfsthismess/addOption", requestId, 
 where
   Authentication._authenticate (session) has (user)
   Constrain._roadOfBlock (block) has (road)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
   Constrain.addOption (block, subject)
 ```
@@ -725,6 +794,52 @@ Authored path: `BFSThisMess.AddOption`.
 when Constrain.addOption (block, subject), asked by BFSThisMess.AddOption:owner
 where
   earlier, RequestBoundary.request (block, path: "/bfsthismess/addOption", requestId, session, subject)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.AddOption:view-only
+
+Authored path: `BFSThisMess.AddOption`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 70.
+
+```reaction
+when RequestBoundary.request (block, path: "/bfsthismess/addOption", requestId, session, subject)
+where
+  Authentication._authenticate (session) has (user)
+  Constrain._roadOfBlock (block) has (road)
+  Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
+### BFSThisMess.AddPrior:editor
+
+Authored path: `BFSThisMess.AddPrior`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 66.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/addPrior", requestId, road, session, subject)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.addPrior (road, subject)
+```
+
+### BFSThisMess.AddPrior:editor#2
+
+Authored path: `BFSThisMess.AddPrior`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 66.
+
+```reaction
+when Constrain.addPrior (road, subject), asked by BFSThisMess.AddPrior:editor
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/addPrior", requestId, road, session, subject)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -758,7 +873,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.AddPrior:not-owner
+### BFSThisMess.AddPrior:view-only
 
 Authored path: `BFSThisMess.AddPrior`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -769,45 +884,16 @@ when RequestBoundary.request (path: "/bfsthismess/addPrior", requestId, road, se
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.AddPrior:owner
-
-Authored path: `BFSThisMess.AddPrior`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 66.
-
-```reaction
-when RequestBoundary.request (path: "/bfsthismess/addPrior", requestId, road, session, subject)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  Constrain.addPrior (road, subject)
-```
-
-### BFSThisMess.AddPrior:owner#2
-
-Authored path: `BFSThisMess.AddPrior`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 66.
-
-```reaction
-when Constrain.addPrior (road, subject), asked by BFSThisMess.AddPrior:owner
-where
-  earlier, RequestBoundary.request (path: "/bfsthismess/addPrior", requestId, road, session, subject)
-then
-  RequestBoundary.respond (requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.CheckPlan:hidden-road
 
 Authored path: `BFSThisMess.CheckPlan`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 126.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 145.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/checkPlan", requestId, road, session)
@@ -821,8 +907,8 @@ then
 ### BFSThisMess.CheckPlan:no-session
 
 Authored path: `BFSThisMess.CheckPlan`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 126.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 145.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/checkPlan", requestId, road, session)
@@ -835,8 +921,8 @@ then
 ### BFSThisMess.CheckPlan:viewer
 
 Authored path: `BFSThisMess.CheckPlan`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 126.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 145.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/checkPlan", requestId, road, session)
@@ -857,7 +943,7 @@ Authored path: `BFSThisMess.ChooseAlternative`.
 when RequestBoundary.request (alternative, choice, path: "/bfsthismess/chooseAlternative", requestId, road, session)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
   Requirements.choose (alternative, choice, road)
 ```
@@ -918,7 +1004,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.ChooseAlternativeRefused:not-owner
+### BFSThisMess.ChooseAlternativeRefused:view-only
 
 Authored path: `BFSThisMess.ChooseAlternativeRefused`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 85.
@@ -929,9 +1015,38 @@ when RequestBoundary.request (alternative, choice, path: "/bfsthismess/chooseAlt
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
+### BFSThisMess.ClearCap:editor
+
+Authored path: `BFSThisMess.ClearCap`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 77.
+
+```reaction
+when RequestBoundary.request (capType, path: "/bfsthismess/clearCap", requestId, road, session, term, year)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.clearCap (capType, road, term, year)
+```
+
+### BFSThisMess.ClearCap:editor#2
+
+Authored path: `BFSThisMess.ClearCap`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 77.
+
+```reaction
+when Constrain.clearCap (capType, road, term, year), asked by BFSThisMess.ClearCap:editor
+where
+  earlier, RequestBoundary.request (capType, path: "/bfsthismess/clearCap", requestId, road, session, term, year)
+then
+  RequestBoundary.respond (requestId)
 ```
 
 ### BFSThisMess.ClearCap:hidden-road
@@ -963,7 +1078,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.ClearCap:not-owner
+### BFSThisMess.ClearCap:view-only
 
 Authored path: `BFSThisMess.ClearCap`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -974,38 +1089,97 @@ when RequestBoundary.request (capType, path: "/bfsthismess/clearCap", requestId,
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
-### BFSThisMess.ClearCap:owner
+### BFSThisMess.CopyRoad
 
-Authored path: `BFSThisMess.ClearCap`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 77.
+Authored path: `BFSThisMess.CopyRoad`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 109.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 124.
 
 ```reaction
-when RequestBoundary.request (capType, path: "/bfsthismess/clearCap", requestId, road, session, term, year)
+when RequestBoundary.request (name, path: "/bfsthismess/copyRoad", requestId, road, session)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canView (road, user) has (allowed: true)
 then
-  Constrain.clearCap (capType, road, term, year)
+  Constrain.copyRoad (name, road)
 ```
 
-### BFSThisMess.ClearCap:owner#2
+### BFSThisMess.CopyRoad#2
 
-Authored path: `BFSThisMess.ClearCap`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 77.
+Authored path: `BFSThisMess.CopyRoad`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 109.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 124.
 
 ```reaction
-when Constrain.clearCap (capType, road, term, year), asked by BFSThisMess.ClearCap:owner
+when Constrain.copyRoad (name, road, copy), asked by BFSThisMess.CopyRoad
+at the flow's settlement frontier
 where
-  earlier, RequestBoundary.request (capType, path: "/bfsthismess/clearCap", requestId, road, session, term, year)
+  earlier, RequestBoundary.request (name, path: "/bfsthismess/copyRoad", requestId, road, session)
+  Authentication._authenticate (session) has (user)
 then
-  RequestBoundary.respond (requestId)
+  Share.claim (road: copy, user)
+```
+
+### BFSThisMess.CopyRoad#3
+
+Authored path: `BFSThisMess.CopyRoad`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 109.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 124.
+
+```reaction
+when Share.claim (road: copy, user), asked by BFSThisMess.CopyRoad#2
+where
+  earlier, Constrain.copyRoad (name, road, copy), asked by BFSThisMess.CopyRoad
+then
+  Requirements.copyChoices (from: road, to: copy)
+```
+
+### BFSThisMess.CopyRoad#4
+
+Authored path: `BFSThisMess.CopyRoad`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 109.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 124.
+
+```reaction
+when Requirements.copyChoices (from: road, to: copy), asked by BFSThisMess.CopyRoad#3
+where
+  earlier, RequestBoundary.request (name, path: "/bfsthismess/copyRoad", requestId, road, session)
+then
+  RequestBoundary.respond (requestId, road: copy)
+```
+
+### BFSThisMess.CopyRoadRefused:hidden-road
+
+Authored path: `BFSThisMess.CopyRoadRefused`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 109.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 125.
+
+```reaction
+when RequestBoundary.request (name, path: "/bfsthismess/copyRoad", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.CopyRoadRefused:no-session
+
+Authored path: `BFSThisMess.CopyRoadRefused`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 109.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 125.
+
+```reaction
+when RequestBoundary.request (name, path: "/bfsthismess/copyRoad", requestId, road, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
 ### BFSThisMess.DeleteRoad:hidden-road
@@ -1093,11 +1267,159 @@ then
   Constrain.deleteRoad (road)
 ```
 
+### BFSThisMess.DisableLink:hidden-road
+
+Authored path: `BFSThisMess.DisableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 121.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/disableLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.DisableLink:no-session
+
+Authored path: `BFSThisMess.DisableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 121.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/disableLink", requestId, road, role, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.DisableLink:not-owner
+
+Authored path: `BFSThisMess.DisableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 121.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/disableLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
+  Share._isOwner (road, user) has (owner: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+```
+
+### BFSThisMess.DisableLink:owner
+
+Authored path: `BFSThisMess.DisableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 121.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/disableLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._isOwner (road, user) has (owner: true)
+then
+  Share.disableLink (requester: user, road, role)
+```
+
+### BFSThisMess.DisableLink:owner#2
+
+Authored path: `BFSThisMess.DisableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 121.
+
+```reaction
+when Share.disableLink (requester: user, road, role), asked by BFSThisMess.DisableLink:owner
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/disableLink", requestId, road, role, session)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.EnableLink:hidden-road
+
+Authored path: `BFSThisMess.EnableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 120.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/enableLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.EnableLink:no-session
+
+Authored path: `BFSThisMess.EnableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 120.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/enableLink", requestId, road, role, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.EnableLink:not-owner
+
+Authored path: `BFSThisMess.EnableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 120.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/enableLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
+  Share._isOwner (road, user) has (owner: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+```
+
+### BFSThisMess.EnableLink:owner
+
+Authored path: `BFSThisMess.EnableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 120.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/enableLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._isOwner (road, user) has (owner: true)
+then
+  Share.enableLink (requester: user, road, role)
+```
+
+### BFSThisMess.EnableLink:owner#2
+
+Authored path: `BFSThisMess.EnableLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 120.
+
+```reaction
+when Share.enableLink (requester: user, road, role), asked by BFSThisMess.EnableLink:owner
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/enableLink", requestId, road, role, session)
+then
+  RequestBoundary.respond (requestId)
+```
+
 ### BFSThisMess.FindPaths:hidden-road
 
 Authored path: `BFSThisMess.FindPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 113.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 123.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 132.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 142.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/findPaths", requestId, road, session)
@@ -1111,8 +1433,8 @@ then
 ### BFSThisMess.FindPaths:no-session
 
 Authored path: `BFSThisMess.FindPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 113.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 123.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 132.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 142.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/findPaths", requestId, road, session)
@@ -1125,8 +1447,8 @@ then
 ### BFSThisMess.FindPaths:viewer
 
 Authored path: `BFSThisMess.FindPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 113.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 123.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 132.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 142.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/findPaths", requestId, road, session)
@@ -1135,6 +1457,66 @@ where
   Share._canView (road, user) has (allowed: true)
 then
   RequestBoundary.respond (paths: former "the paths of a road" with (includeIAPAndSummer, limit, road), requestId)
+```
+
+### BFSThisMess.FindUsers:editor
+
+Authored path: `BFSThisMess.FindUsers`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/findUsers", prefix, requestId, road, session)
+where
+  Authentication._authenticate (session) has (user: requester)
+  Share._canEdit (road, user: requester) has (allowed: true)
+then
+  RequestBoundary.respond (people: former "the people who match" with (prefix, requester, road), requestId)
+```
+
+### BFSThisMess.FindUsers:hidden-road
+
+Authored path: `BFSThisMess.FindUsers`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/findUsers", prefix, requestId, road, session)
+where
+  Authentication._authenticate (session) has (user: requester)
+  Share._canView (road, user: requester) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.FindUsers:no-session
+
+Authored path: `BFSThisMess.FindUsers`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/findUsers", prefix, requestId, road, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.FindUsers:view-only
+
+Authored path: `BFSThisMess.FindUsers`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/findUsers", prefix, requestId, road, session)
+where
+  Authentication._authenticate (session) has (user: requester)
+  Share._canView (road, user: requester) has (allowed: true)
+  Share._canEdit (road, user: requester) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.ForgetChoices
@@ -1146,6 +1528,48 @@ Authored path: `BFSThisMess.ForgetChoices`.
 when Constrain.deleteRoad (road)
 then
   Requirements.forget (road)
+```
+
+### BFSThisMess.JoinLink:no-session
+
+Authored path: `BFSThisMess.JoinLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 123.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/joinLink", requestId, session, token)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.JoinLink:signed-in
+
+Authored path: `BFSThisMess.JoinLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 123.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/joinLink", requestId, session, token)
+where
+  Authentication._authenticate (session) has (user)
+then
+  Share.join (token, user)
+```
+
+### BFSThisMess.JoinLink:signed-in#2
+
+Authored path: `BFSThisMess.JoinLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 123.
+
+```reaction
+when Share.join (token, user, road), asked by BFSThisMess.JoinLink:signed-in
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/joinLink", requestId, session, token)
+then
+  RequestBoundary.respond (requestId, road)
 ```
 
 ### BFSThisMess.ListBlockOptions
@@ -1255,8 +1679,8 @@ then
 ### BFSThisMess.MyRoads:no-session
 
 Authored path: `BFSThisMess.MyRoads`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 111.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 122.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 130.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 141.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/myRoads", requestId, session)
@@ -1269,8 +1693,8 @@ then
 ### BFSThisMess.MyRoads:signed-in
 
 Authored path: `BFSThisMess.MyRoads`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 111.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 122.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 130.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 141.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/myRoads", requestId, session)
@@ -1367,6 +1791,35 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
+### BFSThisMess.Pin:editor
+
+Authored path: `BFSThisMess.Pin`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 73.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/pin", requestId, road, session, subject, term, year)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.pin (road, subject, term, year)
+```
+
+### BFSThisMess.Pin:editor#2
+
+Authored path: `BFSThisMess.Pin`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 73.
+
+```reaction
+when Constrain.pin (road, subject, term, year), asked by BFSThisMess.Pin:editor
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/pin", requestId, road, session, subject, term, year)
+then
+  RequestBoundary.respond (requestId)
+```
+
 ### BFSThisMess.Pin:hidden-road
 
 Authored path: `BFSThisMess.Pin`.
@@ -1396,7 +1849,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.Pin:not-owner
+### BFSThisMess.Pin:view-only
 
 Authored path: `BFSThisMess.Pin`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -1407,45 +1860,16 @@ when RequestBoundary.request (path: "/bfsthismess/pin", requestId, road, session
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.Pin:owner
-
-Authored path: `BFSThisMess.Pin`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 73.
-
-```reaction
-when RequestBoundary.request (path: "/bfsthismess/pin", requestId, road, session, subject, term, year)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  Constrain.pin (road, subject, term, year)
-```
-
-### BFSThisMess.Pin:owner#2
-
-Authored path: `BFSThisMess.Pin`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 73.
-
-```reaction
-when Constrain.pin (road, subject, term, year), asked by BFSThisMess.Pin:owner
-where
-  earlier, RequestBoundary.request (path: "/bfsthismess/pin", requestId, road, session, subject, term, year)
-then
-  RequestBoundary.respond (requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.PreviewEndChange:hidden-road
 
 Authored path: `BFSThisMess.PreviewEndChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 128.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 147.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewEndChange", requestId, road, session, term, year)
@@ -1459,8 +1883,8 @@ then
 ### BFSThisMess.PreviewEndChange:no-session
 
 Authored path: `BFSThisMess.PreviewEndChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 128.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 147.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewEndChange", requestId, road, session, term, year)
@@ -1473,8 +1897,8 @@ then
 ### BFSThisMess.PreviewEndChange:viewer
 
 Authored path: `BFSThisMess.PreviewEndChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 128.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 147.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewEndChange", requestId, road, session, term, year)
@@ -1488,8 +1912,8 @@ then
 ### BFSThisMess.PreviewStartChange:hidden-road
 
 Authored path: `BFSThisMess.PreviewStartChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 127.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 146.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewStartChange", requestId, road, session, term, year)
@@ -1503,8 +1927,8 @@ then
 ### BFSThisMess.PreviewStartChange:no-session
 
 Authored path: `BFSThisMess.PreviewStartChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 127.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 146.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewStartChange", requestId, road, session, term, year)
@@ -1517,8 +1941,8 @@ then
 ### BFSThisMess.PreviewStartChange:viewer
 
 Authored path: `BFSThisMess.PreviewStartChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 127.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 146.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewStartChange", requestId, road, session, term, year)
@@ -1539,7 +1963,7 @@ Authored path: `BFSThisMess.RefreshRequirements`.
 when RequestBoundary.request (path: "/bfsthismess/refreshRequirements", requestId, road, session)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
   Constrain.removeListedBlocks (road)
 ```
@@ -1588,7 +2012,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.RefreshRequirementsRefused:not-owner
+### BFSThisMess.RefreshRequirementsRefused:view-only
 
 Authored path: `BFSThisMess.RefreshRequirementsRefused`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 87.
@@ -1599,9 +2023,83 @@ when RequestBoundary.request (path: "/bfsthismess/refreshRequirements", requestI
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
+### BFSThisMess.RegenerateLink:hidden-road
+
+Authored path: `BFSThisMess.RegenerateLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 122.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/regenerateLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.RegenerateLink:no-session
+
+Authored path: `BFSThisMess.RegenerateLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 122.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/regenerateLink", requestId, road, role, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.RegenerateLink:not-owner
+
+Authored path: `BFSThisMess.RegenerateLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 122.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/regenerateLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
   Share._isOwner (road, user) has (owner: false)
 then
   RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+```
+
+### BFSThisMess.RegenerateLink:owner
+
+Authored path: `BFSThisMess.RegenerateLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 122.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/regenerateLink", requestId, road, role, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._isOwner (road, user) has (owner: true)
+then
+  Share.regenerateLink (requester: user, road, role)
+```
+
+### BFSThisMess.RegenerateLink:owner#2
+
+Authored path: `BFSThisMess.RegenerateLink`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 122.
+
+```reaction
+when Share.regenerateLink (requester: user, road, role), asked by BFSThisMess.RegenerateLink:owner
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/regenerateLink", requestId, road, role, session)
+then
+  RequestBoundary.respond (requestId)
 ```
 
 ### BFSThisMess.Register
@@ -1686,23 +2184,6 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.RemoveBlock:not-owner
-
-Authored path: `BFSThisMess.RemoveBlock`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 72.
-
-```reaction
-when RequestBoundary.request (block, path: "/bfsthismess/removeBlock", requestId, session)
-where
-  Authentication._authenticate (session) has (user)
-  Constrain._roadOfBlock (block) has (road)
-  Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
-then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
 ### BFSThisMess.RemoveBlock:owner
 
 Authored path: `BFSThisMess.RemoveBlock`.
@@ -1714,7 +2195,7 @@ when RequestBoundary.request (block, path: "/bfsthismess/removeBlock", requestId
 where
   Authentication._authenticate (session) has (user)
   Constrain._roadOfBlock (block) has (road)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
   Constrain.removeBlock (block)
 ```
@@ -1731,6 +2212,23 @@ where
   earlier, RequestBoundary.request (block, path: "/bfsthismess/removeBlock", requestId, session)
 then
   RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.RemoveBlock:view-only
+
+Authored path: `BFSThisMess.RemoveBlock`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 72.
+
+```reaction
+when RequestBoundary.request (block, path: "/bfsthismess/removeBlock", requestId, session)
+where
+  Authentication._authenticate (session) has (user)
+  Constrain._roadOfBlock (block) has (road)
+  Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.RemoveOption:hidden-block
@@ -1778,23 +2276,6 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.RemoveOption:not-owner
-
-Authored path: `BFSThisMess.RemoveOption`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 71.
-
-```reaction
-when RequestBoundary.request (block, path: "/bfsthismess/removeOption", requestId, session, subject)
-where
-  Authentication._authenticate (session) has (user)
-  Constrain._roadOfBlock (block) has (road)
-  Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
-then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
 ### BFSThisMess.RemoveOption:owner
 
 Authored path: `BFSThisMess.RemoveOption`.
@@ -1806,7 +2287,7 @@ when RequestBoundary.request (block, path: "/bfsthismess/removeOption", requestI
 where
   Authentication._authenticate (session) has (user)
   Constrain._roadOfBlock (block) has (road)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
   Constrain.removeOption (block, subject)
 ```
@@ -1821,6 +2302,52 @@ Authored path: `BFSThisMess.RemoveOption`.
 when Constrain.removeOption (block, subject), asked by BFSThisMess.RemoveOption:owner
 where
   earlier, RequestBoundary.request (block, path: "/bfsthismess/removeOption", requestId, session, subject)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.RemoveOption:view-only
+
+Authored path: `BFSThisMess.RemoveOption`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 71.
+
+```reaction
+when RequestBoundary.request (block, path: "/bfsthismess/removeOption", requestId, session, subject)
+where
+  Authentication._authenticate (session) has (user)
+  Constrain._roadOfBlock (block) has (road)
+  Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
+### BFSThisMess.RemovePrior:editor
+
+Authored path: `BFSThisMess.RemovePrior`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 67.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/removePrior", requestId, road, session, subject)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.removePrior (road, subject)
+```
+
+### BFSThisMess.RemovePrior:editor#2
+
+Authored path: `BFSThisMess.RemovePrior`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 67.
+
+```reaction
+when Constrain.removePrior (road, subject), asked by BFSThisMess.RemovePrior:editor
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/removePrior", requestId, road, session, subject)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -1854,7 +2381,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.RemovePrior:not-owner
+### BFSThisMess.RemovePrior:view-only
 
 Authored path: `BFSThisMess.RemovePrior`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -1865,36 +2392,36 @@ when RequestBoundary.request (path: "/bfsthismess/removePrior", requestId, road,
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
-### BFSThisMess.RemovePrior:owner
+### BFSThisMess.RenameRoad:editor
 
-Authored path: `BFSThisMess.RemovePrior`.
+Authored path: `BFSThisMess.RenameRoad`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 67.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 60.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/removePrior", requestId, road, session, subject)
+when RequestBoundary.request (name, path: "/bfsthismess/renameRoad", requestId, road, session)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
-  Constrain.removePrior (road, subject)
+  Constrain.renameRoad (name, road)
 ```
 
-### BFSThisMess.RemovePrior:owner#2
+### BFSThisMess.RenameRoad:editor#2
 
-Authored path: `BFSThisMess.RemovePrior`.
+Authored path: `BFSThisMess.RenameRoad`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 67.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 60.
 
 ```reaction
-when Constrain.removePrior (road, subject), asked by BFSThisMess.RemovePrior:owner
+when Constrain.renameRoad (name, road), asked by BFSThisMess.RenameRoad:editor
 where
-  earlier, RequestBoundary.request (path: "/bfsthismess/removePrior", requestId, road, session, subject)
+  earlier, RequestBoundary.request (name, path: "/bfsthismess/renameRoad", requestId, road, session)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -1928,7 +2455,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.RenameRoad:not-owner
+### BFSThisMess.RenameRoad:view-only
 
 Authored path: `BFSThisMess.RenameRoad`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -1939,36 +2466,36 @@ when RequestBoundary.request (name, path: "/bfsthismess/renameRoad", requestId, 
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
-### BFSThisMess.RenameRoad:owner
+### BFSThisMess.ResetSemester:editor
 
-Authored path: `BFSThisMess.RenameRoad`.
+Authored path: `BFSThisMess.ResetSemester`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 60.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 78.
 
 ```reaction
-when RequestBoundary.request (name, path: "/bfsthismess/renameRoad", requestId, road, session)
+when RequestBoundary.request (path: "/bfsthismess/resetSemester", requestId, road, session, term, year)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
-  Constrain.renameRoad (name, road)
+  Constrain.resetSemester (road, term, year)
 ```
 
-### BFSThisMess.RenameRoad:owner#2
+### BFSThisMess.ResetSemester:editor#2
 
-Authored path: `BFSThisMess.RenameRoad`.
+Authored path: `BFSThisMess.ResetSemester`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 60.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 78.
 
 ```reaction
-when Constrain.renameRoad (name, road), asked by BFSThisMess.RenameRoad:owner
+when Constrain.resetSemester (road, term, year), asked by BFSThisMess.ResetSemester:editor
 where
-  earlier, RequestBoundary.request (name, path: "/bfsthismess/renameRoad", requestId, road, session)
+  earlier, RequestBoundary.request (path: "/bfsthismess/resetSemester", requestId, road, session, term, year)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -2002,7 +2529,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.ResetSemester:not-owner
+### BFSThisMess.ResetSemester:view-only
 
 Authored path: `BFSThisMess.ResetSemester`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -2013,38 +2540,9 @@ when RequestBoundary.request (path: "/bfsthismess/resetSemester", requestId, roa
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.ResetSemester:owner
-
-Authored path: `BFSThisMess.ResetSemester`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 78.
-
-```reaction
-when RequestBoundary.request (path: "/bfsthismess/resetSemester", requestId, road, session, term, year)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  Constrain.resetSemester (road, term, year)
-```
-
-### BFSThisMess.ResetSemester:owner#2
-
-Authored path: `BFSThisMess.ResetSemester`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 78.
-
-```reaction
-when Constrain.resetSemester (road, term, year), asked by BFSThisMess.ResetSemester:owner
-where
-  earlier, RequestBoundary.request (path: "/bfsthismess/resetSemester", requestId, road, session, term, year)
-then
-  RequestBoundary.respond (requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.SearchSubjects
@@ -2057,6 +2555,35 @@ Authored path: `BFSThisMess.SearchSubjects`.
 when RequestBoundary.request (level, path: "/bfsthismess/searchSubjects", query, requestId, term)
 then
   RequestBoundary.respond (courses: former "the matching courses" with (level, query, term), requestId)
+```
+
+### BFSThisMess.SetCap:editor
+
+Authored path: `BFSThisMess.SetCap`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 76.
+
+```reaction
+when RequestBoundary.request (capType, limit, path: "/bfsthismess/setCap", requestId, road, session, term, year)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.setCap (capType, limit, road, term, year)
+```
+
+### BFSThisMess.SetCap:editor#2
+
+Authored path: `BFSThisMess.SetCap`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 76.
+
+```reaction
+when Constrain.setCap (capType, limit, road, term, year), asked by BFSThisMess.SetCap:editor
+where
+  earlier, RequestBoundary.request (capType, limit, path: "/bfsthismess/setCap", requestId, road, session, term, year)
+then
+  RequestBoundary.respond (requestId)
 ```
 
 ### BFSThisMess.SetCap:hidden-road
@@ -2088,7 +2615,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.SetCap:not-owner
+### BFSThisMess.SetCap:view-only
 
 Authored path: `BFSThisMess.SetCap`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -2099,38 +2626,9 @@ when RequestBoundary.request (capType, limit, path: "/bfsthismess/setCap", reque
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.SetCap:owner
-
-Authored path: `BFSThisMess.SetCap`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 76.
-
-```reaction
-when RequestBoundary.request (capType, limit, path: "/bfsthismess/setCap", requestId, road, session, term, year)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  Constrain.setCap (capType, limit, road, term, year)
-```
-
-### BFSThisMess.SetCap:owner#2
-
-Authored path: `BFSThisMess.SetCap`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 76.
-
-```reaction
-when Constrain.setCap (capType, limit, road, term, year), asked by BFSThisMess.SetCap:owner
-where
-  earlier, RequestBoundary.request (capType, limit, path: "/bfsthismess/setCap", requestId, road, session, term, year)
-then
-  RequestBoundary.respond (requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.SetCount:hidden-block
@@ -2178,23 +2676,6 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.SetCount:not-owner
-
-Authored path: `BFSThisMess.SetCount`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 69.
-
-```reaction
-when RequestBoundary.request (block, count, path: "/bfsthismess/setCount", requestId, session)
-where
-  Authentication._authenticate (session) has (user)
-  Constrain._roadOfBlock (block) has (road)
-  Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
-then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
 ### BFSThisMess.SetCount:owner
 
 Authored path: `BFSThisMess.SetCount`.
@@ -2206,7 +2687,7 @@ when RequestBoundary.request (block, count, path: "/bfsthismess/setCount", reque
 where
   Authentication._authenticate (session) has (user)
   Constrain._roadOfBlock (block) has (road)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
   Constrain.setCount (block, count)
 ```
@@ -2221,6 +2702,52 @@ Authored path: `BFSThisMess.SetCount`.
 when Constrain.setCount (block, count), asked by BFSThisMess.SetCount:owner
 where
   earlier, RequestBoundary.request (block, count, path: "/bfsthismess/setCount", requestId, session)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.SetCount:view-only
+
+Authored path: `BFSThisMess.SetCount`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 50.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 69.
+
+```reaction
+when RequestBoundary.request (block, count, path: "/bfsthismess/setCount", requestId, session)
+where
+  Authentication._authenticate (session) has (user)
+  Constrain._roadOfBlock (block) has (road)
+  Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
+### BFSThisMess.SetEnd:editor
+
+Authored path: `BFSThisMess.SetEnd`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 63.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/setEnd", requestId, road, session, term, year)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.setEnd (road, term, year)
+```
+
+### BFSThisMess.SetEnd:editor#2
+
+Authored path: `BFSThisMess.SetEnd`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 63.
+
+```reaction
+when Constrain.setEnd (road, term, year), asked by BFSThisMess.SetEnd:editor
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/setEnd", requestId, road, session, term, year)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -2254,7 +2781,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.SetEnd:not-owner
+### BFSThisMess.SetEnd:view-only
 
 Authored path: `BFSThisMess.SetEnd`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -2265,36 +2792,36 @@ when RequestBoundary.request (path: "/bfsthismess/setEnd", requestId, road, sess
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
-### BFSThisMess.SetEnd:owner
+### BFSThisMess.SetLocked:editor
 
-Authored path: `BFSThisMess.SetEnd`.
+Authored path: `BFSThisMess.SetLocked`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 63.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 75.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/setEnd", requestId, road, session, term, year)
+when RequestBoundary.request (locked, path: "/bfsthismess/setLocked", requestId, road, session, term, year)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
 then
-  Constrain.setEnd (road, term, year)
+  Constrain.setLocked (locked, road, term, year)
 ```
 
-### BFSThisMess.SetEnd:owner#2
+### BFSThisMess.SetLocked:editor#2
 
-Authored path: `BFSThisMess.SetEnd`.
+Authored path: `BFSThisMess.SetLocked`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 63.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 75.
 
 ```reaction
-when Constrain.setEnd (road, term, year), asked by BFSThisMess.SetEnd:owner
+when Constrain.setLocked (locked, road, term, year), asked by BFSThisMess.SetLocked:editor
 where
-  earlier, RequestBoundary.request (path: "/bfsthismess/setEnd", requestId, road, session, term, year)
+  earlier, RequestBoundary.request (locked, path: "/bfsthismess/setLocked", requestId, road, session, term, year)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -2328,7 +2855,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.SetLocked:not-owner
+### BFSThisMess.SetLocked:view-only
 
 Authored path: `BFSThisMess.SetLocked`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -2339,38 +2866,9 @@ when RequestBoundary.request (locked, path: "/bfsthismess/setLocked", requestId,
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.SetLocked:owner
-
-Authored path: `BFSThisMess.SetLocked`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 75.
-
-```reaction
-when RequestBoundary.request (locked, path: "/bfsthismess/setLocked", requestId, road, session, term, year)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  Constrain.setLocked (locked, road, term, year)
-```
-
-### BFSThisMess.SetLocked:owner#2
-
-Authored path: `BFSThisMess.SetLocked`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 75.
-
-```reaction
-when Constrain.setLocked (locked, road, term, year), asked by BFSThisMess.SetLocked:owner
-where
-  earlier, RequestBoundary.request (locked, path: "/bfsthismess/setLocked", requestId, road, session, term, year)
-then
-  RequestBoundary.respond (requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.SetMajor
@@ -2383,7 +2881,7 @@ Authored path: `BFSThisMess.SetMajor`.
 when RequestBoundary.request (major, path: "/bfsthismess/setMajor", requestId, road, session)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
   Requirements._list (list: major) has (found: true, kind: "MAJOR")
 then
   Constrain.setMajor (major, road)
@@ -2455,13 +2953,13 @@ Authored path: `BFSThisMess.SetMajorRefused`.
 when RequestBoundary.request (major, path: "/bfsthismess/setMajor", requestId, road, session)
 where
   Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Share._canEdit (road, user) has (allowed: true)
   no Requirements._list (list: major) has (found: true, kind: "MAJOR")
 then
   RequestBoundary.respond (error: "NO_SUCH_MAJOR", requestId)
 ```
 
-### BFSThisMess.SetMajorRefused:not-owner
+### BFSThisMess.SetMajorRefused:view-only
 
 Authored path: `BFSThisMess.SetMajorRefused`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -2472,9 +2970,129 @@ when RequestBoundary.request (major, path: "/bfsthismess/setMajor", requestId, r
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
+### BFSThisMess.SetRole:hidden-road
+
+Authored path: `BFSThisMess.SetRole`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 116.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/setRole", requestId, road, role, session, username)
+where
+  Authentication._authenticate (session) has (user: requester)
+  Share._canView (road, user: requester) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.SetRole:no-session
+
+Authored path: `BFSThisMess.SetRole`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 116.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/setRole", requestId, road, role, session, username)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.SetRole:no-such-user
+
+Authored path: `BFSThisMess.SetRole`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 116.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/setRole", requestId, road, role, session, username)
+where
+  Authentication._authenticate (session) has (user: requester)
+  Share._isOwner (road, user: requester) has (owner: true)
+  no Authentication._lookup (username)
+then
+  RequestBoundary.respond (error: "NO_SUCH_USER", requestId)
+```
+
+### BFSThisMess.SetRole:not-owner
+
+Authored path: `BFSThisMess.SetRole`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 116.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/setRole", requestId, road, role, session, username)
+where
+  Authentication._authenticate (session) has (user: requester)
+  Share._canView (road, user: requester) has (allowed: true)
+  Share._isOwner (road, user: requester) has (owner: false)
 then
   RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+```
+
+### BFSThisMess.SetRole:owner
+
+Authored path: `BFSThisMess.SetRole`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 116.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/setRole", requestId, road, role, session, username)
+where
+  Authentication._authenticate (session) has (user: requester)
+  Share._isOwner (road, user: requester) has (owner: true)
+  Authentication._lookup (username) has (user)
+then
+  Share.setRole (requester, road, role, user)
+```
+
+### BFSThisMess.SetRole:owner#2
+
+Authored path: `BFSThisMess.SetRole`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 116.
+
+```reaction
+when Share.setRole (requester, road, role, user), asked by BFSThisMess.SetRole:owner
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/setRole", requestId, road, role, session, username)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.SetStart:editor
+
+Authored path: `BFSThisMess.SetStart`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 62.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/setStart", requestId, road, session, term, year)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  Constrain.setStart (road, term, year)
+```
+
+### BFSThisMess.SetStart:editor#2
+
+Authored path: `BFSThisMess.SetStart`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 62.
+
+```reaction
+when Constrain.setStart (road, term, year), asked by BFSThisMess.SetStart:editor
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/setStart", requestId, road, session, term, year)
+then
+  RequestBoundary.respond (requestId)
 ```
 
 ### BFSThisMess.SetStart:hidden-road
@@ -2506,7 +3124,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.SetStart:not-owner
+### BFSThisMess.SetStart:view-only
 
 Authored path: `BFSThisMess.SetStart`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -2517,36 +3135,37 @@ when RequestBoundary.request (path: "/bfsthismess/setStart", requestId, road, se
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
-### BFSThisMess.SetStart:owner
+### BFSThisMess.ShareRoad:editor
 
-Authored path: `BFSThisMess.SetStart`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 62.
+Authored path: `BFSThisMess.ShareRoad`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 114.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/setStart", requestId, road, session, term, year)
+when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, role, session, username)
 where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
+  Authentication._authenticate (session) has (user: requester)
+  Share._canEdit (road, user: requester) has (allowed: true)
+  Authentication._lookup (username) has (user)
 then
-  Constrain.setStart (road, term, year)
+  Share.share (requester, road, role, user)
 ```
 
-### BFSThisMess.SetStart:owner#2
+### BFSThisMess.ShareRoad:editor#2
 
-Authored path: `BFSThisMess.SetStart`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 62.
+Authored path: `BFSThisMess.ShareRoad`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 114.
 
 ```reaction
-when Constrain.setStart (road, term, year), asked by BFSThisMess.SetStart:owner
+when Share.share (requester, road, role, user), asked by BFSThisMess.ShareRoad:editor
 where
-  earlier, RequestBoundary.request (path: "/bfsthismess/setStart", requestId, road, session, term, year)
+  earlier, RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, role, session, username)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -2555,10 +3174,10 @@ then
 
 Authored path: `BFSThisMess.ShareRoad`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 104.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 114.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, session, username)
+when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, role, session, username)
 where
   Authentication._authenticate (session) has (user: requester)
   Share._canView (road, user: requester) has (allowed: false)
@@ -2570,10 +3189,10 @@ then
 
 Authored path: `BFSThisMess.ShareRoad`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 104.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 114.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, session, username)
+when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, role, session, username)
 where
   no Authentication._authenticate (session)
 then
@@ -2584,60 +3203,59 @@ then
 
 Authored path: `BFSThisMess.ShareRoad`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 104.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 114.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, session, username)
+when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, role, session, username)
 where
   Authentication._authenticate (session) has (user: requester)
-  Share._isOwner (road, user: requester) has (owner: true)
+  Share._canEdit (road, user: requester) has (allowed: true)
   no Authentication._lookup (username)
 then
   RequestBoundary.respond (error: "NO_SUCH_USER", requestId)
 ```
 
-### BFSThisMess.ShareRoad:not-owner
+### BFSThisMess.ShareRoad:view-only
 
 Authored path: `BFSThisMess.ShareRoad`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 104.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 114.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, session, username)
+when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, role, session, username)
 where
   Authentication._authenticate (session) has (user: requester)
   Share._canView (road, user: requester) has (allowed: true)
-  Share._isOwner (road, user: requester) has (owner: false)
+  Share._canEdit (road, user: requester) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
-### BFSThisMess.ShareRoad:owner
+### BFSThisMess.UnPin:editor
 
-Authored path: `BFSThisMess.ShareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 104.
+Authored path: `BFSThisMess.UnPin`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 74.
 
 ```reaction
-when RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, session, username)
+when RequestBoundary.request (path: "/bfsthismess/unPin", requestId, road, session, subject)
 where
-  Authentication._authenticate (session) has (user: requester)
-  Share._isOwner (road, user: requester) has (owner: true)
-  Authentication._lookup (username) has (user)
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
 then
-  Share.share (requester, road, user)
+  Constrain.unPin (road, subject)
 ```
 
-### BFSThisMess.ShareRoad:owner#2
+### BFSThisMess.UnPin:editor#2
 
-Authored path: `BFSThisMess.ShareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 104.
+Authored path: `BFSThisMess.UnPin`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 74.
 
 ```reaction
-when Share.share (requester, road, user), asked by BFSThisMess.ShareRoad:owner
+when Constrain.unPin (road, subject), asked by BFSThisMess.UnPin:editor
 where
-  earlier, RequestBoundary.request (path: "/bfsthismess/shareRoad", requestId, road, session, username)
+  earlier, RequestBoundary.request (path: "/bfsthismess/unPin", requestId, road, session, subject)
 then
   RequestBoundary.respond (requestId)
 ```
@@ -2671,7 +3289,7 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.UnPin:not-owner
+### BFSThisMess.UnPin:view-only
 
 Authored path: `BFSThisMess.UnPin`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
@@ -2682,45 +3300,16 @@ when RequestBoundary.request (path: "/bfsthismess/unPin", requestId, road, sessi
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.UnPin:owner
-
-Authored path: `BFSThisMess.UnPin`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 74.
-
-```reaction
-when RequestBoundary.request (path: "/bfsthismess/unPin", requestId, road, session, subject)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  Constrain.unPin (road, subject)
-```
-
-### BFSThisMess.UnPin:owner#2
-
-Authored path: `BFSThisMess.UnPin`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 48.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 74.
-
-```reaction
-when Constrain.unPin (road, subject), asked by BFSThisMess.UnPin:owner
-where
-  earlier, RequestBoundary.request (path: "/bfsthismess/unPin", requestId, road, session, subject)
-then
-  RequestBoundary.respond (requestId)
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.UnshareRoad:hidden-road
 
 Authored path: `BFSThisMess.UnshareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/unshareRoad", requestId, road, session, username)
@@ -2734,8 +3323,8 @@ then
 ### BFSThisMess.UnshareRoad:no-session
 
 Authored path: `BFSThisMess.UnshareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/unshareRoad", requestId, road, session, username)
@@ -2748,8 +3337,8 @@ then
 ### BFSThisMess.UnshareRoad:no-such-user
 
 Authored path: `BFSThisMess.UnshareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/unshareRoad", requestId, road, session, username)
@@ -2764,8 +3353,8 @@ then
 ### BFSThisMess.UnshareRoad:not-owner
 
 Authored path: `BFSThisMess.UnshareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/unshareRoad", requestId, road, session, username)
@@ -2780,8 +3369,8 @@ then
 ### BFSThisMess.UnshareRoad:owner
 
 Authored path: `BFSThisMess.UnshareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/unshareRoad", requestId, road, session, username)
@@ -2796,8 +3385,8 @@ then
 ### BFSThisMess.UnshareRoad:owner#2
 
 Authored path: `BFSThisMess.UnshareRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 99.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 103.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
 
 ```reaction
 when Share.unshare (requester, road, user), asked by BFSThisMess.UnshareRoad:owner
@@ -2807,11 +3396,71 @@ then
   RequestBoundary.respond (requestId)
 ```
 
+### BFSThisMess.ViewLinks:hidden-road
+
+Authored path: `BFSThisMess.ViewLinks`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewLinks", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.ViewLinks:no-session
+
+Authored path: `BFSThisMess.ViewLinks`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewLinks", requestId, road, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.ViewLinks:not-owner
+
+Authored path: `BFSThisMess.ViewLinks`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewLinks", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
+  Share._isOwner (road, user) has (owner: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
+```
+
+### BFSThisMess.ViewLinks:owner
+
+Authored path: `BFSThisMess.ViewLinks`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 107.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewLinks", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._isOwner (road, user) has (owner: true)
+then
+  RequestBoundary.respond (links: former "the links of a road" with (requester: user, road), requestId)
+```
+
 ### BFSThisMess.ViewOptions:hidden-road
 
 Authored path: `BFSThisMess.ViewOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 125.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 144.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, path: "/bfsthismess/viewOptions", requestId, road, session)
@@ -2825,8 +3474,8 @@ then
 ### BFSThisMess.ViewOptions:no-session
 
 Authored path: `BFSThisMess.ViewOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 125.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 144.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, path: "/bfsthismess/viewOptions", requestId, road, session)
@@ -2839,8 +3488,8 @@ then
 ### BFSThisMess.ViewOptions:viewer
 
 Authored path: `BFSThisMess.ViewOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 117.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 125.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 136.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 144.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, path: "/bfsthismess/viewOptions", requestId, road, session)
@@ -2866,8 +3515,8 @@ then
 ### BFSThisMess.ViewRoad:hidden-road
 
 Authored path: `BFSThisMess.ViewRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 124.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 134.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 143.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewRoad", requestId, road, session)
@@ -2881,8 +3530,8 @@ then
 ### BFSThisMess.ViewRoad:no-session
 
 Authored path: `BFSThisMess.ViewRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 124.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 134.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 143.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewRoad", requestId, road, session)
@@ -2895,8 +3544,8 @@ then
 ### BFSThisMess.ViewRoad:viewer
 
 Authored path: `BFSThisMess.ViewRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 115.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 124.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 134.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 143.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewRoad", requestId, road, session)
@@ -2904,7 +3553,7 @@ where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
 then
-  RequestBoundary.respond (constraints: former "the constraints of a road" with (road), paths: former "the paths of a road" with (includeIAPAndSummer, limit, road), requestId, requirements: former "the requirements of a road" with (road))
+  RequestBoundary.respond (access: former "their access to a road" with (road, user), constraints: former "the constraints of a road" with (road), paths: former "the paths of a road" with (includeIAPAndSummer, limit, road), requestId, requirements: former "the requirements of a road" with (road))
 ```
 
 ### BFSThisMess.ViewSchedule
@@ -2919,11 +3568,26 @@ then
   RequestBoundary.respond (requestId, schedule: former "the schedule of a course" with (course))
 ```
 
+### BFSThisMess.ViewSharing:editor
+
+Authored path: `BFSThisMess.ViewSharing`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 118.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewSharing", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  RequestBoundary.respond (people: former "the people a road is shared with" with (requester: user, road), requestId)
+```
+
 ### BFSThisMess.ViewSharing:hidden-road
 
 Authored path: `BFSThisMess.ViewSharing`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 106.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 118.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/viewSharing", requestId, road, session)
@@ -2937,8 +3601,8 @@ then
 ### BFSThisMess.ViewSharing:no-session
 
 Authored path: `BFSThisMess.ViewSharing`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 106.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 118.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/viewSharing", requestId, road, session)
@@ -2948,42 +3612,27 @@ then
   RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
 ```
 
-### BFSThisMess.ViewSharing:not-owner
+### BFSThisMess.ViewSharing:view-only
 
 Authored path: `BFSThisMess.ViewSharing`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 106.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 105.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 118.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/viewSharing", requestId, road, session)
 where
   Authentication._authenticate (session) has (user)
   Share._canView (road, user) has (allowed: true)
-  Share._isOwner (road, user) has (owner: false)
+  Share._canEdit (road, user) has (allowed: false)
 then
-  RequestBoundary.respond (error: "NOT_AN_OWNER", requestId)
-```
-
-### BFSThisMess.ViewSharing:owner
-
-Authored path: `BFSThisMess.ViewSharing`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 101.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 106.
-
-```reaction
-when RequestBoundary.request (path: "/bfsthismess/viewSharing", requestId, road, session)
-where
-  Authentication._authenticate (session) has (user)
-  Share._isOwner (road, user) has (owner: true)
-then
-  RequestBoundary.respond (requestId, viewers: former "the people a road is shared with" with (road))
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.ViewSlotOptions:hidden-road
 
 Authored path: `BFSThisMess.ViewSlotOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 129.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 138.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 148.
 
 ```reaction
 when RequestBoundary.request (blocks, path: "/bfsthismess/viewSlotOptions", requestId, road, session, term, topic, year)
@@ -2997,8 +3646,8 @@ then
 ### BFSThisMess.ViewSlotOptions:no-session
 
 Authored path: `BFSThisMess.ViewSlotOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 129.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 138.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 148.
 
 ```reaction
 when RequestBoundary.request (blocks, path: "/bfsthismess/viewSlotOptions", requestId, road, session, term, topic, year)
@@ -3011,8 +3660,8 @@ then
 ### BFSThisMess.ViewSlotOptions:viewer
 
 Authored path: `BFSThisMess.ViewSlotOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 119.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 129.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 138.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 148.
 
 ```reaction
 when RequestBoundary.request (blocks, path: "/bfsthismess/viewSlotOptions", requestId, road, session, term, topic, year)
@@ -3068,8 +3717,13 @@ not listed here have no explicit input contract.
 - `/bfsthismess/checkPlan` — requires `road`, `session`
 - `/bfsthismess/chooseAlternative` — requires `alternative`, `choice`, `road`, `session`
 - `/bfsthismess/clearCap` — requires `capType`, `road`, `session`, `term`, `year`
+- `/bfsthismess/copyRoad` — requires `name`, `road`, `session`
 - `/bfsthismess/deleteRoad` — requires `road`, `session`
+- `/bfsthismess/disableLink` — requires `road`, `role`, `session`
+- `/bfsthismess/enableLink` — requires `road`, `role`, `session`
 - `/bfsthismess/findPaths` — requires `includeIAPAndSummer`, `limit`, `road`, `session`
+- `/bfsthismess/findUsers` — requires `prefix`, `road`, `session`
+- `/bfsthismess/joinLink` — requires `session`, `token`
 - `/bfsthismess/logIn` — requires `password`, `username`
 - `/bfsthismess/logOut` — requires `session`
 - `/bfsthismess/myRoads` — requires `session`
@@ -3078,6 +3732,7 @@ not listed here have no explicit input contract.
 - `/bfsthismess/previewEndChange` — requires `road`, `session`, `term`, `year`
 - `/bfsthismess/previewStartChange` — requires `road`, `session`, `term`, `year`
 - `/bfsthismess/refreshRequirements` — requires `road`, `session`
+- `/bfsthismess/regenerateLink` — requires `road`, `role`, `session`
 - `/bfsthismess/register` — requires `password`, `username`
 - `/bfsthismess/removeBlock` — requires `block`, `session`
 - `/bfsthismess/removeOption` — requires `block`, `session`, `subject`
@@ -3090,10 +3745,12 @@ not listed here have no explicit input contract.
 - `/bfsthismess/setEnd` — requires `road`, `session`, `term`, `year`
 - `/bfsthismess/setLocked` — requires `locked`, `road`, `session`, `term`, `year`
 - `/bfsthismess/setMajor` — requires `major`, `road`, `session`
+- `/bfsthismess/setRole` — requires `road`, `role`, `session`, `username`
 - `/bfsthismess/setStart` — requires `road`, `session`, `term`, `year`
-- `/bfsthismess/shareRoad` — requires `road`, `session`, `username`
+- `/bfsthismess/shareRoad` — requires `road`, `role`, `session`, `username`
 - `/bfsthismess/unPin` — requires `road`, `session`, `subject`
 - `/bfsthismess/unshareRoad` — requires `road`, `session`, `username`
+- `/bfsthismess/viewLinks` — requires `road`, `session`
 - `/bfsthismess/viewOptions` — requires `includeIAPAndSummer`, `road`, `session`
 - `/bfsthismess/viewRatings` — requires `course`
 - `/bfsthismess/viewRoad` — requires `includeIAPAndSummer`, `limit`, `road`, `session`

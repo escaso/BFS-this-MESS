@@ -323,3 +323,19 @@ describe("_username", () => {
     }
   });
 });
+
+describe("_matching", () => {
+  test("covers: under 2 characters none; prefix ignoring case; at most 8, in order; usernames only", async () => {
+    for (const name of ["Advisor", "adam", "bob", ...Array.from({ length: 9 }, (_, i) => `ad${i}`)]) {
+      await auth.register({ username: name, password: "pw" });
+    }
+    expect(await auth._matching({ prefix: "" })).toEqual([]);
+    expect(await auth._matching({ prefix: "a" })).toEqual([]);
+    const ad = await auth._matching({ prefix: "AD" });
+    expect(ad).toHaveLength(8);
+    expect(ad.map((r) => r.username)).toEqual(["Advisor", "ad0", "ad1", "ad2", "ad3", "ad4", "ad5", "ad6"]);
+    expect(Object.keys(ad[0]).sort()).toEqual(["user", "username"]);
+    expect((await auth._matching({ prefix: "bo" })).map((r) => r.username)).toEqual(["bob"]);
+    expect(await auth._matching({ prefix: "a.*" })).toEqual([]); // a prefix, not a pattern
+  });
+});

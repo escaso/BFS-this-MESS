@@ -138,6 +138,15 @@ export class RequirementsConcept {
     return {};
   }
 
+  async copyChoices({ from, to }: { from: string; to: string }) {
+    const copies = (await this.selections.find({ road: from }).toArray()).map(({ choice, alternatives }) => ({
+      _id: `${to}|${choice}`, road: to, choice, alternatives,
+    }));
+    await this.selections.deleteMany({ road: to });
+    if (copies.length) await this.selections.insertMany(copies);
+    return {};
+  }
+
   async forget({ road }: { road: string }) {
     await this.selections.deleteMany({ road });
     return {};

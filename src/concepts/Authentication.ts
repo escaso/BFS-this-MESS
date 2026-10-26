@@ -89,6 +89,18 @@ export class AuthenticationConcept {
     return user ? [{ user: user._id as string }] : [];
   }
 
+  async _matching({ prefix }: { prefix: string }) {
+    // Usernames only, few at a time, and not before two letters, so it cannot list every user.
+    if (prefix.length < 2) return [];
+    const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i");
+    const users = await this.users
+      .find({ username: pattern }, { projection: { username: 1 } })
+      .sort({ username: 1 })
+      .limit(8)
+      .toArray();
+    return users.map((u) => ({ user: u._id as string, username: u.username as string }));
+  }
+
   async _username({ user }: { user: string }) {
     const record = await this.users.findOne({ _id: user });
     if (!record) throw new NoSuchUser("User does not exist.");

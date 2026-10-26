@@ -1,6 +1,7 @@
 /**
  * Tests for the Share concept, written from Share.md (the spec), not from Share.ts.
- * Only the public actions and queries are used; no test reads the database directly.
+ * Only the public actions and queries are used; the one exception is the setup of the
+ * legacy-data test, which writes an Access in the shape it had before Grants existed.
  * Refusals are checked by the code and sentence the spec declares for each action.
  *
  * Run with: bun test test/Share.test.ts (needs MongoDB at MONGODB_URI)
@@ -9,117 +10,55 @@
  * TESTING STRATEGY (partitions)
  * =====================================================================================
  *
- * Roads and users are opaque IDs, so tests use distinct strings for them.
- * Names used below: owner = "alice", viewer = "bob", other viewer = "carol",
- * stranger = "dave".
+ * Roads and users are opaque IDs. Names: owner = "alice", editor = "erin", viewer = "bob",
+ * other viewer = "carol", stranger = "dave".
  *
- * ---- claim(road, user) ----
- * Partition on state of road:
- *   - road has no Access (never claimed)
- *   - road has an Access (already owned)
- *       . claimed again by its owner
- *       . claimed by a different user
- *       . claimed by a user in its accessList
- *   - road had an Access that was released
- * Partition on user:
- *   - user owns no other roads
- *   - user already owns other roads
- *   - user is a viewer of other roads
- * Partition on outcome:
- *   - returns (empty result), road becomes owned
- *   - refuses ROAD_ALREADY_OWNED, and existing Access is unchanged
+ * ---- claim(road, user) / release(road) ----
+ *   road: never claimed / owned (by the same or another user) / released
+ *   release: with grants and links (all gone afterwards) / road with no owner
  *
- * ---- release(road) ----
- * Partition on state of road:
- *   - no owner (never claimed)
- *   - no owner (already released)
- *   - owner, empty accessList
- *   - owner, nonempty accessList
- * Partition on other roads:
- *   - other roads exist (must be unaffected)
- *   - no other roads
+ * ---- share(road, requester, user, role) ----
+ *   requester: owner / editor / viewer / stranger; road: owned / not owned
+ *   role: VIEW / EDIT / neither
+ *   user: new / already granted (VIEW, EDIT, hidden from an editor) / the owner / the requester
+ *   outcome: grant created with addedBy / role changed (owner) / nothing changes (editor) / refusal
  *
- * ---- share(road, requester, user) ----
- * Partition on road:
- *   - no owner (never claimed, or released)
- *   - has owner
- * Partition on requester (given road has an owner):
- *   - requester is the owner
- *   - requester is in accessList
- *   - requester is neither (stranger)
- * Partition on user (given requester is owner):
- *   - user is the owner
- *   - user not in accessList, not owner
- *   - user already in accessList
- * Partition on user (given requester is a viewer / stranger / road unowned):
- *   - user is the requester themself
- *   - user is the owner
- *   - user is some third party
- * Partition on accessList size before: 0, 1, many
+ * ---- setRole / unshare ----
+ *   requester: owner / editor / viewer / stranger; user: granted / not granted; role: valid / not
  *
- * ---- unshare(road, requester, user) ----
- * Partition on road:
- *   - no owner (never claimed, or released)
- *   - has owner
- * Partition on requester (given road has an owner):
- *   - owner
- *   - in accessList
- *   - stranger
- * Partition on user (given requester is owner):
- *   - user in accessList
- *   - user not in accessList (never shared, or previously unshared)
- *   - user is the owner (never in accessList)
- * Partition on user (given requester is viewer / stranger):
- *   - user is the requester themself
- *   - user is another viewer
- *   - user is not shared with
- * Partition on accessList size before: 1, many
+ * ---- enableLink / disableLink / regenerateLink / join ----
+ *   requester: owner / editor / viewer / stranger; role: VIEW / EDIT / neither
+ *   link: none / enabled / disabled / regenerated (old token)
+ *   joiner: new / viewer (VIEW link, EDIT link) / editor (VIEW link) / owner / added by an editor
+ *   token: valid / unknown / empty
  *
- * ---- _canView(road, user) ----
- * Partition on road: no owner / has owner
- * Partition on user (given owner): the owner / in accessList / stranger
- * Partition on history: fresh / after share / after unshare / after release
+ * ---- queries ----
+ *   _canView, _canEdit, _isOwner, _role: owner / editor / viewer / stranger / road with no owner
+ *   _roadsOwnedBy, _roadsSharedWith (with role): 0, 1, many; after unshare and release
+ *   _grantsVisibleTo: owner (all) / editor (own invitees only) / viewer / stranger (none)
+ *   _ownerVisibleTo: owner / editor / owner-added viewer / link joiner / editor-added viewer / stranger
+ *   _known: owner, requester, granted user (owner asks / editor asks: own invitee or not), unknown
+ *   _links: owner / anyone else
  *
- * ---- _isOwner(road, user) ----
- * Partition on road: no owner / has owner
- * Partition on user (given owner): the owner / in accessList / stranger
+ * ---- legacy data ----
+ *   an Access with a plain accessList: its users are viewers added by the owner, and keep
+ *   working through every action and query
  *
- * ---- _roadsOwnedBy(user) ----
- * Partition on number of roads owned: 0, 1, many
- * Partition on other data: roads owned by others exist / roads shared with user exist
- * Partition on history: after release of an owned road
- *
- * ---- _roadsSharedWith(user) ----
- * Partition on number of roads shared with user: 0, 1, many
- * Partition on other data: user owns roads / other users have shares
- * Partition on history: after unshare / after release / after being refused
- *
- * ---- _viewers(road) ----  (where road has an owner)
- * Partition on accessList: empty / 1 viewer / many viewers
- * Partition on history: after share / after unshare / after claim following a release
- *
- * ---- Cross-cutting ----
- *   - Principle: claim, share, viewer can view, unshare, viewer cannot view
- *   - Refused operations never change state
- *   - Indistinguishability: a road the requester cannot see and a road that does not
- *     exist are refused with the same refusal (NO_SUCH_ROAD)
- *   - Viewer permission is view-only: never lets one change the sharing
- *   - Ownership is never transferred (viewers cannot become owner, owner stays owner)
+ * ---- cross-cutting ----
+ *   principle; refused actions change nothing; a road one may not see is NO_SUCH_ROAD
  */
 
 import { describe, test, expect, beforeEach } from "bun:test";
 import { ShareConcept } from "../src/concepts/Share.ts";
 import { refusalsOf, useFreshDb } from "./support.ts";
 
-// ---------------------------------------------------------------- helpers
-
 const OWNER = "alice";
+const EDITOR = "erin";
 const VIEWER = "bob";
 const VIEWER2 = "carol";
 const STRANGER = "dave";
 const ROAD = "road-1";
 const ROAD2 = "road-2";
-const ROAD3 = "road-3";
 
 const db = useFreshDb("share_test");
 const expectRefusal = refusalsOf("Share");
@@ -129,621 +68,298 @@ beforeEach(() => {
   share = new ShareConcept(db());
 });
 
-const sorted = (xs: string[]) => [...xs].sort();
+const sorted = <T>(xs: T[]) => [...xs].sort();
+const role = async (road: string, user: string) => (await share._role({ road, user })).role;
+const canView = async (road: string, user: string) => (await share._canView({ road, user })).allowed;
+const canEdit = async (road: string, user: string) => (await share._canEdit({ road, user })).allowed;
+const people = async (road: string, requester: string) =>
+  sorted((await share._grantsVisibleTo({ road, requester })).map((g) => `${g.user}:${g.role}:${g.addedBy}`));
+const ownerSeenBy = async (road: string, user: string) =>
+  (await share._ownerVisibleTo({ road, user })).map((r) => r.owner);
+const tokenOf = async (road: string, r: "VIEW" | "EDIT") =>
+  (await share._links({ road, requester: OWNER })).find((l) => l.role === r)?.token ?? "";
 
-async function viewers(road: string) {
-  return sorted((await share._viewers({ road })).map((r) => r.user));
-}
-async function owned(user: string) {
-  return sorted((await share._roadsOwnedBy({ user })).map((r) => r.road));
-}
-async function sharedWith(user: string) {
-  return sorted((await share._roadsSharedWith({ user })).map((r) => r.road));
-}
-async function canView(road: string, user: string) {
-  return (await share._canView({ road, user })).allowed;
-}
-async function isOwner(road: string, user: string) {
-  return (await share._isOwner({ road, user })).owner;
-}
-
-/** Owner claims ROAD and shares it with each given viewer. */
-async function setup(...viewerIds: string[]) {
+/** OWNER claims ROAD, makes EDITOR an editor, and makes VIEWER a viewer. */
+async function setup() {
   await share.claim({ road: ROAD, user: OWNER });
-  for (const v of viewerIds) {
-    await share.share({ road: ROAD, requester: OWNER, user: v });
-  }
+  await share.share({ road: ROAD, requester: OWNER, user: EDITOR, role: "EDIT" });
+  await share.share({ road: ROAD, requester: OWNER, user: VIEWER, role: "VIEW" });
 }
 
-// ---------------------------------------------------------------- principle
+test("principle: viewer looks, becomes an editor who adds a viewer, link joins, unshare", async () => {
+  await share.claim({ road: ROAD, user: OWNER });
+  await share.share({ road: ROAD, requester: OWNER, user: VIEWER, role: "VIEW" });
+  expect([await canView(ROAD, VIEWER), await canEdit(ROAD, VIEWER)]).toEqual([true, false]);
 
-test("principle: claim, share with advisor, advisor views, unshare, advisor cannot view", async () => {
-  expect(await share.claim({ road: ROAD, user: OWNER })).toEqual({});
-  expect(await isOwner(ROAD, OWNER)).toBe(true);
-  expect(await canView(ROAD, OWNER)).toBe(true);
+  await share.setRole({ road: ROAD, requester: OWNER, user: VIEWER, role: "EDIT" });
+  expect(await canEdit(ROAD, VIEWER)).toBe(true);
+  await share.share({ road: ROAD, requester: VIEWER, user: VIEWER2, role: "VIEW" });
+  expect(await people(ROAD, VIEWER)).toEqual([`${VIEWER2}:VIEW:${VIEWER}`]); // only the ones they added
+
+  await share.enableLink({ road: ROAD, requester: OWNER, role: "VIEW" });
+  const old = await tokenOf(ROAD, "VIEW");
+  expect(await share.join({ token: old, user: STRANGER })).toEqual({ road: ROAD });
+  await share.regenerateLink({ road: ROAD, requester: OWNER, role: "VIEW" });
+  await expectRefusal("join", "INVALID_LINK", share.join({ token: old, user: "eve" }));
+
+  await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
   expect(await canView(ROAD, VIEWER)).toBe(false);
-
-  expect(await share.share({ road: ROAD, requester: OWNER, user: VIEWER })).toEqual({});
-  expect(await canView(ROAD, VIEWER)).toBe(true);
-  expect(await isOwner(ROAD, VIEWER)).toBe(false); // can look, not own
-  expect(await sharedWith(VIEWER)).toEqual([ROAD]);
-  expect(await viewers(ROAD)).toEqual([VIEWER]);
-
-  expect(await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER })).toEqual({});
-  expect(await canView(ROAD, VIEWER)).toBe(false);
-  expect(await sharedWith(VIEWER)).toEqual([]);
-  expect(await viewers(ROAD)).toEqual([]);
-  // the owner is unaffected throughout
-  expect(await canView(ROAD, OWNER)).toBe(true);
-  expect(await isOwner(ROAD, OWNER)).toBe(true);
 });
 
-// ---------------------------------------------------------------- claim
-
-describe("claim", () => {
-  test("unclaimed road becomes owned with empty accessList", async () => {
+describe("claim and release", () => {
+  test("claim makes the owner; a second claim is refused and changes nothing", async () => {
     expect(await share.claim({ road: ROAD, user: OWNER })).toEqual({});
-    expect(await isOwner(ROAD, OWNER)).toBe(true);
-    expect(await viewers(ROAD)).toEqual([]);
-    expect(await owned(OWNER)).toEqual([ROAD]);
-  });
-
-  test("already owned road, claimed again by owner, is refused", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
+    await expectRefusal("claim", "ROAD_ALREADY_OWNED", share.claim({ road: ROAD, user: STRANGER }));
     await expectRefusal("claim", "ROAD_ALREADY_OWNED", share.claim({ road: ROAD, user: OWNER }));
-    expect(await owned(OWNER)).toEqual([ROAD]);
+    expect(await role(ROAD, OWNER)).toBe("OWNER");
+    expect(await role(ROAD, STRANGER)).toBe("NONE");
   });
 
-  test("already owned road, claimed by different user, is refused and ownership is unchanged", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await expectRefusal("claim", "ROAD_ALREADY_OWNED", share.claim({ road: ROAD, user: STRANGER }));
-    expect(await isOwner(ROAD, OWNER)).toBe(true);
-    expect(await isOwner(ROAD, STRANGER)).toBe(false);
-    expect(await canView(ROAD, STRANGER)).toBe(false);
-    expect(await owned(STRANGER)).toEqual([]);
-  });
-
-  test("a viewer cannot claim the road they can view (ownership is never transferred)", async () => {
-    await setup(VIEWER);
-    await expectRefusal("claim", "ROAD_ALREADY_OWNED", share.claim({ road: ROAD, user: VIEWER }));
-    expect(await isOwner(ROAD, OWNER)).toBe(true);
-    expect(await isOwner(ROAD, VIEWER)).toBe(false);
-    expect(await viewers(ROAD)).toEqual([VIEWER]); // sharing intact
-  });
-
-  test("refused claim leaves existing accessList untouched", async () => {
-    await setup(VIEWER, VIEWER2);
-    await expectRefusal("claim", "ROAD_ALREADY_OWNED", share.claim({ road: ROAD, user: STRANGER }));
-    expect(await viewers(ROAD)).toEqual(sorted([VIEWER, VIEWER2]));
-  });
-
-  test("user who already owns other roads can claim another", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
+  test("release deletes grants and links; releasing again is refused; the road can be claimed anew", async () => {
+    await setup();
+    await share.enableLink({ road: ROAD, requester: OWNER, role: "EDIT" });
+    const token = await tokenOf(ROAD, "EDIT");
     await share.claim({ road: ROAD2, user: OWNER });
-    expect(await owned(OWNER)).toEqual(sorted([ROAD, ROAD2]));
-  });
 
-  test("user who views another road can claim a different road", async () => {
-    await setup(VIEWER);
-    await share.claim({ road: ROAD2, user: VIEWER });
-    expect(await isOwner(ROAD2, VIEWER)).toBe(true);
-    expect(await owned(VIEWER)).toEqual([ROAD2]);
-    expect(await sharedWith(VIEWER)).toEqual([ROAD]);
-  });
+    expect(await share.release({ road: ROAD })).toEqual({});
+    for (const u of [OWNER, EDITOR, VIEWER]) expect(await role(ROAD, u)).toBe("NONE");
+    expect((await share._roadsSharedWith({ user: VIEWER })).length).toBe(0);
+    await expectRefusal("join", "INVALID_LINK", share.join({ token, user: STRANGER }));
+    await expectRefusal("release", "NO_SUCH_ROAD", share.release({ road: ROAD }));
+    expect(await role(ROAD2, OWNER)).toBe("OWNER"); // other roads unaffected
 
-  test("different users can claim different roads independently", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.claim({ road: ROAD2, user: STRANGER });
-    expect(await owned(OWNER)).toEqual([ROAD]);
-    expect(await owned(STRANGER)).toEqual([ROAD2]);
-    expect(await canView(ROAD, STRANGER)).toBe(false);
-    expect(await canView(ROAD2, OWNER)).toBe(false);
-  });
-
-  test("road can be claimed again after release, by anyone, with a fresh accessList", async () => {
-    await setup(VIEWER);
-    await share.release({ road: ROAD });
     await share.claim({ road: ROAD, user: STRANGER });
-    expect(await isOwner(ROAD, STRANGER)).toBe(true);
-    expect(await isOwner(ROAD, OWNER)).toBe(false);
-    expect(await canView(ROAD, OWNER)).toBe(false);
-    expect(await canView(ROAD, VIEWER)).toBe(false); // old sharing is gone
-    expect(await viewers(ROAD)).toEqual([]);
+    expect(await people(ROAD, STRANGER)).toEqual([]);
   });
 });
-
-// ---------------------------------------------------------------- release
-
-describe("release", () => {
-  test("never-claimed road is refused with NO_SUCH_ROAD", async () => {
-    await expectRefusal("release", "NO_SUCH_ROAD", share.release({ road: ROAD }));
-  });
-
-  test("already-released road is refused with NO_SUCH_ROAD", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.release({ road: ROAD });
-    await expectRefusal("release", "NO_SUCH_ROAD", share.release({ road: ROAD }));
-  });
-
-  test("owned road with empty accessList: nobody owns or can view it afterwards", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    expect(await share.release({ road: ROAD })).toEqual({});
-    expect(await canView(ROAD, OWNER)).toBe(false);
-    expect(await isOwner(ROAD, OWNER)).toBe(false);
-    expect(await owned(OWNER)).toEqual([]);
-  });
-
-  test("owned road with viewers removes access for owner and all viewers", async () => {
-    await setup(VIEWER, VIEWER2);
-    expect(await share.release({ road: ROAD })).toEqual({});
-    for (const u of [OWNER, VIEWER, VIEWER2, STRANGER]) {
-      expect(await canView(ROAD, u)).toBe(false);
-      expect(await isOwner(ROAD, u)).toBe(false);
-    }
-    expect(await owned(OWNER)).toEqual([]);
-    expect(await sharedWith(VIEWER)).toEqual([]);
-    expect(await sharedWith(VIEWER2)).toEqual([]);
-  });
-
-  test("later share/unshare on released road are refused as NO_SUCH_ROAD", async () => {
-    await setup(VIEWER);
-    await share.release({ road: ROAD });
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: OWNER, user: VIEWER2 }));
-    await expectRefusal("unshare", "NO_SUCH_ROAD", share.unshare({ road: ROAD, requester: OWNER, user: VIEWER }));
-  });
-
-  test("does not affect other roads, their owners, or their viewers", async () => {
-    await setup(VIEWER);
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.share({ road: ROAD2, requester: OWNER, user: VIEWER });
-    await share.claim({ road: ROAD3, user: STRANGER });
-
-    await share.release({ road: ROAD });
-
-    expect(await owned(OWNER)).toEqual([ROAD2]);
-    expect(await sharedWith(VIEWER)).toEqual([ROAD2]);
-    expect(await canView(ROAD2, VIEWER)).toBe(true);
-    expect(await viewers(ROAD2)).toEqual([VIEWER]);
-    expect(await owned(STRANGER)).toEqual([ROAD3]);
-  });
-});
-
-// ---------------------------------------------------------------- share
 
 describe("share", () => {
-  test("owner shares with a new user (empty accessList)", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    expect(await share.share({ road: ROAD, requester: OWNER, user: VIEWER })).toEqual({});
-    expect(await canView(ROAD, VIEWER)).toBe(true);
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-    expect(await sharedWith(VIEWER)).toEqual([ROAD]);
-  });
-
-  test("owner shares with additional users (accessList size 1 -> many)", async () => {
-    await setup(VIEWER);
-    await share.share({ road: ROAD, requester: OWNER, user: VIEWER2 });
-    await share.share({ road: ROAD, requester: OWNER, user: STRANGER });
-    expect(await viewers(ROAD)).toEqual(sorted([VIEWER, VIEWER2, STRANGER]));
-    for (const u of [VIEWER, VIEWER2, STRANGER]) {
-      expect(await canView(ROAD, u)).toBe(true);
-    }
-  });
-
-  test("sharing with a user already in accessList succeeds and adds no duplicate", async () => {
-    await setup(VIEWER);
-    expect(await share.share({ road: ROAD, requester: OWNER, user: VIEWER })).toEqual({});
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-    expect(await sharedWith(VIEWER)).toEqual([ROAD]);
-    // one unshare is enough to remove them, proving there was only one entry
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await canView(ROAD, VIEWER)).toBe(false);
-    expect(await viewers(ROAD)).toEqual([]);
-  });
-
-  test("owner sharing with themself is refused with SHARE_WITH_OWNER", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await expectRefusal("share", "SHARE_WITH_OWNER", share.share({ road: ROAD, requester: OWNER, user: OWNER }));
-    expect(await viewers(ROAD)).toEqual([]); // owner not put in accessList
-    expect(await sharedWith(OWNER)).toEqual([]);
-  });
-
-  test("unowned road is refused with NO_SUCH_ROAD, whoever the requester", async () => {
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: OWNER, user: VIEWER }));
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: VIEWER, user: VIEWER }));
-    expect(await canView(ROAD, VIEWER)).toBe(false);
-    expect(await sharedWith(VIEWER)).toEqual([]);
-  });
-
-  test("stranger is refused with NO_SUCH_ROAD (same as a road that does not exist)", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: STRANGER, user: VIEWER }));
-    expect(await canView(ROAD, VIEWER)).toBe(false);
-    expect(await viewers(ROAD)).toEqual([]);
-  });
-
-  test("stranger sharing with themself or with the owner is still NO_SUCH_ROAD", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: STRANGER, user: STRANGER }));
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: STRANGER, user: OWNER }));
-    expect(await canView(ROAD, STRANGER)).toBe(false);
-    expect(await viewers(ROAD)).toEqual([]);
-  });
-
-  test("viewer is refused with NOT_AN_OWNER (third party)", async () => {
-    await setup(VIEWER);
-    await expectRefusal("share", "NOT_AN_OWNER", share.share({ road: ROAD, requester: VIEWER, user: VIEWER2 }));
-    expect(await canView(ROAD, VIEWER2)).toBe(false);
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-  });
-
-  test("viewer is refused with NOT_AN_OWNER even when sharing with themself or the owner", async () => {
-    await setup(VIEWER);
-    await expectRefusal("share", "NOT_AN_OWNER", share.share({ road: ROAD, requester: VIEWER, user: VIEWER }));
-    await expectRefusal("share", "NOT_AN_OWNER", share.share({ road: ROAD, requester: VIEWER, user: OWNER }));
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-  });
-
-  test("sharing one road does not share the owner's other roads", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.share({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await canView(ROAD, VIEWER)).toBe(true);
-    expect(await canView(ROAD2, VIEWER)).toBe(false);
-    expect(await sharedWith(VIEWER)).toEqual([ROAD]);
-  });
-
-  test("same user can be a viewer of roads owned by different owners", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.claim({ road: ROAD2, user: STRANGER });
-    await share.share({ road: ROAD, requester: OWNER, user: VIEWER });
-    await share.share({ road: ROAD2, requester: STRANGER, user: VIEWER });
-    expect(await sharedWith(VIEWER)).toEqual(sorted([ROAD, ROAD2]));
-  });
-
-  test("owner of one road can be a viewer of another and remains owner of theirs", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.claim({ road: ROAD2, user: VIEWER });
-    await share.share({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await isOwner(ROAD2, VIEWER)).toBe(true);
-    expect(await isOwner(ROAD, VIEWER)).toBe(false);
-    expect(await owned(VIEWER)).toEqual([ROAD2]);
-    expect(await sharedWith(VIEWER)).toEqual([ROAD]);
-  });
-
-  test("shared viewer never becomes owner", async () => {
-    await setup(VIEWER);
-    expect(await isOwner(ROAD, VIEWER)).toBe(false);
-    expect(await owned(VIEWER)).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------- unshare
-
-describe("unshare", () => {
-  test("owner removes the only viewer", async () => {
-    await setup(VIEWER);
-    expect(await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER })).toEqual({});
-    expect(await canView(ROAD, VIEWER)).toBe(false);
-    expect(await viewers(ROAD)).toEqual([]);
-    expect(await sharedWith(VIEWER)).toEqual([]);
-  });
-
-  test("owner removes one of many viewers, others keep access", async () => {
-    await setup(VIEWER, VIEWER2, STRANGER);
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER2 });
-    expect(await canView(ROAD, VIEWER2)).toBe(false);
-    expect(await canView(ROAD, VIEWER)).toBe(true);
-    expect(await canView(ROAD, STRANGER)).toBe(true);
-    expect(await viewers(ROAD)).toEqual(sorted([VIEWER, STRANGER]));
-  });
-
-  test("removing a viewer from one road leaves their access to other roads", async () => {
-    await setup(VIEWER);
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.share({ road: ROAD2, requester: OWNER, user: VIEWER });
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await canView(ROAD, VIEWER)).toBe(false);
-    expect(await canView(ROAD2, VIEWER)).toBe(true);
-    expect(await sharedWith(VIEWER)).toEqual([ROAD2]);
-  });
-
-  test("owner can share again after unsharing", async () => {
-    await setup(VIEWER);
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
-    await share.share({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await canView(ROAD, VIEWER)).toBe(true);
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-  });
-
-  test("user never shared with is refused with NOT_SHARED", async () => {
-    await setup(VIEWER);
-    await expectRefusal("unshare", "NOT_SHARED", share.unshare({ road: ROAD, requester: OWNER, user: VIEWER2 }));
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-  });
-
-  test("user already unshared is refused with NOT_SHARED", async () => {
-    await setup(VIEWER);
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
-    await expectRefusal("unshare", "NOT_SHARED", share.unshare({ road: ROAD, requester: OWNER, user: VIEWER }));
-  });
-
-  test("owner unsharing the owner is refused with NOT_SHARED and owner keeps access", async () => {
-    await setup(VIEWER);
-    await expectRefusal("unshare", "NOT_SHARED", share.unshare({ road: ROAD, requester: OWNER, user: OWNER }));
-    expect(await canView(ROAD, OWNER)).toBe(true);
-    expect(await isOwner(ROAD, OWNER)).toBe(true);
-  });
-
-  test("unowned road is refused with NO_SUCH_ROAD", async () => {
-    await expectRefusal("unshare", "NO_SUCH_ROAD", share.unshare({ road: ROAD, requester: OWNER, user: VIEWER }));
-  });
-
-  test("stranger is refused with NO_SUCH_ROAD, even for a user who is not shared with", async () => {
-    await setup(VIEWER);
-    // user is a real viewer
-    await expectRefusal("unshare", "NO_SUCH_ROAD", share.unshare({ road: ROAD, requester: STRANGER, user: VIEWER }));
-    // user is not a viewer: still NO_SUCH_ROAD, not NOT_SHARED
-    await expectRefusal("unshare", "NO_SUCH_ROAD", share.unshare({ road: ROAD, requester: STRANGER, user: VIEWER2 }));
-    // user is the stranger themself
-    await expectRefusal("unshare", "NO_SUCH_ROAD", share.unshare({ road: ROAD, requester: STRANGER, user: STRANGER }));
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-  });
-
-  test("viewer cannot remove another viewer (NOT_AN_OWNER)", async () => {
-    await setup(VIEWER, VIEWER2);
-    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: VIEWER, user: VIEWER2 }));
-    expect(await viewers(ROAD)).toEqual(sorted([VIEWER, VIEWER2]));
-  });
-
-  test("viewer cannot remove themself (NOT_AN_OWNER)", async () => {
-    await setup(VIEWER);
-    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: VIEWER, user: VIEWER }));
-    expect(await canView(ROAD, VIEWER)).toBe(true);
-  });
-
-  test("viewer is refused with NOT_AN_OWNER even if the target is the owner or not shared", async () => {
-    await setup(VIEWER);
-    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: VIEWER, user: OWNER }));
-    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: VIEWER, user: STRANGER }));
-    expect(await canView(ROAD, OWNER)).toBe(true);
-    expect(await viewers(ROAD)).toEqual([VIEWER]);
-  });
-});
-
-// ---------------------------------------------------------------- _canView
-
-describe("_canView", () => {
-  test("road with no owner is false for everyone", async () => {
-    for (const u of [OWNER, VIEWER, STRANGER]) {
-      expect(await share._canView({ road: ROAD, user: u })).toEqual({ allowed: false });
-    }
-  });
-
-  test("true for owner, true for viewer, false for stranger", async () => {
-    await setup(VIEWER);
-    expect(await share._canView({ road: ROAD, user: OWNER })).toEqual({ allowed: true });
-    expect(await share._canView({ road: ROAD, user: VIEWER })).toEqual({ allowed: true });
-    expect(await share._canView({ road: ROAD, user: STRANGER })).toEqual({ allowed: false });
-  });
-
-  test("owned road with empty accessList is visible only to the owner", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    expect(await canView(ROAD, OWNER)).toBe(true);
-    expect(await canView(ROAD, VIEWER)).toBe(false);
-  });
-
-  test("is per road (access to one road gives none to another)", async () => {
-    await setup(VIEWER);
-    await share.claim({ road: ROAD2, user: STRANGER });
-    expect(await canView(ROAD2, VIEWER)).toBe(false);
-    expect(await canView(ROAD2, OWNER)).toBe(false);
-    expect(await canView(ROAD, STRANGER)).toBe(false);
-  });
-
-  test("refused share does not grant view", async () => {
-    await setup(VIEWER);
-    await expectRefusal("share", "NOT_AN_OWNER", share.share({ road: ROAD, requester: VIEWER, user: STRANGER }));
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: STRANGER, user: STRANGER }));
-    expect(await canView(ROAD, STRANGER)).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------- _isOwner
-
-describe("_isOwner", () => {
-  test("road with no owner is false for everyone", async () => {
-    for (const u of [OWNER, VIEWER, STRANGER]) {
-      expect(await share._isOwner({ road: ROAD, user: u })).toEqual({ owner: false });
-    }
-  });
-
-  test("true only for the owner, not for viewers or strangers", async () => {
-    await setup(VIEWER);
-    expect(await share._isOwner({ road: ROAD, user: OWNER })).toEqual({ owner: true });
-    expect(await share._isOwner({ road: ROAD, user: VIEWER })).toEqual({ owner: false });
-    expect(await share._isOwner({ road: ROAD, user: STRANGER })).toEqual({ owner: false });
-  });
-
-  test("owner remains owner after sharing and unsharing", async () => {
-    await setup(VIEWER);
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await isOwner(ROAD, OWNER)).toBe(true);
-    expect(await isOwner(ROAD, VIEWER)).toBe(false);
-  });
-});
-
-// ---------------------------------------------------------------- _roadsOwnedBy
-
-describe("_roadsOwnedBy", () => {
-  test("user who owns nothing gets no rows", async () => {
-    expect(await share._roadsOwnedBy({ user: OWNER })).toEqual([]);
-  });
-
-  test("one owned road", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    expect(await share._roadsOwnedBy({ user: OWNER })).toEqual([{ road: ROAD }]);
-  });
-
-  test("many owned roads, excluding others' roads and roads shared with the user", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.claim({ road: ROAD3, user: STRANGER });
-    await share.share({ road: ROAD3, requester: STRANGER, user: OWNER });
-    expect(await owned(OWNER)).toEqual(sorted([ROAD, ROAD2]));
-    expect(await owned(STRANGER)).toEqual([ROAD3]);
-  });
-
-  test("viewer who owns nothing gets no rows", async () => {
-    await setup(VIEWER);
-    expect(await owned(VIEWER)).toEqual([]);
-  });
-
-  test("released road is no longer listed", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.release({ road: ROAD });
-    expect(await owned(OWNER)).toEqual([ROAD2]);
-  });
-});
-
-// ---------------------------------------------------------------- _roadsSharedWith
-
-describe("_roadsSharedWith", () => {
-  test("user with no shares gets no rows", async () => {
+  test("owner adds viewers and editors, recorded as added by the owner", async () => {
     await setup();
-    expect(await share._roadsSharedWith({ user: VIEWER })).toEqual([]);
+    expect(await people(ROAD, OWNER)).toEqual([`${VIEWER}:VIEW:${OWNER}`, `${EDITOR}:EDIT:${OWNER}`].sort());
+    expect(await role(ROAD, EDITOR)).toBe("EDIT");
+    expect(await role(ROAD, VIEWER)).toBe("VIEW");
   });
 
-  test("one shared road", async () => {
-    await setup(VIEWER);
-    expect(await share._roadsSharedWith({ user: VIEWER })).toEqual([{ road: ROAD }]);
+  test("owner adding someone again changes their role, either way", async () => {
+    await setup();
+    expect(await share.share({ road: ROAD, requester: OWNER, user: VIEWER, role: "EDIT" })).toEqual({});
+    expect(await role(ROAD, VIEWER)).toBe("EDIT");
+    await share.share({ road: ROAD, requester: OWNER, user: VIEWER, role: "VIEW" });
+    expect(await role(ROAD, VIEWER)).toBe("VIEW");
+    expect(await people(ROAD, OWNER)).toContain(`${VIEWER}:VIEW:${OWNER}`); // addedBy unchanged
   });
 
-  test("many shared roads, excluding unshared ones and other users' shares", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.claim({ road: ROAD3, user: OWNER });
-    await share.share({ road: ROAD, requester: OWNER, user: VIEWER });
-    await share.share({ road: ROAD2, requester: OWNER, user: VIEWER });
-    await share.share({ road: ROAD3, requester: OWNER, user: VIEWER2 });
-    expect(await sharedWith(VIEWER)).toEqual(sorted([ROAD, ROAD2]));
-    expect(await sharedWith(VIEWER2)).toEqual([ROAD3]);
+  test("an editor adds viewers only, recorded as added by them", async () => {
+    await setup();
+    expect(await share.share({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "VIEW" })).toEqual({});
+    expect(await people(ROAD, OWNER)).toContain(`${VIEWER2}:VIEW:${EDITOR}`);
+    await expectRefusal("share", "EDITORS_ADD_VIEWERS", share.share({ road: ROAD, requester: EDITOR, user: STRANGER, role: "EDIT" }));
+    expect(await role(ROAD, STRANGER)).toBe("NONE");
   });
 
-  test("does not list roads the user owns", async () => {
-    await setup(VIEWER);
-    expect(await sharedWith(OWNER)).toEqual([]);
+  test("an editor adding someone who already has access (even unseen) or the owner: same answer, no change", async () => {
+    await setup();
+    for (const user of [VIEWER, OWNER, EDITOR]) {
+      expect(await share.share({ road: ROAD, requester: EDITOR, user, role: "VIEW" })).toEqual({});
+    }
+    expect(await role(ROAD, EDITOR)).toBe("EDIT"); // never lowered
+    expect(await people(ROAD, OWNER)).toEqual([`${VIEWER}:VIEW:${OWNER}`, `${EDITOR}:EDIT:${OWNER}`].sort());
+    expect(await people(ROAD, EDITOR)).toEqual([]); // still not shown to them
   });
 
-  test("unshared road is no longer listed", async () => {
-    await setup(VIEWER);
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.share({ road: ROAD2, requester: OWNER, user: VIEWER });
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await sharedWith(VIEWER)).toEqual([ROAD2]);
-  });
-
-  test("released road is no longer listed", async () => {
-    await setup(VIEWER);
-    await share.release({ road: ROAD });
-    expect(await sharedWith(VIEWER)).toEqual([]);
-  });
-
-  test("refused share does not add a row", async () => {
-    await setup(VIEWER);
-    await expectRefusal("share", "NOT_AN_OWNER", share.share({ road: ROAD, requester: VIEWER, user: VIEWER2 }));
-    expect(await sharedWith(VIEWER2)).toEqual([]);
-  });
-});
-
-// ---------------------------------------------------------------- _viewers
-
-describe("_viewers", () => {
-  test("owned road with no sharing gets no rows (owner is not listed)", async () => {
-    await share.claim({ road: ROAD, user: OWNER });
-    expect(await share._viewers({ road: ROAD })).toEqual([]);
-  });
-
-  test("one viewer", async () => {
-    await setup(VIEWER);
-    expect(await share._viewers({ road: ROAD })).toEqual([{ user: VIEWER }]);
-  });
-
-  test("many viewers, owner excluded, other roads' viewers excluded", async () => {
-    await setup(VIEWER, VIEWER2);
-    await share.claim({ road: ROAD2, user: OWNER });
-    await share.share({ road: ROAD2, requester: OWNER, user: STRANGER });
-    expect(await viewers(ROAD)).toEqual(sorted([VIEWER, VIEWER2]));
-    expect(await viewers(ROAD2)).toEqual([STRANGER]);
-  });
-
-  test("reflects unshare", async () => {
-    await setup(VIEWER, VIEWER2);
-    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER });
-    expect(await viewers(ROAD)).toEqual([VIEWER2]);
-  });
-
-  test("a road claimed again after release starts with no viewers", async () => {
-    await setup(VIEWER, VIEWER2);
-    await share.release({ road: ROAD });
-    await share.claim({ road: ROAD, user: OWNER });
-    expect(await viewers(ROAD)).toEqual([]);
+  test("refusals, in the order the spec lists them", async () => {
+    await setup();
+    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: STRANGER, user: VIEWER2, role: "VIEW" }));
+    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: "nope", requester: OWNER, user: VIEWER2, role: "VIEW" }));
+    await expectRefusal("share", "NOT_AN_EDITOR", share.share({ road: ROAD, requester: VIEWER, user: VIEWER2, role: "VIEW" }));
+    await expectRefusal("share", "BAD_ROLE", share.share({ road: ROAD, requester: OWNER, user: VIEWER2, role: "ADMIN" }));
+    await expectRefusal("share", "BAD_ROLE", share.share({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "ADMIN" }));
+    await expectRefusal("share", "SHARE_WITH_OWNER", share.share({ road: ROAD, requester: OWNER, user: OWNER, role: "VIEW" }));
+    expect(await role(ROAD, VIEWER2)).toBe("NONE");
   });
 });
 
-// ---------------------------------------------------------------- invariants
+describe("setRole and unshare", () => {
+  test("only the owner changes roles and removes people", async () => {
+    await setup();
+    expect(await share.setRole({ road: ROAD, requester: OWNER, user: EDITOR, role: "VIEW" })).toEqual({});
+    expect(await role(ROAD, EDITOR)).toBe("VIEW");
+    expect(await share.unshare({ road: ROAD, requester: OWNER, user: EDITOR })).toEqual({});
+    expect(await role(ROAD, EDITOR)).toBe("NONE");
+    expect((await share._roadsSharedWith({ user: EDITOR })).length).toBe(0);
+  });
 
-describe("invariants", () => {
-  test("refused operations leave all observable state unchanged", async () => {
-    await setup(VIEWER);
-    const before = {
-      owned: await owned(OWNER),
-      viewers: await viewers(ROAD),
-      shared: await sharedWith(VIEWER),
-    };
-
-    await expectRefusal("claim", "ROAD_ALREADY_OWNED", share.claim({ road: ROAD, user: STRANGER }));
-    await expectRefusal("share", "SHARE_WITH_OWNER", share.share({ road: ROAD, requester: OWNER, user: OWNER }));
-    await expectRefusal("share", "NOT_AN_OWNER", share.share({ road: ROAD, requester: VIEWER, user: VIEWER2 }));
-    await expectRefusal("share", "NO_SUCH_ROAD", share.share({ road: ROAD, requester: STRANGER, user: VIEWER2 }));
-    await expectRefusal("unshare", "NOT_SHARED", share.unshare({ road: ROAD, requester: OWNER, user: VIEWER2 }));
-    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: VIEWER, user: VIEWER }));
+  test("refusals: stranger, editor, viewer, bad role, not shared; nothing changes", async () => {
+    await setup();
+    await share.share({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "VIEW" });
+    await expectRefusal("setRole", "NO_SUCH_ROAD", share.setRole({ road: ROAD, requester: STRANGER, user: VIEWER, role: "EDIT" }));
+    await expectRefusal("setRole", "NOT_AN_OWNER", share.setRole({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "EDIT" }));
+    await expectRefusal("setRole", "NOT_AN_OWNER", share.setRole({ road: ROAD, requester: VIEWER, user: VIEWER, role: "EDIT" }));
+    await expectRefusal("setRole", "BAD_ROLE", share.setRole({ road: ROAD, requester: OWNER, user: VIEWER, role: "OWNER" }));
+    await expectRefusal("setRole", "NOT_SHARED", share.setRole({ road: ROAD, requester: OWNER, user: STRANGER, role: "EDIT" }));
     await expectRefusal("unshare", "NO_SUCH_ROAD", share.unshare({ road: ROAD, requester: STRANGER, user: VIEWER }));
-    await expectRefusal("release", "NO_SUCH_ROAD", share.release({ road: ROAD2 }));
+    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: EDITOR, user: VIEWER2 }));
+    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: VIEWER, user: VIEWER }));
+    await expectRefusal("unshare", "NOT_SHARED", share.unshare({ road: ROAD, requester: OWNER, user: OWNER }));
+    expect([await role(ROAD, VIEWER), await role(ROAD, VIEWER2)]).toEqual(["VIEW", "VIEW"]);
+  });
+});
 
-    expect(await owned(OWNER)).toEqual(before.owned);
-    expect(await viewers(ROAD)).toEqual(before.viewers);
-    expect(await sharedWith(VIEWER)).toEqual(before.shared);
-    expect(await isOwner(ROAD, OWNER)).toBe(true);
+describe("links", () => {
+  test("enable, disable, regenerate: one link per role, owner only, nobody removed", async () => {
+    await setup();
+    expect(await share._links({ road: ROAD, requester: OWNER })).toEqual([]);
+    await share.enableLink({ road: ROAD, requester: OWNER, role: "VIEW" });
+    await share.enableLink({ road: ROAD, requester: OWNER, role: "VIEW" }); // still one link
+    const token = await tokenOf(ROAD, "VIEW");
+    expect(token.length).toBeGreaterThanOrEqual(22); // 128 bits in base64url
+    await share.join({ token, user: VIEWER2 });
+
+    await share.disableLink({ road: ROAD, requester: OWNER, role: "VIEW" });
+    expect(await share._links({ road: ROAD, requester: OWNER })).toEqual([{ role: "VIEW", token, enabled: false }]);
+    await expectRefusal("join", "INVALID_LINK", share.join({ token, user: STRANGER }));
+    expect(await role(ROAD, VIEWER2)).toBe("VIEW"); // joined before: stays
+
+    await share.regenerateLink({ road: ROAD, requester: OWNER, role: "VIEW" });
+    const fresh = await tokenOf(ROAD, "VIEW");
+    expect(fresh).not.toBe(token);
+    expect((await share._links({ road: ROAD, requester: OWNER }))[0].enabled).toBe(false); // keeps being off
+    await share.enableLink({ road: ROAD, requester: OWNER, role: "VIEW" });
+    await expectRefusal("join", "INVALID_LINK", share.join({ token, user: STRANGER })); // old one is dead
+    expect(await share.join({ token: fresh, user: STRANGER })).toEqual({ road: ROAD });
+
+    // Regenerating a link that does not exist yet creates it, turned off; disabling one that does not exist is fine.
+    await share.regenerateLink({ road: ROAD, requester: OWNER, role: "EDIT" });
+    expect((await share._links({ road: ROAD, requester: OWNER })).find((l) => l.role === "EDIT")?.enabled).toBe(false);
+    await share.claim({ road: ROAD2, user: OWNER });
+    expect(await share.disableLink({ road: ROAD2, requester: OWNER, role: "EDIT" })).toEqual({});
+    expect(await share._links({ road: ROAD2, requester: OWNER })).toEqual([]);
   });
 
-  test("a stranger gets the same refusal for a hidden road and a nonexistent road", async () => {
-    await share.claim({ road: ROAD, user: OWNER }); // exists, but STRANGER can't see it
-    const hidden = await share.share({ road: ROAD, requester: STRANGER, user: VIEWER }).catch((e: Error) => e.message);
-    const missing = await share
-      .share({ road: "no-such-road", requester: STRANGER, user: VIEWER })
-      .catch((e: Error) => e.message);
-    expect(hidden).toBe("There is no such road.");
-    expect(missing).toBe(hidden);
-
-    const hiddenU = await share
-      .unshare({ road: ROAD, requester: STRANGER, user: VIEWER })
-      .catch((e: Error) => e.message);
-    const missingU = await share
-      .unshare({ road: "no-such-road", requester: STRANGER, user: VIEWER })
-      .catch((e: Error) => e.message);
-    expect(hiddenU).toBe("There is no such road.");
-    expect(missingU).toBe(hiddenU);
+  test("links are the owner's only: refusals and _links for anyone else", async () => {
+    await setup();
+    for (const action of ["enableLink", "disableLink", "regenerateLink"] as const) {
+      await expectRefusal(action, "NO_SUCH_ROAD", share[action]({ road: ROAD, requester: STRANGER, role: "VIEW" }));
+      await expectRefusal(action, "NOT_AN_OWNER", share[action]({ road: ROAD, requester: EDITOR, role: "VIEW" }));
+      await expectRefusal(action, "NOT_AN_OWNER", share[action]({ road: ROAD, requester: VIEWER, role: "VIEW" }));
+      await expectRefusal(action, "BAD_ROLE", share[action]({ road: ROAD, requester: OWNER, role: "OWNER" }));
+    }
+    await share.enableLink({ road: ROAD, requester: OWNER, role: "EDIT" });
+    for (const u of [EDITOR, VIEWER, STRANGER]) expect(await share._links({ road: ROAD, requester: u })).toEqual([]);
   });
 
-  test("viewing permission never allows changing sharing", async () => {
-    await setup(VIEWER, VIEWER2);
-    // VIEWER tries everything a non-owner could: share, unshare, claim
-    await expectRefusal("share", "NOT_AN_OWNER", share.share({ road: ROAD, requester: VIEWER, user: STRANGER }));
-    await expectRefusal("unshare", "NOT_AN_OWNER", share.unshare({ road: ROAD, requester: VIEWER, user: VIEWER2 }));
-    await expectRefusal("claim", "ROAD_ALREADY_OWNED", share.claim({ road: ROAD, user: VIEWER }));
-    expect(await viewers(ROAD)).toEqual(sorted([VIEWER, VIEWER2]));
-    expect(await isOwner(ROAD, OWNER)).toBe(true);
-    expect(await isOwner(ROAD, VIEWER)).toBe(false);
+  test("join: grants the link's role, never lowers one, owner is a no-op, added by the owner", async () => {
+    await setup();
+    await share.share({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "VIEW" });
+    await share.enableLink({ road: ROAD, requester: OWNER, role: "VIEW" });
+    await share.enableLink({ road: ROAD, requester: OWNER, role: "EDIT" });
+    const view = await tokenOf(ROAD, "VIEW");
+    const edit = await tokenOf(ROAD, "EDIT");
+
+    await share.join({ token: view, user: STRANGER });
+    expect(await people(ROAD, OWNER)).toContain(`${STRANGER}:VIEW:${OWNER}`);
+    await share.join({ token: view, user: EDITOR });
+    expect(await role(ROAD, EDITOR)).toBe("EDIT"); // a view link never lowers an editor
+    await share.join({ token: edit, user: VIEWER });
+    expect(await role(ROAD, VIEWER)).toBe("EDIT");
+    expect(await share.join({ token: edit, user: OWNER })).toEqual({ road: ROAD });
+    expect(await role(ROAD, OWNER)).toBe("OWNER");
+
+    // An editor's invitee who opens the owner's link now counts as added by the owner.
+    expect(await ownerSeenBy(ROAD, VIEWER2)).toEqual([]);
+    await share.join({ token: view, user: VIEWER2 });
+    expect(await people(ROAD, OWNER)).toContain(`${VIEWER2}:VIEW:${OWNER}`);
+    expect(await ownerSeenBy(ROAD, VIEWER2)).toEqual([OWNER]);
+  });
+
+  test("join: unknown, empty and disabled tokens all give the same refusal", async () => {
+    await setup();
+    await share.regenerateLink({ road: ROAD, requester: OWNER, role: "VIEW" }); // exists, off
+    for (const token of ["not-a-token", "", await tokenOf(ROAD, "VIEW")]) {
+      await expectRefusal("join", "INVALID_LINK", share.join({ token, user: STRANGER }));
+    }
+    expect(await role(ROAD, STRANGER)).toBe("NONE");
+  });
+});
+
+describe("queries", () => {
+  test("_canView, _canEdit, _isOwner, _role for each kind of person and an unowned road", async () => {
+    await setup();
+    const rows = [];
+    for (const u of [OWNER, EDITOR, VIEWER, STRANGER]) {
+      rows.push([await role(ROAD, u), await canView(ROAD, u), await canEdit(ROAD, u), (await share._isOwner({ road: ROAD, user: u })).owner]);
+    }
+    expect(rows).toEqual([
+      ["OWNER", true, true, true],
+      ["EDIT", true, true, false],
+      ["VIEW", true, false, false],
+      ["NONE", false, false, false],
+    ]);
+    expect([await role("nope", OWNER), await canView("nope", OWNER), await canEdit("nope", OWNER)]).toEqual(["NONE", false, false]);
+  });
+
+  test("_roadsOwnedBy and _roadsSharedWith with roles", async () => {
+    await setup();
+    await share.claim({ road: ROAD2, user: OWNER });
+    await share.share({ road: ROAD2, requester: OWNER, user: VIEWER, role: "EDIT" });
+    expect(sorted((await share._roadsOwnedBy({ user: OWNER })).map((r) => r.road))).toEqual([ROAD, ROAD2]);
+    expect(sorted((await share._roadsSharedWith({ user: VIEWER })).map((r) => `${r.road}:${r.role}`))).toEqual([`${ROAD}:VIEW`, `${ROAD2}:EDIT`]);
+    expect(await share._roadsSharedWith({ user: OWNER })).toEqual([]);
+    expect(await share._roadsOwnedBy({ user: VIEWER })).toEqual([]);
+  });
+
+  test("_grantsVisibleTo: owner all, editor own invitees, viewer and stranger none", async () => {
+    await setup();
+    await share.share({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "VIEW" });
+    expect(await people(ROAD, OWNER)).toHaveLength(3);
+    expect(await people(ROAD, EDITOR)).toEqual([`${VIEWER2}:VIEW:${EDITOR}`]);
+    expect(await people(ROAD, VIEWER)).toEqual([]);
+    expect(await people(ROAD, STRANGER)).toEqual([]);
+  });
+
+  test("_ownerVisibleTo: hidden only from viewers an editor added (and strangers)", async () => {
+    await setup();
+    await share.share({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "VIEW" });
+    expect(await ownerSeenBy(ROAD, OWNER)).toEqual([OWNER]);
+    expect(await ownerSeenBy(ROAD, EDITOR)).toEqual([OWNER]);
+    expect(await ownerSeenBy(ROAD, VIEWER)).toEqual([OWNER]);
+    expect(await ownerSeenBy(ROAD, VIEWER2)).toEqual([]);
+    expect(await ownerSeenBy(ROAD, STRANGER)).toEqual([]);
+    expect(await ownerSeenBy("nope", OWNER)).toEqual([]);
+    // Made an editor by the owner, the same person may see the owner.
+    await share.setRole({ road: ROAD, requester: OWNER, user: VIEWER2, role: "EDIT" });
+    expect(await ownerSeenBy(ROAD, VIEWER2)).toEqual([OWNER]);
+  });
+
+  test("_known: what the requester already knows, never more", async () => {
+    await setup();
+    await share.share({ road: ROAD, requester: EDITOR, user: VIEWER2, role: "VIEW" });
+    const known = async (requester: string, user: string) => (await share._known({ road: ROAD, requester, user })).known;
+    expect([await known(OWNER, OWNER), await known(OWNER, VIEWER), await known(OWNER, VIEWER2), await known(OWNER, STRANGER)])
+      .toEqual([true, true, true, false]);
+    // An editor knows the owner, themself and their own invitees, not the owner's other people.
+    expect([await known(EDITOR, OWNER), await known(EDITOR, EDITOR), await known(EDITOR, VIEWER2), await known(EDITOR, VIEWER)])
+      .toEqual([true, true, true, false]);
+  });
+});
+
+describe("legacy data", () => {
+  test("an Access with a plain accessList: its users are viewers added by the owner", async () => {
+    // Setup only: the shape Accesses had before Grants existed.
+    await db().collection("share.accesses").insertOne({ _id: ROAD as any, owner: OWNER, accessList: [VIEWER, VIEWER2] });
+
+    expect(await role(ROAD, VIEWER)).toBe("VIEW");
+    expect(await canEdit(ROAD, VIEWER)).toBe(false);
+    expect(await people(ROAD, OWNER)).toEqual([`${VIEWER}:VIEW:${OWNER}`, `${VIEWER2}:VIEW:${OWNER}`]);
+    expect(await ownerSeenBy(ROAD, VIEWER)).toEqual([OWNER]);
+    expect(sorted((await share._roadsSharedWith({ user: VIEWER2 })).map((r) => `${r.road}:${r.role}`))).toEqual([`${ROAD}:VIEW`]);
+
+    // And every action keeps working on it.
+    await share.share({ road: ROAD, requester: OWNER, user: EDITOR, role: "EDIT" });
+    await share.unshare({ road: ROAD, requester: OWNER, user: VIEWER2 });
+    expect(await people(ROAD, OWNER)).toEqual([`${VIEWER}:VIEW:${OWNER}`, `${EDITOR}:EDIT:${OWNER}`].sort());
+    expect((await share._roadsSharedWith({ user: VIEWER2 })).length).toBe(0);
+    await expectRefusal("share", "NOT_AN_EDITOR", share.share({ road: ROAD, requester: VIEWER, user: STRANGER, role: "VIEW" }));
   });
 });

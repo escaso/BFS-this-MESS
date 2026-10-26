@@ -96,6 +96,12 @@ choose(road: Road, choice: Item, alternative: Item) : returns ()
     if alternative is not in the alternatives of that Selection, append it, then remove the earliest alternatives until there are at most count
     returns
 
+copyChoices(from: Road, to: Road) : returns ()
+  where true
+  then
+    delete every Selection of to, then give to a copy of each Selection of from, with the same choice and alternatives
+    returns
+
 forget(road: Road) : returns ()
   where true
   then

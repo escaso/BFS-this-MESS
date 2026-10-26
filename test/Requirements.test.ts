@@ -153,6 +153,22 @@ describe("choose", () => {
   });
 });
 
+describe("copyChoices", () => {
+  test("covers: the copy takes the source's selections exactly (count 2 too), replacing its own", async () => {
+    await concept.load({ snapshot: snapshot() });
+    await concept.choose({ road: "from", choice: "major2/1", alternative: "major2/1.3" });
+    await concept.choose({ road: "from", choice: "major1/3", alternative: "major1/3.3" });
+    await concept.choose({ road: "to", choice: "major1/3", alternative: "major1/3.2" });
+    expect(await concept.copyChoices({ from: "from", to: "to" })).toEqual({});
+    for (const list of ["major1", "major2"]) expect(await blocks(list, "to")).toEqual(await blocks(list, "from"));
+    // Independent afterwards; a source with no selections leaves the defaults.
+    await concept.choose({ road: "to", choice: "major1/3", alternative: "major1/3.1" });
+    expect(await blocks("major1", "from")).toEqual(["major1/1", "major1/3.3.1"]);
+    await concept.copyChoices({ from: "fresh", to: "to" });
+    expect(await blocks("major1", "to")).toEqual(["major1/1", "major1/3.1.1"]);
+  });
+});
+
 describe("forget", () => {
   test("covers: selections of the road go back to the defaults; other roads keep theirs; none to forget", async () => {
     await concept.load({ snapshot: snapshot() });

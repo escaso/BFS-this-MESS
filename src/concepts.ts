@@ -7,7 +7,8 @@ import authenticationSpec from "@design/concepts/Authentication.md" with { type:
 import requirementsSpec from "@design/concepts/Requirements.md" with { type: "text" };
 
 import {
-  RoadAlreadyOwned, NoSuchRoad as ShareNoSuchRoad, NotAnOwner, ShareWithOwner, NotShared, ShareConcept,
+  RoadAlreadyOwned, NoSuchRoad as ShareNoSuchRoad, NotAnOwner, NotAnEditor, BadRole, EditorsAddViewers, ShareWithOwner,
+  NotShared, InvalidLink, ShareConcept,
 } from "./concepts/Share.ts";
 import {
   NoSuchRoad as ConstrainNoSuchRoad, PinNotFound, EmptyName, BadStart, EndBeforeStart, EmptyMajor, NotPrior, BadCount,
@@ -29,8 +30,12 @@ const share = registerConcept({
     ROAD_ALREADY_OWNED: RoadAlreadyOwned,
     NO_SUCH_ROAD: ShareNoSuchRoad,
     NOT_AN_OWNER: NotAnOwner,
+    NOT_AN_EDITOR: NotAnEditor,
+    BAD_ROLE: BadRole,
+    EDITORS_ADD_VIEWERS: EditorsAddViewers,
     SHARE_WITH_OWNER: ShareWithOwner,
     NOT_SHARED: NotShared,
+    INVALID_LINK: InvalidLink,
   },
 });
 

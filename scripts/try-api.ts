@@ -62,24 +62,24 @@ ok("setLocked", await api.setLocked({ session, road, year: 2025, term: "FALL", l
 refused("advisor views before sharing", await api.checkPlan({ session: advisorSession, road }), "NOT_FOUND");
 refused(
   "share with nobody",
-  await api.shareRoad({ session, road, username: `nobody-${suffix}` }),
-  "NOT_FOUND", // NO_SUCH_USER
+  await api.shareRoad({ session, road, username: `nobody-${suffix}`, role: "VIEW" }),
+  "INVALID_REQUEST", // NO_SUCH_USER
 );
-ok("share with advisor", await api.shareRoad({ session, road, username: advisor }));
+ok("share with advisor", await api.shareRoad({ session, road, username: advisor, role: "VIEW" }));
 ok("advisor checks the plan", await api.checkPlan({ session: advisorSession, road }));
 refused(
   "advisor renames",
   await api.renameRoad({ session: advisorSession, road, name: "mine now" }),
-  "FORBIDDEN", // NOT_AN_OWNER
+  "FORBIDDEN", // NOT_AN_EDITOR
 );
 refused(
   "advisor edits a block",
   await api.addOption({ session: advisorSession, block, subject: "6.1820" }),
-  "FORBIDDEN", // NOT_AN_OWNER
+  "FORBIDDEN", // NOT_AN_EDITOR
 );
 
 const sharing = ok("viewSharing", await api.viewSharing({ session, road }));
-console.log("shared with:", sharing.viewers.viewers.map((v) => v.username));
+console.log("shared with:", sharing.people.people.map((p) => `${p.username} (${p.role})`));
 const advisorRoads = ok("advisor myRoads", await api.myRoads({ session: advisorSession }));
 console.log("advisor sees:", advisorRoads.roads.shared.map((r) => r.name));
 
