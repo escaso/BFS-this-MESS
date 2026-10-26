@@ -1,14 +1,23 @@
 <script setup lang="ts">
 // Tabs for each possible path, the semester grid for the chosen one, and
 // details for a clicked semester. Prior credit is part of every path, so it is
-// shown once, before the first semester.
+// shown once, before the first semester. A path's open slots (such as HASS
+// subjects) are for the student to fill: clicking one lists the subjects that fit.
+// Any subject of a path can be pinned where the path puts it, and a whole semester can be
+// locked as the path has it. Subjects are coloured by the requirement they count toward.
 import { computed, ref, watch } from "vue";
-import type { Constraints, PlanRow } from "../api.ts";
-import { color, key, label, rank, sameSeason, seasonsBetween, type Season } from "../util.ts";
+import { call, message, type Constraints, type PlanRow } from "../api.ts";
+import { key, label, rank, sameSeason, seasonsBetween, type Season } from "../util.ts";
 import SemesterDetails from "./SemesterDetails.vue";
+import SlotPicker from "./SlotPicker.vue";
 
-const props = defineProps<{ constraints: Constraints; plans: PlanRow[]; includeIAPAndSummer: boolean }>();
-const emit = defineEmits<{ edit: []; "update:includeIAPAndSummer": [value: boolean] }>();
+const props = defineProps<{ road: string; constraints: Constraints; plans: PlanRow[]; includeIAPAndSummer: boolean }>();
+const emit = defineEmits<{
+  edit: [];
+  "update:includeIAPAndSummer": [value: boolean];
+  changed: [note?: string];
+  error: [message: string];
+}>();
 
 // viewRoad answers one row per subject per season per plan; group them by plan.
 const byPlan = computed(() => {
@@ -30,8 +39,11 @@ watch(byPlan, (plans) => {
 const noPath = computed(() => byPlan.value.length === 0);
 // With no requirements and no pins there is nothing to plan, which is not a failure.
 const nothingToPlan = computed(() => !props.constraints.blocks.length && !props.constraints.pins.length);
-const plan = computed<(Season & { subject: string })[]>(() =>
-  noPath.value ? props.constraints.pins : (byPlan.value[pathIndex.value] ?? []),
+type Cell = Season & { subject: string; slot: string; title: string; units: number; counts: string };
+const plan = computed<Cell[]>(() =>
+  noPath.value
+    ? props.constraints.pins.map((p) => ({ ...p, slot: "", title: "", units: 0, counts: "" })) // unknown without a path
+    : (byPlan.value[pathIndex.value] ?? []),
 );
 
 // The road's seasons, extended when a plan has to finish after the end.
@@ -45,13 +57,109 @@ const columns = computed(() => {
 
 const pastEnd = (s: Season) =>
   rank(s) > rank({ year: props.constraints.endYear, term: props.constraints.endTerm });
-const subjectsIn = (s: Season) => plan.value.filter((r) => sameSeason(r, s)).map((r) => r.subject);
+const subjectsIn = (s: Season) => plan.value.filter((r) => sameSeason(r, s) && !r.slot);
+
+// ---------- Categories ----------
+// What a subject counts toward in the path decides its colour. Precedence as in styles.css:
+// HASS, then the major (technical blocks), then the GIRs (other listed blocks), then the rest.
+const OPEN = 100; // as in Constrain: a block with more options gets slots (HASS)
+type Category = "hass" | "major" | "gir" | "nontech";
+const LEGEND: { cat: Category; label: string }[] = [
+  { cat: "gir", label: "GIR" },
+  { cat: "hass", label: "HASS" },
+  { cat: "major", label: "Major" },
+  { cat: "nontech", label: "Non-technical / other" },
+];
+const blockInfo = computed(() => {
+  const info = new Map<string, { title: string; technical: boolean; listed: boolean; options: number }>();
+  for (const b of props.constraints.blocks) {
+    const i = info.get(b.block) ?? { title: b.title, technical: b.technical, listed: !!b.origin, options: 0 };
+    i.options++;
+    info.set(b.block, i);
+  }
+  return info;
+});
+const countedToward = (cell: Cell) =>
+  cell.counts.split(",").filter(Boolean).map((id) => blockInfo.value.get(id)).filter((b) => b !== undefined);
+function categoryOf(cell: Cell): Category {
+  const blocks = countedToward(cell);
+  if (cell.slot || blocks.some((b) => !b.technical && b.options > OPEN)) return "hass";
+  if (blocks.some((b) => b.technical)) return "major";
+  if (blocks.some((b) => b.listed)) return "gir";
+  return "nontech";
+}
+const countsTitles = (cell: Cell) => countedToward(cell).map((b) => b.title || "Your requirement");
+const summaryOf = (s: Season) => subjectsIn(s).map((c) => ({ subject: c.subject, countsToward: countsTitles(c) }));
+const slotsIn = (s: Season) => plan.value.filter((r) => sameSeason(r, s) && r.slot);
+const hasSlots = computed(() => plan.value.some((r) => r.slot));
+// "CI-H or CI-HW · HASS-A · HASS" -> "CI-H · HASS-A": every HASS-A, -H, -S or CI-H slot is also a HASS one.
+function shortTitle(title: string) {
+  const parts = title.split(" · ").map((p) => (p === "CI-H or CI-HW" ? "CI-H" : p));
+  return (parts.length > 1 ? parts.filter((p) => p !== "HASS") : parts).join(" · ");
+}
 const isLocked = (s: Season) => props.constraints.semesters.some((r) => sameSeason(r, s) && r.locked);
+
+// The caps of a semester (0 means none; IAP is capped at 12 unless set), and the units the path takes there.
+function capsOf(s: Season) {
+  const row = props.constraints.semesters.find((r) => sameSeason(r, s));
+  return { total: row ? row.maxUnits : s.term === "IAP" ? 12 : 0, technical: row?.maxTechnicalUnits ?? 0 };
+}
+const unitsIn = (s: Season) => plan.value.filter((r) => sameSeason(r, s)).reduce((n, r) => n + r.units, 0);
+const overCap = (s: Season) => capsOf(s).total > 0 && unitsIn(s) > capsOf(s).total;
+const fill = (s: Season) => `${Math.min(100, (100 * unitsIn(s)) / capsOf(s).total)}%`;
 const isPinned = (s: Season, subject: string) =>
   props.constraints.pins.some((p) => p.subject === subject && sameSeason(p, s));
 
 function toggle(s: Season) {
   selected.value = selected.value && sameSeason(selected.value, s) ? null : s;
+}
+
+const picking = ref<Cell | null>(null);
+const busy = ref(false);
+
+async function togglePin(s: Season, subject: string) {
+  busy.value = true;
+  try {
+    if (isPinned(s, subject)) {
+      await call("unPin", { road: props.road, subject });
+      emit("changed", `Unpinned ${subject}.`);
+    } else {
+      await call("pin", { road: props.road, subject, year: s.year, term: s.term });
+      emit("changed", `Pinned ${subject} to ${label(s)}.`);
+    }
+  } catch (e) {
+    emit("error", message(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
+// Locking keeps the semester as the path has it: every subject in it is pinned there, then
+// the semester is locked. A locked semester holds only its pins, so open slots stay empty.
+async function toggleLock(s: Season) {
+  const locking = !isLocked(s);
+  if (locking && slotsIn(s).length &&
+    !confirm(`${label(s)} has ${slotsIn(s).length} open + slot(s). Lock it without them?`)) return;
+  busy.value = true;
+  try {
+    if (locking) {
+      for (const c of subjectsIn(s)) {
+        if (!isPinned(s, c.subject)) await call("pin", { road: props.road, subject: c.subject, year: s.year, term: s.term });
+      }
+    }
+    await call("setLocked", { road: props.road, year: s.year, term: s.term, locked: locking });
+    emit("changed", locking ? `Locked ${label(s)}.` : `Unlocked ${label(s)}; its subjects stay pinned.`);
+  } catch (e) {
+    emit("error", message(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
+function picked(subject: string) {
+  const s = picking.value!;
+  picking.value = null;
+  emit("changed", `Pinned ${subject} to ${label(s)}.`);
 }
 </script>
 
@@ -61,6 +169,10 @@ function toggle(s: Season) {
       <h1>Possible paths</h1>
       <button @click="emit('edit')">Edit constraints</button>
     </div>
+
+    <ul class="legend" aria-label="Colours">
+      <li v-for="l in LEGEND" :key="l.cat" :data-cat="l.cat">{{ l.label }}</li>
+    </ul>
 
     <label class="inline">
       <input
@@ -107,8 +219,10 @@ function toggle(s: Season) {
       </ul>
     </div>
     <p v-else-if="!nothingToPlan" class="hint">
-      Paths cover the requirements the planner can check. Requirements marked "not planned" (such as the eight
-      HASS subjects) still need room: set a cap on units per semester to leave space for them.
+      Paths cover the requirements the planner can check. Requirements with very many options, such as HASS,
+      are left for you: a path keeps a <strong>+</strong> card for each in some semester. Click one to choose a
+      subject for it, 📌 to pin a subject where the path puts it, or Lock to keep a whole semester as it is. Requirements marked "not planned" still need room:
+      set a cap on units per semester to leave space for them.
     </p>
 
     <p v-if="constraints.prior.length" class="hint">
@@ -123,17 +237,73 @@ function toggle(s: Season) {
         :class="{ locked: isLocked(s), selected: selected && key(selected) === key(s), extra: pastEnd(s) }"
         @click="toggle(s)"
       >
-        <h3>{{ label(s) }} {{ isLocked(s) ? "🔒" : "" }}</h3>
+        <h3>{{ label(s) }}</h3>
+        <button
+          v-if="(!noPath && !pastEnd(s)) || isLocked(s)"
+          class="lock link"
+          :disabled="busy"
+          :title="isLocked(s) ? `Unlock ${label(s)} (its subjects stay pinned)` : `Lock ${label(s)} as this path has it`"
+          @click.stop="toggleLock(s)"
+        >{{ isLocked(s) ? "🔒 Unlock" : "🔓 Lock" }}</button>
         <p v-if="pastEnd(s)" class="hint">after the end of the road</p>
-        <div v-for="c in subjectsIn(s)" :key="c" class="course" :style="{ background: color(c) }">
-          {{ isPinned(s, c) ? "📌 " : "" }}{{ c }}
+        <div
+          v-for="c in subjectsIn(s)"
+          :key="c.subject"
+          class="course"
+          :data-cat="categoryOf(c)"
+          :title="countsTitles(c).length ? `Counts toward ${countsTitles(c).join(', ')}` : 'Counts toward no requirement'"
+        >
+          {{ c.subject }}
+          <!-- A locked semester is kept whole: no pin per subject. -->
+          <button
+            v-if="!isLocked(s)"
+            class="pin"
+            :class="{ pinned: isPinned(s, c.subject) }"
+            :disabled="busy"
+            :title="isPinned(s, c.subject) ? `Unpin ${c.subject}` : `Pin ${c.subject} to ${label(s)}`"
+            :aria-label="isPinned(s, c.subject) ? `Unpin ${c.subject}` : `Pin ${c.subject} to ${label(s)}`"
+            @click.stop="togglePin(s, c.subject)"
+          >📌</button>
         </div>
+        <button
+          v-for="(slot, i) in isLocked(s) ? [] : slotsIn(s)"
+          :key="`${slot.slot}-${i}`"
+          class="course slot"
+          data-cat="hass"
+          :title="`Choose a subject for ${slot.title}`"
+          :aria-label="`Choose a subject for ${slot.title} in ${label(s)}`"
+          @click.stop="picking = slot"
+        >
+          <span class="plus" aria-hidden="true">+</span>{{ shortTitle(slot.title) }}
+        </button>
+        <div
+          v-if="capsOf(s).total"
+          class="unit-bar"
+          :class="{ over: overCap(s) }"
+          :style="{ '--fill': fill(s) }"
+          aria-hidden="true"
+        ><span></span></div>
+        <p class="units" :class="{ over: overCap(s) }">
+          {{ unitsIn(s) }}{{ capsOf(s).total ? ` / ${capsOf(s).total}` : "" }} units
+          <template v-if="capsOf(s).technical"> · technical max {{ capsOf(s).technical }}</template>
+          <template v-if="!capsOf(s).total && !capsOf(s).technical"> · no cap</template>
+        </p>
       </div>
     </div>
 
+    <SlotPicker
+      v-if="picking"
+      :road="road"
+      :slot="picking"
+      @close="picking = null"
+      @picked="picked"
+      @error="emit('error', $event)"
+    />
+    <p v-else-if="hasSlots" class="hint">Click a <strong>+</strong> card to choose a subject for it.</p>
+
     <section id="details">
       <p v-if="!selected" class="hint">Click a semester to see its classes.</p>
-      <SemesterDetails v-else :season="selected" :courses="subjectsIn(selected)" />
+      <SemesterDetails v-else :season="selected" :courses="summaryOf(selected)" />
     </section>
   </main>
 </template>

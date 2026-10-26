@@ -38,12 +38,36 @@ async function load() {
     constraints.value = data.constraints;
     requirements.value = data.requirements;
     plans.value = data.paths.plans;
+    if (stale(data.constraints, data.requirements) && refreshed !== road.value) {
+      refreshed = road.value;
+      await refresh();
+    }
   } catch (e) {
     say(message(e), "error");
     // A road that does not exist, or that this person may not view: go back to the start.
     if (e instanceof ApiError && e.category === "NOT_FOUND") location.hash = "";
   } finally {
     loading.value = false;
+  }
+}
+
+// A road keeps the blocks it was listed with; after the degree charts are loaded again
+// (a new catalog), its listed blocks no longer match the active requirements.
+let refreshed = "";
+function stale(c: Constraints, r: Requirements) {
+  const active = new Set([...r.items, ...r.girs].filter((i) => i.active && i.kind === "BLOCK").map((i) => i.item));
+  const listed = new Set(c.blocks.map((b) => b.origin).filter(Boolean));
+  return active.size !== listed.size || [...active].some((i) => !listed.has(i));
+}
+
+// Lists the road's blocks again, once per road; only the owner may, so anyone else keeps what they see.
+async function refresh() {
+  try {
+    await call("refreshRequirements", { road: road.value });
+    say("Updated this road to the latest degree requirements.");
+    await load();
+  } catch {
+    // Not the owner, or the request failed: the road still shows as it is.
   }
 }
 
@@ -138,9 +162,12 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
         v-if="view === 'paths'"
         v-model:include-i-a-p-and-summer="includeIAPAndSummer"
         :key="road"
+        :road="road"
         :constraints="constraints"
         :plans="plans"
         @edit="view = 'edit'"
+        @changed="onChanged"
+        @error="say($event, 'error')"
       />
 
       <ConstraintsEditor

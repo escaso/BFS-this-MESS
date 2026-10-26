@@ -108,6 +108,27 @@ async function saveSemester() {
 
 // ---------- Caps for all semesters ----------
 
+// What is set now, e.g. "max 48 units in all 8 fall and spring semesters; max 36 technical units in 6 of 8".
+const capsSummary = computed(() => {
+  const terms = seasonsOf(props.constraints, false);
+  const part = (capType: "maxUnits" | "maxTechnicalUnits", noun: string) => {
+    const counts = new Map<number, number>();
+    for (const s of terms) {
+      const cap = props.constraints.semesters.find((r) => sameSeason(r, s))?.[capType] ?? 0;
+      if (cap > 0) counts.set(cap, (counts.get(cap) ?? 0) + 1);
+    }
+    return [...counts].sort((a, b) => b[1] - a[1]).map(([cap, n]) =>
+      `max ${cap} ${noun} in ${n === terms.length ? `all ${n}` : `${n} of ${terms.length}`} fall and spring semesters`);
+  };
+  const parts = [...part("maxUnits", "units"), ...part("maxTechnicalUnits", "technical units")];
+  return parts.length ? parts.join("; ") : "No caps on fall and spring semesters.";
+});
+
+const capped = (s: Season) => {
+  const row = props.constraints.semesters.find((r) => sameSeason(r, s));
+  return !!row && (row.maxUnits > 0 || row.maxTechnicalUnits > 0);
+};
+
 // One cap typed once, sent as that cap on every fall and spring semester.
 // IAP and summer keep their own caps. An empty field leaves that cap alone.
 const allCaps = ref({ total: "", technical: "" });
@@ -185,6 +206,7 @@ function unPin(subject: string) {
       Sets the cap of each fall and spring semester. IAP and summer keep their own; you can still change any
       semester below.
     </p>
+    <p class="caps-now"><strong>Current caps:</strong> {{ capsSummary }}</p>
     <form class="grid" @submit.prevent="saveAll">
       <label>Max units <input v-model="allCaps.total" inputmode="numeric" placeholder="leave as is" /></label>
       <label>
@@ -199,7 +221,9 @@ function unPin(subject: string) {
       <label>
         Semester
         <select v-model="chosen">
-          <option v-for="s in seasons" :key="key(s)" :value="key(s)">{{ label(s) }}</option>
+          <option v-for="s in seasons" :key="key(s)" :value="key(s)">
+            {{ label(s) }}{{ capped(s) ? " (capped)" : "" }}
+          </option>
         </select>
       </label>
       <label>Max units <input v-model="settings.total" inputmode="numeric" placeholder="no cap" /></label>

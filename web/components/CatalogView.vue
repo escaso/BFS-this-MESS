@@ -3,7 +3,8 @@
 // details of the subject that is clicked. The catalog itself is loaded on the
 // server from catalog/snapshot.json (bun run catalog:build), not from here.
 import { computed, ref, watch } from "vue";
-import { call, message, type CourseDetails, type CourseRow, type Ratings, type Schedule } from "../api.ts";
+import { call, message, type CourseRow } from "../api.ts";
+import SubjectDetails from "./SubjectDetails.vue";
 
 const TERMS = ["FALL", "IAP", "SPRING", "SUMMER"] as const;
 // The listing can hold thousands of subjects; only this many rows are drawn at once.
@@ -18,8 +19,6 @@ const busy = ref(false);
 const error = ref("");
 
 const selected = ref("");
-const details = ref<{ subject: CourseDetails; ratings: Ratings | null; schedule: Schedule | null } | null>(null);
-const detailsError = ref("");
 
 const hasFilter = computed(() => query.value.trim().length >= 2 || !!level.value || !!term.value);
 
@@ -57,36 +56,13 @@ watch([query, level, term], () => {
   timer = setTimeout(search, 250);
 });
 
-async function open(course: string) {
+function open(course: string) {
   selected.value = course;
-  details.value = null;
-  detailsError.value = "";
-  try {
-    const [subject, ratings, schedule] = await Promise.all([
-      call("viewSubject", { course }),
-      call("viewRatings", { course }),
-      call("viewSchedule", { course }),
-    ]);
-    if (selected.value !== course) return;
-    details.value = {
-      subject: subject.subject,
-      ratings: ratings.ratings.ratings[0] ?? null,
-      schedule: schedule.schedule.schedule[0] ?? null,
-    };
-  } catch (e) {
-    if (selected.value === course) detailsError.value = message(e);
-  }
 }
 
 const termLabel = (t: string) => (t === "IAP" ? "IAP" : t.charAt(0) + t.slice(1).toLowerCase());
 const termsLabel = (terms: string) => terms.split(" ").filter(Boolean).map(termLabel).join(", ") || "—";
 
-// Dependencies come as one row per option; put each "or" group back together.
-function groups(rows: { dependency: string; subject: string }[]) {
-  const byDependency = new Map<string, string[]>();
-  for (const { dependency, subject } of rows) byDependency.set(dependency, [...(byDependency.get(dependency) ?? []), subject]);
-  return [...byDependency.values()];
-}
 </script>
 
 <template>
@@ -142,61 +118,7 @@ function groups(rows: { dependency: string; subject: string }[]) {
       </section>
 
       <aside v-if="selected" class="details">
-        <p v-if="detailsError" class="error">{{ detailsError }}</p>
-        <p v-else-if="!details" class="hint">Loading {{ selected }}…</p>
-        <template v-else-if="!details.subject.found">
-          <p class="hint">{{ selected }} is not in the catalog.</p>
-        </template>
-        <template v-else>
-          <h2>{{ details.subject.courseId }} {{ details.subject.name }}</h2>
-          <p class="hint">
-            {{ details.subject.level || "Level unknown" }} ·
-            {{ details.subject.units || "units unknown" }} units ·
-            {{ details.subject.terms.map((t) => termLabel(t.term)).join(", ") || "no terms listed" }}
-            <template v-if="details.subject.canBeRepeated"> · can be repeated for credit</template>
-          </p>
-          <p v-if="details.subject.offering !== 'Offered normally'" class="error">{{ details.subject.offering }}</p>
-          <p>{{ details.subject.description }}</p>
-          <dl>
-            <dt>Instructors</dt>
-            <dd>{{ details.subject.lecturer }}</dd>
-
-            <dt>Prerequisites</dt>
-            <dd>
-              {{ details.subject.prerequisitesText || "None" }}
-              <div v-if="details.subject.prerequisites.length" class="hint">
-                Plans need:
-                <span v-for="(options, i) in groups(details.subject.prerequisites)" :key="i" class="chip">
-                  {{ options.length > 4 ? `one of ${options.slice(0, 4).join(", ")}, …` : options.join(" or ") }}
-                </span>
-              </div>
-            </dd>
-
-            <template v-if="details.subject.corequisitesText">
-              <dt>Corequisites</dt>
-              <dd>{{ details.subject.corequisitesText }}</dd>
-            </template>
-
-            <template v-if="details.schedule?.found">
-              <dt>Schedule</dt>
-              <dd>{{ details.schedule.meetingTimes }} <span v-if="details.schedule.location">· {{ details.schedule.location }}</span></dd>
-            </template>
-
-            <template v-if="details.subject.cancellations.length">
-              <dt>Not offered in</dt>
-              <dd>{{ details.subject.cancellations.map((c) => `${termLabel(c.term)} ${c.year}`).join(", ") }}</dd>
-            </template>
-
-            <dt>Class rating</dt>
-            <dd>
-              <template v-if="details.ratings?.found">
-                {{ details.ratings.classRating.toFixed(1) }} / 7 ·
-                <a :href="details.ratings.url" target="_blank" rel="noopener">evaluations</a>
-              </template>
-              <template v-else>No evaluations</template>
-            </dd>
-          </dl>
-        </template>
+        <SubjectDetails :course="selected" />
       </aside>
     </div>
   </main>

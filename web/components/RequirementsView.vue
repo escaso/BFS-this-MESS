@@ -48,6 +48,21 @@ async function choose(items: RequirementItem[], alternative: RequirementItem) {
   }
 }
 
+// Matches Constrain: a block with more options than this gets open slots in paths.
+const OPEN = 100;
+
+async function refresh() {
+  busy.value = true;
+  try {
+    await call("refreshRequirements", { road: props.road });
+    emit("changed", "Requirements refreshed from the degree charts.");
+  } catch (e) {
+    emit("error", message(e));
+  } finally {
+    busy.value = false;
+  }
+}
+
 const countOf = (items: RequirementItem[], key: string) => items.find((i) => i.item === key)?.count ?? 1;
 const preview = (options: string[]) => (options.length > 8 ? `${options.slice(0, 8).join(", ")}, … (${options.length})` : options.join(", "));
 
@@ -59,15 +74,19 @@ const sections = computed(() => [
 
 <template>
   <section class="requirements">
-    <h2>Degree requirements</h2>
+    <div class="titlebar">
+      <h2>Degree requirements</h2>
+      <button v-if="!readOnly" :disabled="busy" @click="refresh">Refresh from degree charts</button>
+    </div>
     <p v-if="!requirements.found" class="error">
       This road's major ({{ requirements.major }}) is not one of the listed majors. Pick your major above to get its
       requirements.
     </p>
     <p class="hint">
       Added from the degree charts. <span class="badge">approximate</span> means the chart says more than the planner
-      can check (e.g. units read as 12-unit subjects); <span class="badge muted">not planned</span> requirements are
-      for you to track.
+      can check (e.g. units read as 12-unit subjects); <span class="badge muted">you choose</span> requirements get
+      open slots in paths for you to fill; <span class="badge muted">not planned</span> requirements are for you to
+      track.
     </p>
 
     <template v-for="section in sections" :key="section.title">
@@ -110,6 +129,7 @@ const sections = computed(() => [
               <template v-if="status(i).met.length && !status(i).done"> · {{ status(i).met.length }} done</template>
             </span>
             <span v-if="i.approximate" class="badge">approximate</span>
+            <span v-if="status(i).options.length > OPEN" class="badge muted">you choose</span>
           </template>
 
           <template v-else>
