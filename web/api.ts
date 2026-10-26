@@ -44,7 +44,7 @@ type Category = "UNAUTHORIZED" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "INVAL
 const GENERAL: Record<string, string> = {
   UNAUTHORIZED: "Your session has ended. Please log in again.",
   NOT_FOUND: "There is no such road.",
-  FORBIDDEN: "Only the owner can change this road.",
+  FORBIDDEN: "You have view-only access to this road.",
   INVALID_REQUEST: "That request is not valid.",
   INTERNAL_ERROR: "Something went wrong on the server. Please try again.",
   // Transport failures reported by the client itself.
@@ -57,6 +57,12 @@ const blockErrors = {
   NOT_FOUND: "There is no such block.",
   INVALID_REQUEST: "A block must require at least one subject.",
 };
+
+// On sharing endpoints the categories mean (src/http.ts): INVALID_REQUEST a username nobody
+// has (NO_SUCH_USER), CONFLICT someone who isn't on the road or is its owner, FORBIDDEN a
+// role the requester may not use, NOT_FOUND a road they may not see.
+const ownerOnly = (what: string) => ({ FORBIDDEN: `Only the owner can ${what}.` });
+const noUser = "No user with that username.";
 
 const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> = {
   register: { INVALID_REQUEST: "A username and a password are needed.", CONFLICT: "Username is already taken." },
@@ -77,6 +83,22 @@ const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> 
   addOption: { ...blockErrors, NOT_FOUND: "That subject is not in the catalog." },
   removeOption: { ...blockErrors, NOT_FOUND: "That subject is not an option of this block." },
   removeBlock: blockErrors,
+  deleteRoad: ownerOnly("delete this road"),
+  shareRoad: {
+    INVALID_REQUEST: noUser,
+    FORBIDDEN: "Editors can only add viewers, and viewers can't share.",
+    CONFLICT: "That's the owner of this road; they already have access.",
+  },
+  findUsers: { FORBIDDEN: "Only the owner and editors can add people." },
+  setRole: { ...ownerOnly("change roles"), INVALID_REQUEST: noUser, CONFLICT: "That person no longer has access to this road." },
+  unshareRoad: { ...ownerOnly("remove people"), INVALID_REQUEST: noUser, CONFLICT: "That person no longer has access to this road." },
+  viewSharing: { FORBIDDEN: "Only the owner and editors can see who has access." },
+  viewLinks: ownerOnly("manage this road's links"),
+  enableLink: ownerOnly("manage this road's links"),
+  disableLink: ownerOnly("manage this road's links"),
+  regenerateLink: ownerOnly("manage this road's links"),
+  joinLink: { NOT_FOUND: "This link is no longer valid." },
+  copyRoad: { INVALID_REQUEST: "A copy needs a name." },
 };
 
 export class ApiError extends Error {

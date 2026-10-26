@@ -5,6 +5,8 @@ import { ref } from "vue";
 import { call, message } from "../api.ts";
 import { signIn } from "../session.ts";
 
+defineProps<{ note?: string }>();
+
 const mode = ref<"logIn" | "register">("logIn");
 const form = ref({ username: "", password: "" });
 const error = ref("");
@@ -41,6 +43,7 @@ function switchMode() {
 <template>
   <main class="narrow">
     <h1>{{ mode === "logIn" ? "Log in" : "Create an account" }}</h1>
+    <p v-if="note" class="access-banner" role="note">{{ note }} You'll join it right after.</p>
     <form class="grid" @submit.prevent="submit">
       <label>Username <input v-model="form.username" autocomplete="username" required /></label>
       <label>

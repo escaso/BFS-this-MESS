@@ -9,6 +9,8 @@ const emit = defineEmits<{ open: [road: string] }>();
 
 type Roads = Output<"myRoads">["roads"];
 const roads = ref<Roads | null>(null);
+// The owner's username only comes for roads the person may know it of.
+const sharedBy = (road: string) => roads.value?.sharedBy.find((s) => s.road === road)?.username ?? "";
 const listError = ref("");
 
 onMounted(async () => {
@@ -67,7 +69,10 @@ async function createRoad() {
         <ul>
           <li v-for="r in roads.shared" :key="r.road">
             <a :href="`#road=${r.road}`" @click.prevent="emit('open', r.road)">{{ r.name }}</a>
-            <span class="hint"> · {{ majorLabel(r.major) }} · view only</span>
+            <span class="hint">
+              · {{ majorLabel(r.major) }} · {{ r.role === "EDIT" ? "can edit" : "view only" }}
+              <template v-if="sharedBy(r.road)"> · Shared by {{ sharedBy(r.road) }}</template>
+            </span>
           </li>
         </ul>
       </template>

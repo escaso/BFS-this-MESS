@@ -3,17 +3,21 @@
 // current road and switches between the start, catalog, paths and constraints
 // views. The road id lives in the URL (#road=...) so a road can be reopened or
 // bookmarked; every edit reloads the road, so the views stay in sync without a
-// page refresh.
+// page refresh. A share link (#join=<token>) adds the person to its road and opens it;
+// opened while signed out, it waits until they sign in.
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { ApiError, call, message, type Constraints, type PlanRow, type Requirements } from "./api.ts";
+import { canEdit, isOwner, role, setAccess, sharedBy } from "./access.ts";
 import { loadMajors, majorLabel } from "./majors.ts";
-import { session, signOut, username } from "./session.ts";
+import { hasPendingJoin, keepPendingJoin, session, signOut, takePendingJoin, username } from "./session.ts";
 import { MAX_PATHS } from "./util.ts";
 import AuthView from "./components/AuthView.vue";
 import StartView from "./components/StartView.vue";
 import CatalogView from "./components/CatalogView.vue";
 import PathsView from "./components/PathsView.vue";
 import ConstraintsEditor from "./components/ConstraintsEditor.vue";
+import ShareDialog from "./components/ShareDialog.vue";
+import CopyDialog from "./components/CopyDialog.vue";
 
 const road = ref("");
 const view = ref<"start" | "catalog" | "paths" | "edit">("start");
@@ -23,6 +27,8 @@ const requirements = ref<Requirements | null>(null);
 const plans = ref<PlanRow[]>([]);
 const includeIAPAndSummer = ref(false);
 const loading = ref(false);
+const dialog = ref<"share" | "copy" | null>(null);
+const joinPending = ref(hasPendingJoin());
 
 const say = (text: string, kind: "ok" | "error" = "ok") => (status.value = { text, kind });
 
@@ -35,10 +41,12 @@ async function load() {
       includeIAPAndSummer: includeIAPAndSummer.value,
       limit: MAX_PATHS,
     });
+    setAccess(data.access);
     constraints.value = data.constraints;
     requirements.value = data.requirements;
     plans.value = data.paths.plans;
-    if (stale(data.constraints, data.requirements) && refreshed !== road.value) {
+    // Only the owner and editors may list a road's blocks again; viewers see it as it is.
+    if (canEdit.value && stale(data.constraints, data.requirements) && refreshed !== road.value) {
       refreshed = road.value;
       await refresh();
     }
@@ -60,14 +68,14 @@ function stale(c: Constraints, r: Requirements) {
   return active.size !== listed.size || [...active].some((i) => !listed.has(i));
 }
 
-// Lists the road's blocks again, once per road; only the owner may, so anyone else keeps what they see.
+// Lists the road's blocks again, once per road (owner and editors only).
 async function refresh() {
   try {
     await call("refreshRequirements", { road: road.value });
     say("Updated this road to the latest degree requirements.");
     await load();
   } catch {
-    // Not the owner, or the request failed: the road still shows as it is.
+    // The request failed: the road still shows as it is.
   }
 }
 
@@ -86,8 +94,39 @@ function goStart() {
   else route();
 }
 
+// Opens the road of a share link. The token leaves the address bar at once, so it is
+// not kept in history or shared by accident; it only goes to the server in a request body.
+async function join(token: string) {
+  try {
+    const { road: joined } = await call("joinLink", { token });
+    say("You've joined this road through a shared link.");
+    location.hash = `road=${joined}`;
+  } catch (e) {
+    say(message(e), "error");
+    location.hash = "";
+  }
+}
+
 function route() {
-  road.value = new URLSearchParams(location.hash.slice(1)).get("road") ?? "";
+  const params = new URLSearchParams(location.hash.slice(1));
+  const token = params.get("join");
+  if (token) {
+    history.replaceState(null, "", location.pathname + location.search);
+    if (!session.value) {
+      keepPendingJoin(token);
+      joinPending.value = true;
+      say("");
+      return;
+    }
+    return void join(token);
+  }
+  if (session.value && hasPendingJoin()) {
+    joinPending.value = false;
+    return void join(takePendingJoin());
+  }
+  road.value = params.get("road") ?? "";
+  setAccess(null);
+  dialog.value = null;
   constraints.value = null;
   requirements.value = null;
   plans.value = [];
@@ -141,7 +180,7 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
   </header>
   <p id="status" :class="status.kind" role="status">{{ status.text }}</p>
 
-  <AuthView v-if="!session" />
+  <AuthView v-if="!session" :note="joinPending ? 'Log in to open the shared road.' : ''" />
 
   <template v-else>
     <CatalogView v-if="view === 'catalog'" />
@@ -157,6 +196,10 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
         {{ constraints.endTerm.toLowerCase() }} {{ constraints.endYear }}
         <span v-if="loading" class="hint">· updating…</span>
       </p>
+      <p v-if="role && !isOwner" class="access-banner" :class="{ editing: canEdit }" role="note">
+        <strong>{{ canEdit ? "You can edit this road" : "View only" }}</strong>
+        <template v-if="sharedBy"> · Shared by {{ sharedBy }}</template>
+      </p>
 
       <PathsView
         v-if="view === 'paths'"
@@ -166,12 +209,14 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
         :constraints="constraints"
         :plans="plans"
         @edit="view = 'edit'"
+        @share="dialog = 'share'"
+        @copy="dialog = 'copy'"
         @changed="onChanged"
         @error="say($event, 'error')"
       />
 
       <ConstraintsEditor
-        v-else
+        v-else-if="canEdit"
         :key="road"
         :road="road"
         :constraints="constraints"
@@ -179,6 +224,15 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
         @back="view = 'paths'"
         @changed="onChanged"
         @error="say($event, 'error')"
+      />
+
+      <ShareDialog v-if="dialog === 'share' && canEdit" :road="road" :is-owner="isOwner" @close="dialog = null" @changed="load" />
+      <CopyDialog
+        v-if="dialog === 'copy'"
+        :road="road"
+        :name="constraints.name"
+        @close="dialog = null"
+        @copied="(copy, name) => { dialog = null; say(`Copied to your roads as ${name}.`); openRoad(copy); }"
       />
     </template>
   </template>

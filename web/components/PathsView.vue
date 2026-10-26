@@ -7,6 +7,7 @@
 // locked as the path has it. Subjects are coloured by the requirement they count toward.
 import { computed, ref, watch } from "vue";
 import { call, message, type Constraints, type PlanRow } from "../api.ts";
+import { canEdit, canShare } from "../access.ts";
 import { key, label, rank, sameSeason, seasonsBetween, type Season } from "../util.ts";
 import SemesterDetails from "./SemesterDetails.vue";
 import SlotPicker from "./SlotPicker.vue";
@@ -14,6 +15,8 @@ import SlotPicker from "./SlotPicker.vue";
 const props = defineProps<{ road: string; constraints: Constraints; plans: PlanRow[]; includeIAPAndSummer: boolean }>();
 const emit = defineEmits<{
   edit: [];
+  share: [];
+  copy: [];
   "update:includeIAPAndSummer": [value: boolean];
   changed: [note?: string];
   error: [message: string];
@@ -167,7 +170,11 @@ function picked(subject: string) {
   <main>
     <div class="titlebar">
       <h1>Possible paths</h1>
-      <button @click="emit('edit')">Edit constraints</button>
+      <span class="inline">
+        <button v-if="canEdit" @click="emit('edit')">Edit constraints</button>
+        <button v-if="canShare" @click="emit('share')">Share</button>
+        <button @click="emit('copy')">Copy to my roads</button>
+      </span>
     </div>
 
     <ul class="legend" aria-label="Colours">
@@ -218,6 +225,10 @@ function picked(subject: string) {
         </li>
       </ul>
     </div>
+    <p v-else-if="!nothingToPlan && !canEdit" class="hint">
+      You can look at every path and semester; changing the road is up to its owner and editors. To try your own
+      changes, copy it to your roads.
+    </p>
     <p v-else-if="!nothingToPlan" class="hint">
       Paths cover the requirements the planner can check. Requirements with very many options, such as HASS,
       are left for you: a path keeps a <strong>+</strong> card for each in some semester. Click one to choose a
@@ -239,7 +250,7 @@ function picked(subject: string) {
       >
         <h3>{{ label(s) }}</h3>
         <button
-          v-if="(!noPath && !pastEnd(s)) || isLocked(s)"
+          v-if="canEdit && ((!noPath && !pastEnd(s)) || isLocked(s))"
           class="lock link"
           :disabled="busy"
           :title="isLocked(s) ? `Unlock ${label(s)} (its subjects stay pinned)` : `Lock ${label(s)} as this path has it`"
@@ -256,7 +267,7 @@ function picked(subject: string) {
           {{ c.subject }}
           <!-- A locked semester is kept whole: no pin per subject. -->
           <button
-            v-if="!isLocked(s)"
+            v-if="canEdit && !isLocked(s)"
             class="pin"
             :class="{ pinned: isPinned(s, c.subject) }"
             :disabled="busy"
@@ -270,8 +281,9 @@ function picked(subject: string) {
           :key="`${slot.slot}-${i}`"
           class="course slot"
           data-cat="hass"
-          :title="`Choose a subject for ${slot.title}`"
-          :aria-label="`Choose a subject for ${slot.title} in ${label(s)}`"
+          :disabled="!canEdit"
+          :title="canEdit ? `Choose a subject for ${slot.title}` : `Open slot for ${slot.title}`"
+          :aria-label="canEdit ? `Choose a subject for ${slot.title} in ${label(s)}` : `Open slot for ${slot.title} in ${label(s)}`"
           @click.stop="picking = slot"
         >
           <span class="plus" aria-hidden="true">+</span>{{ shortTitle(slot.title) }}
@@ -292,14 +304,14 @@ function picked(subject: string) {
     </div>
 
     <SlotPicker
-      v-if="picking"
+      v-if="picking && canEdit"
       :road="road"
       :slot="picking"
       @close="picking = null"
       @picked="picked"
       @error="emit('error', $event)"
     />
-    <p v-else-if="hasSlots" class="hint">Click a <strong>+</strong> card to choose a subject for it.</p>
+    <p v-else-if="hasSlots && canEdit" class="hint">Click a <strong>+</strong> card to choose a subject for it.</p>
 
     <section id="details">
       <p v-if="!selected" class="hint">Click a semester to see its classes.</p>

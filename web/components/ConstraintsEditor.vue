@@ -10,6 +10,7 @@ import { isListedMajor, majorLabel, majors } from "../majors.ts";
 import { key, label, sameSeason, seasonsOf, type Season } from "../util.ts";
 import BlocksEditor from "./BlocksEditor.vue";
 import RequirementsView from "./RequirementsView.vue";
+import { canEdit } from "../access.ts";
 
 const props = defineProps<{ road: string; constraints: Constraints; requirements: Requirements | null }>();
 const emit = defineEmits<{ back: []; changed: [note?: string]; error: [message: string] }>();
@@ -193,6 +194,7 @@ function unPin(subject: string) {
     </form>
 
     <RequirementsView
+      :read-only="!canEdit"
       v-if="requirements"
       :road="road"
       :requirements="requirements"

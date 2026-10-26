@@ -39,3 +39,33 @@ export function signOut() {
     // Nothing stored, nothing to clear.
   }
 }
+
+// A share link opened while signed out (#join=<token>): kept for this tab until the person
+// signs in, then used once. The token stays in the browser; it is only sent in a request body.
+const JOIN_KEY = "bfs-this-mess.pending-join";
+
+export function keepPendingJoin(token: string) {
+  try {
+    sessionStorage.setItem(JOIN_KEY, token);
+  } catch {
+    // Without storage the link has to be opened again after signing in.
+  }
+}
+
+export function takePendingJoin(): string {
+  try {
+    const token = sessionStorage.getItem(JOIN_KEY) ?? "";
+    sessionStorage.removeItem(JOIN_KEY);
+    return token;
+  } catch {
+    return "";
+  }
+}
+
+export function hasPendingJoin(): boolean {
+  try {
+    return !!sessionStorage.getItem(JOIN_KEY);
+  } catch {
+    return false;
+  }
+}

@@ -491,3 +491,32 @@ li.block form { margin: 0; }
 
 /* Lock / Unlock in a semester header (PathsView) */
 .sem .lock { display: block; margin: 0 0 var(--space-2); padding: 0; font-size: var(--text-xs); }
+
+/* ---------- Sharing ---------- */
+.access-banner { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border-left: 4px solid var(--gray-500); background: var(--gray-100); }
+.access-banner.editing { border-left-color: var(--primary); background: var(--color-violet-50); }
+
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding: var(--space-6) var(--space-4); background: rgba(38, 0, 130, 0.35); overflow-y: auto; }
+.modal { width: min(640px, 100%); padding: var(--space-4) var(--space-5); background: var(--surface); border-radius: var(--radius-md); box-shadow: var(--shadow-md); }
+.modal:focus { outline: none; }
+.modal h2 { margin: 0; }
+.modal h3 { margin-top: var(--space-4); }
+@media (max-width: 480px) { .modal { padding: var(--space-3); } .modal-backdrop { padding: var(--space-2); } }
+
+.share-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-2); }
+.share-form > .combobox { flex: 1 1 200px; }
+.combobox { position: relative; display: flex; flex-direction: column; }
+.combobox input { width: 100%; }
+.combo-list { position: absolute; top: 100%; left: 0; right: 0; z-index: 2; margin: 2px 0 0; padding: 0; list-style: none; background: var(--surface); border: 1.5px solid var(--color-border-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-md); }
+.combo-list li { padding: var(--space-1) var(--space-2); cursor: pointer; }
+.combo-list li.active, .combo-list li:hover { background: var(--hover-tint); }
+
+.people { list-style: none; padding: 0; margin: 0; }
+.people li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); }
+.people .who { flex: 1 1 160px; display: flex; flex-direction: column; }
+
+.link-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border); }
+.link-row .hint { flex-basis: 100%; margin: 0; }
+.link-row.warn .hint { color: var(--warning); }
+.link-url { flex: 1 1 240px; font-family: monospace; font-size: var(--text-xs); }
+.switch { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: 600; }
