@@ -17,6 +17,10 @@ const CONCURRENCY = 32;
 
 type Loaded = { loaded: boolean; id: string; count: number };
 
+/** A snapshot's id together with a digest of its file, e.g. "fireroad-2026-10-26+3fa1c09b2d4e". */
+const versionOf = (id: string, text: string) =>
+  `${id}+${new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 12)}`;
+
 /**
  * Loads the subject snapshot (into CourseOffering, copied into Constrain) and the
  * requirements snapshot (into Requirements), each unless it is already loaded.
@@ -48,8 +52,12 @@ async function importSubjects(db: Db, path: string, force: boolean, log: (line: 
   const courseOffering = new CourseOfferingConcept(db);
   const constrain = new ConstrainConcept(db);
 
-  const loaded = await courseOffering._loadedSnapshot({});
-  if (!force && loaded.found && loaded.id === snapshot.id) {
+  // Constrain is marked only once every subject is copied, so a copy cut short by a
+  // restart is made again on the next start, and with the file's contents, so an edited
+  // snapshot is copied again even if its id was kept.
+  const version = versionOf(snapshot.id, text);
+  const loaded = await constrain._loadedCatalog({});
+  if (!force && loaded.found && loaded.id === version) {
     log(`Catalog: snapshot ${snapshot.id} is already loaded.`);
     return { loaded: false, id: snapshot.id, count: 0 };
   }
@@ -66,6 +74,7 @@ async function importSubjects(db: Db, path: string, force: boolean, log: (line: 
       }
     }),
   );
+  await constrain.markCatalog({ snapshot: version });
 
   log(`Catalog: loaded ${count} subjects in ${((performance.now() - started) / 1000).toFixed(1)}s.`);
   return { loaded: true, id: snapshot.id, count };
@@ -78,14 +87,18 @@ async function importRequirements(db: Db, path: string, force: boolean, log: (li
     return { loaded: false, id: "", count: 0 };
   }
   const text = await file.text();
-  const { id } = JSON.parse(text) as { id: string };
+  const parsed = JSON.parse(text) as { id: string };
+  const id = parsed.id;
+  // Loaded under an id that includes the file's contents, so an edited file is loaded
+  // again even if its id was kept.
+  const version = versionOf(id, text);
   const requirements = new RequirementsConcept(db);
   const loaded = await requirements._loadedSnapshot({});
-  if (!force && loaded.found && loaded.id === id) {
+  if (!force && loaded.found && loaded.id === version) {
     log(`Catalog: requirements ${id} are already loaded.`);
     return { loaded: false, id, count: 0 };
   }
-  const { count } = await requirements.load({ snapshot: text });
+  const { count } = await requirements.load({ snapshot: JSON.stringify({ ...parsed, id: version }) });
   log(`Catalog: loaded ${count} requirement lists (${id}).`);
   return { loaded: true, id, count };
 }
@@ -99,6 +112,7 @@ async function copyToConstrain(constrain: ConstrainConcept, courseOffering: Cour
     if (!(e instanceof NoListing)) throw e;
   }
   await constrain.setListing({ subject, units: course.totalUnits });
+  await constrain.setPopularity({ subject, popularity: course.enrollment ?? 0 });
   for (const term of course.terms) await constrain.addListingTerm({ subject, term: term as Term });
   for (const [kind, dependencies] of [
     ["PREREQUISITE", course.prerequisites],

@@ -4,7 +4,7 @@
 // Run with: bun test test/importCatalog.test.ts (needs MongoDB at MONGODB_URI)
 
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importCatalog } from "../src/catalog/import.ts";
@@ -16,8 +16,10 @@ import { useFreshDb } from "./support.ts";
 /*
  * Testing strategy
  *
- * partition on the snapshot file: missing; present and not loaded yet; already loaded; already loaded but forced
- * partition on the requirements file: missing; present (loaded after the subjects); already loaded
+ * partition on the snapshot file: missing; present and not loaded yet; already loaded; already loaded but forced;
+ *   loaded into CourseOffering but its copy into Constrain cut short
+ * partition on the requirements file: missing; present (loaded after the subjects); already loaded;
+ *   edited under the same id
  * partition on a subject: with prerequisites; with corequisites; with cancellations; neither
  * partition on a reload with a new id: dependencies and cancellations change (replaced, not added to)
  */
@@ -102,6 +104,26 @@ describe("importCatalog", () => {
     expect(await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, force: true, log: quiet })).toMatchObject({ loaded: true, id: "two", count: 4 });
   });
 
+  test("covers: a copy into Constrain cut short -> copied again on the next start", async () => {
+    const path = write("cut", SUBJECTS);
+    // The server stopped right after CourseOffering.load, before copying any subject.
+    await new CourseOfferingConcept(db()).load({ snapshot: await Bun.file(path).text() });
+    const constrain = new ConstrainConcept(db());
+    expect((await constrain._loadedCatalog({})).found).toBe(false);
+
+    expect(await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet })).toMatchObject({ loaded: true, id: "cut", count: 4 });
+    expect(await constrain._loadedCatalog({})).toEqual({ found: true, id: expect.stringMatching(/^cut\+[0-9a-f]{12}$/) });
+    await constrain.markCancelled({ subject: "21M.301", year: 2026, term: "FALL" }); // refused if 21M.301 had no listing
+  });
+
+  test("covers: a snapshot edited under the same id -> copied again, with its new facts", async () => {
+    const path = write("same", SUBJECTS);
+    await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet });
+    write("same", SUBJECTS.map((c) => (c.subject === "6.100A" ? { ...c, enrollment: 500 } : c)));
+    expect(await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet })).toMatchObject({ loaded: true, id: "same" });
+    expect(await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet })).toMatchObject({ loaded: false });
+  });
+
   test("covers: a new snapshot replaces dependencies and cancellations instead of adding to them", async () => {
     await importCatalog(db(), { path: write("fall", SUBJECTS), log: quiet });
     await importCatalog(db(), {
@@ -134,9 +156,20 @@ describe("importCatalog requirements", () => {
     const requirementsPath = writeRequirements("r1");
     expect((await importCatalog(db(), { path, requirementsPath, log: quiet })).requirements).toEqual({ loaded: true, id: "r1", count: 1 });
     expect(await new RequirementsConcept(db())._activeBlocks({ list: "major6-3", road: "any" })).toEqual([
-      { item: "major6-3/1", title: "Software", count: 1, technical: true },
+      { item: "major6-3/1", title: "Software", count: 1, technical: true, group: "major6-3" },
     ]);
     expect((await importCatalog(db(), { path, requirementsPath, log: quiet })).requirements).toEqual({ loaded: false, id: "r1", count: 0 });
+  });
+
+  test("covers: a requirements file edited under the same id -> loaded again", async () => {
+    const path = write("subjects3", SUBJECTS);
+    const requirementsPath = writeRequirements("r2");
+    await importCatalog(db(), { path, requirementsPath, log: quiet });
+    const edited = JSON.parse(readFileSync(requirementsPath, "utf8"));
+    edited.items[0].title = "Software Construction";
+    writeFileSync(requirementsPath, JSON.stringify(edited));
+    expect((await importCatalog(db(), { path, requirementsPath, log: quiet })).requirements).toEqual({ loaded: true, id: "r2", count: 1 });
+    expect((await new RequirementsConcept(db())._activeBlocks({ list: "major6-3", road: "any" }))[0].title).toBe("Software Construction");
   });
 
   test("covers: missing requirements file -> none loaded, subjects still loaded", async () => {
