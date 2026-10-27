@@ -476,7 +476,7 @@ describe("prior credit", () => {
     await c.pin({ road, subject: "A", year: 2026, term: "FALL" });
     expect(await c.addPrior({ road, subject: "A" })).toEqual({});
     expect(await c._pins({ road })).toEqual([]);
-    expect(await c._prior({ road })).toEqual([{ subject: "A" }]);
+    expect(await c._prior({ road })).toEqual([{ subject: "A", fromHistory: false }]);
     await listed("A");
     await c.addPrior({ road, subject: "A" });
     expect(await c._prior({ road })).toHaveLength(1);
@@ -491,7 +491,7 @@ describe("prior credit", () => {
     await c.addPrior({ road, subject: "B" });
     expect(sorted((await c._prior({ road })).map((r) => r.subject))).toEqual(["A", "B"]);
     expect(await c.removePrior({ road, subject: "A" })).toEqual({});
-    expect(await c._prior({ road })).toEqual([{ subject: "B" }]);
+    expect(await c._prior({ road })).toEqual([{ subject: "B", fromHistory: false }]);
     await expectRefusal("removePrior", "NOT_PRIOR", c.removePrior({ road, subject: "A" }));
     await expectRefusal("addPrior", "NO_SUCH_ROAD", c.addPrior({ road: "nope", subject: "A" }));
     await expectRefusal("removePrior", "NO_SUCH_ROAD", c.removePrior({ road: "nope", subject: "A" }));
@@ -674,8 +674,8 @@ describe("setLocked and _semesters", () => {
     expect(await c.setLocked({ road, year: 2027, term: "IAP", locked: true })).toEqual({});
     await c.setLocked({ road, year: 2026, term: "FALL", locked: true });
     expect(await c._semesters({ road })).toEqual([
-      { year: 2026, term: "FALL", locked: true, maxUnits: 0, maxTechnicalUnits: 0 },
-      { year: 2027, term: "IAP", locked: true, maxUnits: 12, maxTechnicalUnits: 0 },
+      { year: 2026, term: "FALL", locked: true, fromHistory: false, maxUnits: 0, maxTechnicalUnits: 0 },
+      { year: 2027, term: "IAP", locked: true, fromHistory: false, maxUnits: 12, maxTechnicalUnits: 0 },
     ]);
   });
 
@@ -685,7 +685,7 @@ describe("setLocked and _semesters", () => {
     await c.setLocked({ road, year: 2026, term: "FALL", locked: true });
     await c.setLocked({ road, year: 2026, term: "FALL", locked: false });
     expect(await c._semesters({ road })).toEqual([
-      { year: 2026, term: "FALL", locked: false, maxUnits: 36, maxTechnicalUnits: 0 },
+      { year: 2026, term: "FALL", locked: false, fromHistory: false, maxUnits: 36, maxTechnicalUnits: 0 },
     ]);
     await expectRefusal("setLocked", "NO_SUCH_ROAD", c.setLocked({ road: "nope", year: 2026, term: "FALL", locked: true }));
   });
@@ -731,7 +731,7 @@ describe("setCap, clearCap, resetSemester", () => {
     const road = await makeRoad();
     await c.setCap({ road, year: 2027, term: "IAP", capType: "technical", limit: 6 });
     expect(await c._semesters({ road })).toEqual([
-      { year: 2027, term: "IAP", locked: false, maxUnits: 12, maxTechnicalUnits: 6 },
+      { year: 2027, term: "IAP", locked: false, fromHistory: false, maxUnits: 12, maxTechnicalUnits: 6 },
     ]);
   });
 
@@ -739,7 +739,7 @@ describe("setCap, clearCap, resetSemester", () => {
     const road = await makeRoad();
     await c.clearCap({ road, year: 2027, term: "IAP", capType: "total" });
     expect(await c._semesters({ road })).toEqual([
-      { year: 2027, term: "IAP", locked: false, maxUnits: 0, maxTechnicalUnits: 0 },
+      { year: 2027, term: "IAP", locked: false, fromHistory: false, maxUnits: 0, maxTechnicalUnits: 0 },
     ]);
   });
 
@@ -1773,5 +1773,119 @@ describe("electives and counts", () => {
     const [plan] = groupPlans(await c._findPath({ road, includeIAPAndSummer: false, limit: 1 }));
     expect(lastSeason(plan)).toBe(rank(2027, "SPRING"));
     expect(plan).toHaveLength(3);
+  });
+});
+
+/*
+ * applyHistory: the owner's account history placed into a road.
+ *   history: empty / prior only / seasons in the span / seasons before the start / not JSON / wrong shape
+ *   applied: first time / again with changes (old placement taken out) / after setStart and setEnd
+ *   the road had: manual pins in a history season / a manual pin of a history subject / manual prior credit
+ *   refusals afterwards: pin, unPin, setLocked, resetSemester, addPrior, removePrior on history
+ *   copyRoad: history semesters become ordinary locks, history is not copied
+ */
+describe("applyHistory", () => {
+  const history = (prior: string[], seasons: [number, Term, string[]][]) =>
+    JSON.stringify({ prior, seasons: seasons.map(([year, term, subjects]) => ({ year, term, subjects })) });
+
+  it("covers placing prior credit and locked past seasons", async () => {
+    const road = await makeRoad(2025, "FALL");
+    await listed("A", "B", "C", "D");
+    await c.applyHistory({ road, history: history(["A"], [[2025, "FALL", ["B", "C"]], [2026, "IAP", []]]) });
+    expect(await c._prior({ road })).toEqual([{ subject: "A", fromHistory: true }]);
+    expect(keys(await c._pins({ road }))).toEqual(["2025-FALL-B", "2025-FALL-C"]);
+    expect(await c._semesters({ road })).toEqual([
+      { year: 2025, term: "FALL", locked: true, fromHistory: true, maxUnits: 0, maxTechnicalUnits: 0 },
+      { year: 2026, term: "IAP", locked: true, fromHistory: true, maxUnits: 12, maxTechnicalUnits: 0 },
+    ]);
+  });
+
+  it("covers seasons before the start of the road, which count as prior credit", async () => {
+    const road = await makeRoad(2026, "SPRING");
+    await listed("A", "B");
+    await c.applyHistory({ road, history: history([], [[2025, "FALL", ["A"]], [2026, "SPRING", ["B"]]]) });
+    expect(await c._prior({ road })).toEqual([{ subject: "A", fromHistory: true }]);
+    expect(keys(await c._pins({ road }))).toEqual(["2026-SPRING-B"]);
+    // Moving the start earlier brings that season back into the road.
+    await c.setStart({ road, year: 2025, term: "FALL" });
+    expect(await c._prior({ road })).toEqual([]);
+    expect(keys(await c._pins({ road }))).toEqual(["2025-FALL-A", "2026-SPRING-B"]);
+    expect((await c._semesters({ road })).filter((s) => s.fromHistory).map((s) => `${s.term} ${s.year}`))
+      .toEqual(["FALL 2025", "SPRING 2026"]);
+  });
+
+  it("covers applying again: the old placement is taken out, manual choices elsewhere stay", async () => {
+    const road = await makeRoad(2025, "FALL");
+    await listed("A", "B", "C", "M", "P");
+    await c.addPrior({ road, subject: "P" });
+    await c.pin({ road, subject: "M", year: 2027, term: "FALL" });
+    await c.pin({ road, subject: "C", year: 2027, term: "SPRING" });
+    await c.setCap({ road, year: 2025, term: "FALL", capType: "total", limit: 48 });
+    await c.applyHistory({ road, history: history(["A"], [[2025, "FALL", ["B", "C"]]]) });
+    // C was pinned by hand in a later season; the history holds it now.
+    expect(keys(await c._pins({ road }))).toEqual(["2025-FALL-B", "2025-FALL-C", "2027-FALL-M"]);
+    await c.applyHistory({ road, history: history([], [[2025, "FALL", ["B"]]]) });
+    expect(await c._prior({ road })).toEqual([{ subject: "P", fromHistory: false }]);
+    expect(keys(await c._pins({ road }))).toEqual(["2025-FALL-B", "2027-FALL-M"]);
+    expect((await c._semesters({ road }))[0]).toMatchObject({ year: 2025, term: "FALL", locked: true, fromHistory: true, maxUnits: 48 });
+    await c.applyHistory({ road, history: history([], []) });
+    expect(keys(await c._pins({ road }))).toEqual(["2027-FALL-M"]);
+    expect((await c._semesters({ road }))[0]).toMatchObject({ locked: false, fromHistory: false, maxUnits: 48 });
+  });
+
+  it("covers a manual pin in a history season, which the history replaces", async () => {
+    const road = await makeRoad(2025, "FALL");
+    await listed("A", "X");
+    await c.pin({ road, subject: "X", year: 2025, term: "FALL" });
+    await c.applyHistory({ road, history: history([], [[2025, "FALL", ["A"]]]) });
+    expect(keys(await c._pins({ road }))).toEqual(["2025-FALL-A"]);
+  });
+
+  it("covers what can no longer be changed on the road itself", async () => {
+    const road = await makeRoad(2025, "FALL");
+    await listed("A", "B", "X");
+    await c.applyHistory({ road, history: history(["A"], [[2025, "FALL", ["B"]]]) });
+    await expectRefusal("pin", "HISTORY_SEASON", c.pin({ road, subject: "X", year: 2025, term: "FALL" }));
+    await expectRefusal("pin", "HISTORY_SEASON", c.pin({ road, subject: "B", year: 2026, term: "FALL" }));
+    await expectRefusal("unPin", "HISTORY_SEASON", c.unPin({ road, subject: "B" }));
+    await expectRefusal("setLocked", "HISTORY_SEASON", c.setLocked({ road, year: 2025, term: "FALL", locked: false }));
+    await expectRefusal("resetSemester", "HISTORY_SEASON", c.resetSemester({ road, year: 2025, term: "FALL" }));
+    await expectRefusal("addPrior", "HISTORY_SEASON", c.addPrior({ road, subject: "B" }));
+    await expectRefusal("removePrior", "HISTORY_PRIOR", c.removePrior({ road, subject: "A" }));
+    // Caps of a history season may still be set; other seasons are unaffected.
+    await c.setCap({ road, year: 2025, term: "FALL", capType: "total", limit: 36 });
+    await c.pin({ road, subject: "X", year: 2026, term: "FALL" });
+  });
+
+  it("covers histories that cannot be read, and a missing road", async () => {
+    const road = await makeRoad();
+    for (const bad of ["{", "[]", '{"prior": "A", "seasons": []}', '{"prior": [], "seasons": [{"year": 2025, "term": "WINTER", "subjects": []}]}']) {
+      await expectRefusal("applyHistory", "BAD_HISTORY", c.applyHistory({ road, history: bad }));
+    }
+    await expectRefusal("applyHistory", "NO_SUCH_ROAD", c.applyHistory({ road: "nope", history: history([], []) }));
+  });
+
+  it("covers setEnd placing the history again", async () => {
+    const road = await makeRoad(2025, "FALL");
+    await listed("A");
+    await c.applyHistory({ road, history: history([], [[2026, "SPRING", ["A"]]]) });
+    await c.setEnd({ road, year: 2026, term: "SPRING" });
+    expect(keys(await c._pins({ road }))).toEqual(["2026-SPRING-A"]);
+    await c.setStart({ road, year: 2026, term: "FALL" }); // the end moves with it; SPRING 2026 is now before the start
+    expect(await c._prior({ road })).toEqual([{ subject: "A", fromHistory: true }]);
+    expect(await c._pins({ road })).toEqual([]);
+  });
+
+  it("covers copies: history semesters become ordinary locks, and the history stays behind", async () => {
+    const road = await makeRoad(2025, "FALL");
+    await listed("A", "B", "X");
+    await c.applyHistory({ road, history: history(["A"], [[2025, "FALL", ["B"]]]) });
+    const { copy } = await c.copyRoad({ road, name: "Copy" });
+    expect(await c._prior({ road: copy })).toEqual([]);
+    expect(keys(await c._pins({ road: copy }))).toEqual(["2025-FALL-B"]);
+    expect((await c._semesters({ road: copy }))[0]).toMatchObject({ locked: true, fromHistory: false });
+    await c.setLocked({ road: copy, year: 2025, term: "FALL", locked: false });
+    await c.applyHistory({ road: copy, history: history([], [[2025, "FALL", ["X"]]]) });
+    expect(keys(await c._pins({ road: copy }))).toEqual(["2025-FALL-X"]);
   });
 });

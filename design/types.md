@@ -23,4 +23,12 @@ instantiate Requirements with
 instantiate Share with
   Road is Constrain.Road
   User is Authentication.User
+
+instantiate History with
+  User is Authentication.User
+  Subject is CourseId
+
+instantiate TimeBudget with
+  User is Authentication.User
+  Road is Constrain.Road
 ```

@@ -111,6 +111,22 @@ export class NotCancelled extends Refusal {
   }
 }
 
+export class HistorySeason extends Refusal {
+  constructor(message = "That semester is part of your history. Change it in your history.") {
+    super("HISTORY_SEASON", message);
+  }
+}
+export class HistoryPrior extends Refusal {
+  constructor(message = "That credit is part of your history. Change it in your history.") {
+    super("HISTORY_PRIOR", message);
+  }
+}
+export class BadHistory extends Refusal {
+  constructor(message = "That history could not be read.") {
+    super("BAD_HISTORY", message);
+  }
+}
+
 export type Term = "IAP" | "SPRING" | "SUMMER" | "FALL";
 export type DependencyKind = "PREREQUISITE" | "COREQUISITE";
 
@@ -136,6 +152,7 @@ interface Semester {
   year: number;
   term: Term;
   locked: boolean;
+  fromHistory?: boolean; // absent on semesters made before history existed: false
   maxUnits: number | null; // null = no cap
   maxTechnicalUnits: number | null;
 }
@@ -149,6 +166,7 @@ interface RoadRecord {
   endYear: number;
   endTerm: Term;
   prior: string[];
+  history?: string; // absent on roads made before history existed: ""
   blocks: Block[];
   pins: Pin[];
   semesters: Semester[];
@@ -222,12 +240,82 @@ function isLocked(record: RoadRecord, year: number, term: Term): boolean {
   return record.semesters.some((s) => s.year === year && s.term === term && s.locked);
 }
 
+function isFromHistory(record: RoadRecord, year: number, term: Term): boolean {
+  return record.semesters.some((s) => s.year === year && s.term === term && s.fromHistory);
+}
+
+// ---------------------------------------------------------------------------
+// History: the owner's account history, placed into the road (see placed in the design).
+// ---------------------------------------------------------------------------
+
+interface History {
+  prior: string[];
+  seasons: { year: number; term: Term; subjects: string[] }[];
+}
+
+const NO_HISTORY: History = { prior: [], seasons: [] };
+const isStrings = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
+
+/** Reads a history in the form of History._encoded, or answers null if it is not one. */
+function parseHistory(text: string): History | null {
+  if (text === "") return NO_HISTORY;
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const v = value as Partial<History> | null;
+  if (!v || !isStrings(v.prior) || !Array.isArray(v.seasons)) return null;
+  const valid = v.seasons.every((s) =>
+    Number.isInteger(s?.year) && TERMS.includes(s?.term) && isStrings(s?.subjects));
+  return valid ? { prior: v.prior, seasons: v.seasons } : null;
+}
+
+const historyOf = (record: RoadRecord) => parseHistory(record.history ?? "") ?? NO_HISTORY;
+
+/** historyPrior and historySeasons of the design, for the span of record. */
+function splitHistory(record: RoadRecord, history: History) {
+  const startKey = keyOf(record.startYear, record.startTerm);
+  const endKey = keyOf(record.endYear, record.endTerm);
+  const inSpan = history.seasons.filter((s) => keyOf(s.year, s.term) >= startKey && keyOf(s.year, s.term) <= endKey);
+  const outside = history.seasons.filter((s) => !inSpan.includes(s)).flatMap((s) => s.subjects);
+  return { prior: new Set([...history.prior, ...outside]), seasons: inSpan };
+}
+
+/**
+ * The prior credit, pins and semesters of record with history placed in it: first what
+ * the history placed before is taken out, then the new one is put in, locked.
+ */
+function placeHistory(record: RoadRecord, previous: History, history: History) {
+  // Take out the old placement: the prior credit it added and its semesters' pins.
+  const before = new Set([...previous.prior, ...previous.seasons.flatMap((s) => s.subjects)]);
+  const oldSeasons = new Set(record.semesters.filter((s) => s.fromHistory).map((s) => keyOf(s.year, s.term)));
+  let prior = record.prior.filter((p) => !before.has(p));
+  let pins = record.pins.filter((p) => !oldSeasons.has(pinKey(p)));
+  let semesters = record.semesters.map((s) => (s.fromHistory ? { ...s, locked: false, fromHistory: false } : { ...s }));
+
+  // Put in the new one.
+  const placed = { ...record, prior, pins, semesters };
+  const split = splitHistory(placed, history);
+  const held = new Set([...split.prior, ...split.seasons.flatMap((s) => s.subjects)]);
+  const seasonKeys = new Set(split.seasons.map((s) => keyOf(s.year, s.term)));
+  const inSeasons = new Set(split.seasons.flatMap((s) => s.subjects));
+  prior = [...new Set([...prior.filter((p) => !inSeasons.has(p)), ...split.prior])];
+  pins = pins.filter((p) => !held.has(p.subject) && !seasonKeys.has(pinKey(p)));
+  for (const s of split.seasons) {
+    pins.push(...s.subjects.map((subject) => ({ subject, year: s.year, term: s.term })));
+    semesters = upsertSemester({ ...placed, semesters }, s.year, s.term, { locked: true, fromHistory: true });
+  }
+  return { prior, pins, semesters };
+}
+
 /** Set fields of the Semester for a season, creating it (as in setLocked) if there is none. */
 function upsertSemester(record: RoadRecord, year: number, term: Term, patch: Partial<Semester>): Semester[] {
   const semesters = record.semesters.map((s) => ({ ...s }));
   let sem = semesters.find((s) => s.year === year && s.term === term);
   if (!sem) {
-    sem = { year, term, locked: false, maxUnits: term === "IAP" ? 12 : null, maxTechnicalUnits: null };
+    sem = { year, term, locked: false, fromHistory: false, maxUnits: term === "IAP" ? 12 : null, maxTechnicalUnits: null };
     semesters.push(sem);
   }
   Object.assign(sem, patch);
@@ -930,6 +1018,7 @@ export class ConstrainConcept {
       endYear: end.year,
       endTerm: end.term,
       prior: [],
+      history: "",
       blocks: [],
       pins: [],
       semesters: [],
@@ -947,9 +1036,11 @@ export class ConstrainConcept {
       _id: copy,
       name,
       prior: [],
+      history: "",
       blocks: record.blocks.map((b) => ({ ...b, id: crypto.randomUUID(), options: [...b.options] })),
       pins: record.pins.map((p) => ({ ...p })),
-      semesters: record.semesters.map((s) => ({ ...s })),
+      // The source's history is its owner's; in the copy those semesters are ordinary locks.
+      semesters: record.semesters.map((s) => ({ ...s, fromHistory: false })),
     });
     return { copy };
   }
@@ -972,18 +1063,18 @@ export class ConstrainConcept {
     if (!isFallOrSpring(term)) throw new BadStart();
     const moved = movedSpan(record, year, term);
     const lost = pinsOutside(record.pins, moved.startKey, moved.endKey);
-    await this.roads.updateOne(
-      { _id: road },
-      {
-        $set: {
-          startYear: year,
-          startTerm: term,
-          endYear: moved.end.year,
-          endTerm: moved.end.term,
-          pins: record.pins.filter((p) => !lost.includes(p)),
-        },
-      },
-    );
+    const next = {
+      ...record,
+      startYear: year,
+      startTerm: term,
+      endYear: moved.end.year,
+      endTerm: moved.end.term,
+      pins: record.pins.filter((p) => !lost.includes(p)),
+    };
+    // The seasons the road shows have moved, so the history is placed again.
+    const history = historyOf(record);
+    const { _id, ...fields } = next;
+    await this.roads.updateOne({ _id }, { $set: { ...fields, ...placeHistory(next, history, history) } });
     return {};
   }
 
@@ -993,10 +1084,10 @@ export class ConstrainConcept {
     if (endKey <= keyOf(record.startYear, record.startTerm)) {
       throw new EndBeforeStart();
     }
-    await this.roads.updateOne(
-      { _id: road },
-      { $set: { endYear: year, endTerm: term, pins: record.pins.filter((p) => pinKey(p) <= endKey) } },
-    );
+    const next = { ...record, endYear: year, endTerm: term, pins: record.pins.filter((p) => pinKey(p) <= endKey) };
+    const history = historyOf(record);
+    const { _id, ...fields } = next;
+    await this.roads.updateOne({ _id }, { $set: { ...fields, ...placeHistory(next, history, history) } });
     return {};
   }
 
@@ -1010,6 +1101,8 @@ export class ConstrainConcept {
   async addPrior({ road, subject }: { road: string; subject: string }) {
     const record = await this.#requireRoad(road);
     await this.#requireListing(subject);
+    const pinned = record.pins.find((p) => p.subject === subject);
+    if (pinned && isFromHistory(record, pinned.year, pinned.term)) throw new HistorySeason();
     await this.roads.updateOne(
       { _id: road },
       { $addToSet: { prior: subject }, $set: { pins: record.pins.filter((p) => p.subject !== subject) } },
@@ -1020,6 +1113,7 @@ export class ConstrainConcept {
   async removePrior({ road, subject }: { road: string; subject: string }) {
     const record = await this.#requireRoad(road);
     if (!record.prior.includes(subject)) throw new NotPrior();
+    if (splitHistory(record, historyOf(record)).prior.has(subject)) throw new HistoryPrior();
     await this.roads.updateOne({ _id: road }, { $pull: { prior: subject } });
     return {};
   }
@@ -1098,6 +1192,9 @@ export class ConstrainConcept {
 
     const existingPinIndex = record.pins.findIndex(p => p.subject === subject);
     const existing = record.pins[existingPinIndex];
+    if (isFromHistory(record, year, term) || (existing && isFromHistory(record, existing.year, existing.term))) {
+      throw new HistorySeason();
+    }
     if (isLocked(record, year, term) || (existing && isLocked(record, existing.year, existing.term))) {
       throw new LockedSeason();
     }
@@ -1117,6 +1214,7 @@ export class ConstrainConcept {
 
     const existing = record.pins.find(p => p.subject === subject);
     if (!existing) throw new PinNotFound();
+    if (isFromHistory(record, existing.year, existing.term)) throw new HistorySeason();
     if (isLocked(record, existing.year, existing.term)) throw new LockedSeason();
 
     await this.roads.updateOne({ _id: road }, { $set: { pins: record.pins.filter(p => p.subject !== subject) } });
@@ -1152,6 +1250,7 @@ export class ConstrainConcept {
     if (!record.semesters.some((s) => s.year === year && s.term === term)) {
       throw new NoSuchSemester();
     }
+    if (isFromHistory(record, year, term)) throw new HistorySeason();
     await this.roads.updateOne(
       { _id: road },
       { $set: { semesters: record.semesters.filter((s) => !(s.year === year && s.term === term)) } },
@@ -1161,7 +1260,19 @@ export class ConstrainConcept {
 
   async setLocked({ road, year, term, locked }: { road: string; year: number; term: Term; locked: boolean }) {
     const record = await this.#requireRoad(road);
+    if (isFromHistory(record, year, term)) throw new HistorySeason();
     await this.roads.updateOne({ _id: road }, { $set: { semesters: upsertSemester(record, year, term, { locked }) } });
+    return {};
+  }
+
+  async applyHistory({ road, history }: { road: string; history: string }) {
+    const record = await this.#requireRoad(road);
+    const next = parseHistory(history);
+    if (!next) throw new BadHistory();
+    await this.roads.updateOne(
+      { _id: road },
+      { $set: { history, ...placeHistory(record, historyOf(record), next) } },
+    );
     return {};
   }
 
@@ -1257,7 +1368,9 @@ export class ConstrainConcept {
   }
 
   async _prior({ road }: { road: string }) {
-    return (await this.#requireRoad(road)).prior.map((subject) => ({ subject }));
+    const record = await this.#requireRoad(road);
+    const fromHistory = splitHistory(record, historyOf(record)).prior;
+    return record.prior.map((subject) => ({ subject, fromHistory: fromHistory.has(subject) }));
   }
 
   async _blocks({ road }: { road: string }) {
@@ -1286,7 +1399,14 @@ export class ConstrainConcept {
     const record = await this.#requireRoad(road);
     return [...record.semesters]
       .sort((a, b) => keyOf(a.year, a.term) - keyOf(b.year, b.term))
-      .map((s) => ({ ...s, maxUnits: s.maxUnits ?? 0, maxTechnicalUnits: s.maxTechnicalUnits ?? 0 })); // 0 = no cap
+      .map((s) => ({
+        year: s.year,
+        term: s.term,
+        locked: s.locked,
+        fromHistory: s.fromHistory ?? false,
+        maxUnits: s.maxUnits ?? 0, // 0 = no cap
+        maxTechnicalUnits: s.maxTechnicalUnits ?? 0,
+      }));
   }
 
   async _pinsLostBySetStart({ road, year, term }: { road: string; year: number; term: Term }) {

@@ -5,6 +5,8 @@ import constrainSpec from "@design/concepts/Constrain.md" with { type: "text" };
 import courseOfferingSpec from "@design/concepts/CourseOffering.md" with { type: "text" };
 import authenticationSpec from "@design/concepts/Authentication.md" with { type: "text" };
 import requirementsSpec from "@design/concepts/Requirements.md" with { type: "text" };
+import historySpec from "@design/concepts/History.md" with { type: "text" };
+import timeBudgetSpec from "@design/concepts/TimeBudget.md" with { type: "text" };
 
 import {
   RoadAlreadyOwned, NoSuchRoad as ShareNoSuchRoad, NotAnOwner, NotAnEditor, BadRole, EditorsAddViewers, ShareWithOwner,
@@ -13,8 +15,17 @@ import {
 import {
   NoSuchRoad as ConstrainNoSuchRoad, PinNotFound, EmptyName, BadStart, EndBeforeStart, EmptyMajor, NotPrior, BadCount,
   NoSuchBlock, NotAnOption, NoListing, NoSnapshot, AlreadyPrior, OutOfSpan, LockedSeason, BadCapType, NegativeLimit, NoSuchSemester,
-  NotATerm, NoSuchDependency, NotCancelled, ConstrainConcept,
+  NotATerm, NoSuchDependency, NotCancelled, HistorySeason, HistoryPrior, BadHistory, ConstrainConcept,
 } from "./concepts/Constrain.ts";
+import {
+  AlreadyTaken, NotPrior as HistoryNotPrior, BadStart as HistoryBadStart, NotPast, Locked, NotTaken, NotLocked,
+  HistoryConcept,
+} from "./concepts/History.ts";
+import {
+  NoDefault, NotOverridden, NoSuchTemplate, NoSuchCategory, ManagedCategory, BadSlot, Overlap,
+  NoSuchBlock as TimeBudgetNoSuchBlock, EmptyName as TimeBudgetEmptyName, NameTaken, NotYourCategory, BadBuffer,
+  BadFactor, NoSubjectFactor, BadMode, BadShareMode, TimeBudgetConcept,
+} from "./concepts/TimeBudget.ts";
 import { LoadFailed, CourseOfferingConcept } from "./concepts/CourseOffering.ts";
 import {
   LoadFailed as RequirementsLoadFailed, NoSuchChoice, NotAnAlternative, RequirementsConcept,
@@ -64,6 +75,46 @@ const constrain = registerConcept({
     NOT_A_TERM: NotATerm,
     NO_SUCH_DEPENDENCY: NoSuchDependency,
     NOT_CANCELLED: NotCancelled,
+    HISTORY_SEASON: HistorySeason,
+    HISTORY_PRIOR: HistoryPrior,
+    BAD_HISTORY: BadHistory,
+  },
+});
+
+const history = registerConcept({
+  class: HistoryConcept,
+  spec: historySpec,
+  refusals: {
+    ALREADY_TAKEN: AlreadyTaken,
+    NOT_PRIOR: HistoryNotPrior,
+    BAD_START: HistoryBadStart,
+    NOT_PAST: NotPast,
+    LOCKED: Locked,
+    NOT_TAKEN: NotTaken,
+    NOT_LOCKED: NotLocked,
+  },
+});
+
+const timeBudget = registerConcept({
+  class: TimeBudgetConcept,
+  spec: timeBudgetSpec,
+  refusals: {
+    NO_DEFAULT: NoDefault,
+    NOT_OVERRIDDEN: NotOverridden,
+    NO_SUCH_TEMPLATE: NoSuchTemplate,
+    NO_SUCH_CATEGORY: NoSuchCategory,
+    MANAGED_CATEGORY: ManagedCategory,
+    BAD_SLOT: BadSlot,
+    OVERLAP: Overlap,
+    NO_SUCH_BLOCK: TimeBudgetNoSuchBlock,
+    EMPTY_NAME: TimeBudgetEmptyName,
+    NAME_TAKEN: NameTaken,
+    NOT_YOUR_CATEGORY: NotYourCategory,
+    BAD_BUFFER: BadBuffer,
+    BAD_FACTOR: BadFactor,
+    NO_SUBJECT_FACTOR: NoSubjectFactor,
+    BAD_MODE: BadMode,
+    BAD_SHARE_MODE: BadShareMode,
   },
 });
 
@@ -101,6 +152,8 @@ export const applicationConceptSet = conceptSet(
     CourseOffering: courseOffering,
     Requirements: requirements,
     Authentication: authentication,
+    History: history,
+    TimeBudget: timeBudget,
   },
   {},
 );

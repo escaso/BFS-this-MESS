@@ -62,9 +62,11 @@ Defined in [Constrain](../design/concepts/Constrain.md), line 1.
 - `addPrior(road: Road, subject: Subject) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `NO_LISTING`: That subject is not known.
+  - Refuses `HISTORY_SEASON`: That semester is part of your history. Change it in your history.
 - `removePrior(road: Road, subject: Subject) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `NOT_PRIOR`: That subject is not prior credit for this road.
+  - Refuses `HISTORY_PRIOR`: That credit is part of your history. Change it in your history.
 - `addBlock(road: Road, count: Number, technical: Flag) : returns (block: Block)`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `BAD_COUNT`: A block must require at least one subject.
@@ -89,13 +91,16 @@ Defined in [Constrain](../design/concepts/Constrain.md), line 1.
   - Refuses `NO_LISTING`: That subject is not known.
   - Refuses `ALREADY_PRIOR`: That subject is already prior credit.
   - Refuses `OUT_OF_SPAN`: That semester is outside the road.
+  - Refuses `HISTORY_SEASON`: That semester is part of your history. Change it in your history.
   - Refuses `LOCKED_SEASON`: That semester is locked.
 - `unPin(road: Road, subject: Subject) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `NOT_PINNED`: That subject is not pinned in this road.
+  - Refuses `HISTORY_SEASON`: That semester is part of your history. Change it in your history.
   - Refuses `LOCKED_SEASON`: That semester is locked.
 - `setLocked(road: Road, year: Number, term: Term, locked: Flag) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
+  - Refuses `HISTORY_SEASON`: That semester is part of your history. Change it in your history.
 - `setCap(road: Road, year: Number, term: Term, capType: String, limit: Number) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `BAD_CAP_TYPE`: The cap type must be total or technical.
@@ -106,6 +111,10 @@ Defined in [Constrain](../design/concepts/Constrain.md), line 1.
 - `resetSemester(road: Road, year: Number, term: Term) : returns ()`
   - Refuses `NO_SUCH_ROAD`: There is no such road.
   - Refuses `NO_SUCH_SEMESTER`: That semester has no settings.
+  - Refuses `HISTORY_SEASON`: That semester is part of your history. Change it in your history.
+- `applyHistory(road: Road, history: String) : returns ()`
+  - Refuses `NO_SUCH_ROAD`: There is no such road.
+  - Refuses `BAD_HISTORY`: That history could not be read.
 - `setListing(subject: Subject, units: Number) : returns ()`
 - `setPopularity(subject: Subject, popularity: Number) : returns ()`
   - Refuses `NO_LISTING`: That subject is not known.
@@ -133,10 +142,10 @@ Defined in [Constrain](../design/concepts/Constrain.md), line 1.
 #### Queries
 
 - `_road(road: Road) : one (name: String, major: String, startYear: Number, startTerm: Term, endYear: Number, endTerm: Term)`
-- `_prior(road: Road) : many (subject: Subject)`
+- `_prior(road: Road) : many (subject: Subject, fromHistory: Flag)`
 - `_blocks(road: Road) : many (block: Block, count: Number, subject: Subject, title: String, technical: Flag, group: String, origin: String, early: Flag)`
 - `_pins(road: Road) : many (subject: Subject, year: Number, term: Term)`
-- `_semesters(road: Road) : many (year: Number, term: Term, locked: Flag, maxUnits: Number, maxTechnicalUnits: Number)`
+- `_semesters(road: Road) : many (year: Number, term: Term, locked: Flag, fromHistory: Flag, maxUnits: Number, maxTechnicalUnits: Number)`
 - `_pinsLostBySetStart(road: Road, year: Number, term: Term) : many (subject: Subject, year: Number, term: Term)`
 - `_pinsLostBySetEnd(road: Road, year: Number, term: Term) : many (subject: Subject, year: Number, term: Term)`
 - `_satisfies(road: Road) : one (satisfied: Flag)`
@@ -178,6 +187,46 @@ Defined in [CourseOffering](../design/concepts/CourseOffering.md), line 1.
 
 - `CourseOffering` — instance of `CourseOffering` — [Application types](../design/types.md), line 11.
   - `Subject` is `CourseId` — [Application types](../design/types.md), line 12.
+
+### History
+
+Defined in [History](../design/concepts/History.md), line 1.
+
+#### Actions
+
+- `addPrior(user: User, subject: Subject) : returns ()`
+  - Refuses `ALREADY_TAKEN`: That subject is already in your history.
+- `removePrior(user: User, subject: Subject) : returns ()`
+  - Refuses `NOT_PRIOR`: That subject is not in your prior credit.
+- `finishPrior(user: User) : returns ()`
+- `setStart(user: User, year: Number, term: Term) : returns ()`
+  - Refuses `BAD_START`: You must have started in a Fall or Spring semester.
+- `addTaken(user: User, year: Number, term: Term, subject: Subject) : returns ()`
+  - Refuses `NOT_PAST`: That semester is not one of your past semesters.
+  - Refuses `LOCKED`: That semester is locked. Unlock it to change it.
+  - Refuses `ALREADY_TAKEN`: That subject is already in your history.
+- `removeTaken(user: User, year: Number, term: Term, subject: Subject) : returns ()`
+  - Refuses `NOT_TAKEN`: That subject is not in that semester.
+  - Refuses `LOCKED`: That semester is locked. Unlock it to change it.
+- `lock(user: User, year: Number, term: Term) : returns ()`
+  - Refuses `NOT_PAST`: That semester is not one of your past semesters.
+- `unlock(user: User, year: Number, term: Term) : returns ()`
+  - Refuses `NOT_LOCKED`: That semester is not locked.
+
+#### Queries
+
+- `_profile(user: User) : one (started: Flag, startYear: Number, startTerm: Term, priorDone: Flag, currentYear: Number, currentTerm: Term, complete: Flag)`
+- `_prior(user: User) : many (subject: Subject)`
+- `_seasons(user: User) : many (year: Number, term: Term, answered: Flag, locked: Flag, count: Number)`
+- `_taken(user: User, year: Number, term: Term) : many (subject: Subject)`
+- `_pending(user: User) : optional (year: Number, term: Term)`
+- `_encoded(user: User) : one (history: String)`
+
+#### Instances
+
+- `History` — instance of `History` — [Application types](../design/types.md), line 27.
+  - `Subject` is `CourseId` — [Application types](../design/types.md), line 29.
+  - `User` is `Authentication.User` — [Application types](../design/types.md), line 28.
 
 ### Requirements
 
@@ -266,6 +315,78 @@ Defined in [Share](../design/concepts/Share.md), line 1.
 - `Share` — instance of `Share` — [Application types](../design/types.md), line 23.
   - `Road` is `Constrain.Road` — [Application types](../design/types.md), line 24.
   - `User` is `Authentication.User` — [Application types](../design/types.md), line 25.
+
+### TimeBudget
+
+Defined in [TimeBudget](../design/concepts/TimeBudget.md), line 1.
+
+#### Actions
+
+- `ensureDefault(user: User) : returns (template: Template)`
+- `override(user: User, year: Number, term: Term) : returns (template: Template)`
+  - Refuses `NO_DEFAULT`: Set up your regular week first.
+- `resetToDefault(user: User, year: Number, term: Term) : returns ()`
+  - Refuses `NOT_OVERRIDDEN`: That semester already uses your regular week.
+- `addBlock(user: User, template: Template, category: Category, day: Number, start: Number, length: Number) : returns (block: Block)`
+  - Refuses `NO_SUCH_TEMPLATE`: There is no such week.
+  - Refuses `NO_SUCH_CATEGORY`: There is no such category.
+  - Refuses `MANAGED_CATEGORY`: Class time comes from your classes; it cannot be painted.
+  - Refuses `BAD_SLOT`: A block must start on a 15-minute mark and last from 15 minutes to under a week.
+  - Refuses `OVERLAP`: That time is already blocked.
+- `setBlock(user: User, block: Block, category: Category, day: Number, start: Number, length: Number) : returns ()`
+  - Refuses `NO_SUCH_BLOCK`: There is no such block.
+  - Refuses `NO_SUCH_CATEGORY`: There is no such category.
+  - Refuses `MANAGED_CATEGORY`: Class time comes from your classes; it cannot be painted.
+  - Refuses `BAD_SLOT`: A block must start on a 15-minute mark and last from 15 minutes to under a week.
+  - Refuses `OVERLAP`: That time is already blocked.
+- `removeBlock(user: User, block: Block) : returns ()`
+  - Refuses `NO_SUCH_BLOCK`: There is no such block.
+- `addCategory(user: User, name: String, color: String) : returns (category: Category)`
+  - Refuses `EMPTY_NAME`: A category needs a name.
+  - Refuses `NAME_TAKEN`: You already have a category with that name.
+- `renameCategory(user: User, category: Category, name: String) : returns ()`
+  - Refuses `NOT_YOUR_CATEGORY`: Only your own categories can be changed.
+  - Refuses `EMPTY_NAME`: A category needs a name.
+  - Refuses `NAME_TAKEN`: You already have a category with that name.
+- `recolorCategory(user: User, category: Category, color: String) : returns ()`
+  - Refuses `NOT_YOUR_CATEGORY`: Only your own categories can be changed.
+- `deleteCategory(user: User, category: Category) : returns ()`
+  - Refuses `NOT_YOUR_CATEGORY`: Only your own categories can be changed.
+- `setBuffer(user: User, buffer: Number) : returns ()`
+  - Refuses `BAD_BUFFER`: The reserve must be from 0% to 50% of your free time.
+- `setFactor(user: User, factor: Number) : returns ()`
+  - Refuses `BAD_FACTOR`: Study hours per class hour must be from 2 to 3.
+- `setSubjectFactor(user: User, subject: String, factor: Number) : returns ()`
+  - Refuses `BAD_FACTOR`: Study hours per class hour must be from 2 to 3.
+- `clearSubjectFactor(user: User, subject: String) : returns ()`
+  - Refuses `NO_SUBJECT_FACTOR`: That subject uses your usual factor.
+- `setMode(road: Road, mode: Mode) : returns ()`
+  - Refuses `BAD_MODE`: The time budget is either soft or hard.
+- `setRoadBuffer(road: Road, buffer: Number) : returns ()`
+  - Refuses `BAD_BUFFER`: The reserve must be from 0% to 50% of your free time.
+- `clearRoadBuffer(road: Road) : returns ()`
+- `setShareMode(road: Road, shareMode: ShareMode) : returns ()`
+  - Refuses `BAD_SHARE_MODE`: Share either hours only or your blocked time too.
+- `forgetRoad(road: Road) : returns ()`
+
+#### Queries
+
+- `_default(user: User) : optional (template: Template)`
+- `_templateFor(user: User, year: Number, term: Term) : optional (template: Template, overridden: Flag)`
+- `_overrides(user: User) : many (year: Number, term: Term, template: Template)`
+- `_categories(user: User) : many (category: Category, name: String, color: String, own: Flag, managed: Flag)`
+- `_blocks(template: Template) : many (block: Block, category: Category, day: Number, start: Number, length: Number)`
+- `_rollup(template: Template) : many (category: Category, day: Number, hours: Number)`
+- `_blocked(template: Template) : one (blocked: Number, free: Number)`
+- `_settings(user: User) : one (buffer: Number, factor: Number)`
+- `_subjectFactors(user: User) : many (subject: String, factor: Number)`
+- `_roadSettings(road: Road) : one (mode: Mode, hasBuffer: Flag, buffer: Number, shareMode: ShareMode)`
+
+#### Instances
+
+- `TimeBudget` — instance of `TimeBudget` — [Application types](../design/types.md), line 31.
+  - `Road` is `Constrain.Road` — [Application types](../design/types.md), line 33.
+  - `User` is `Authentication.User` — [Application types](../design/types.md), line 32.
 
 ## Application types
 

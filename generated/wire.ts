@@ -42,7 +42,7 @@ export type BFSThisMessWire = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addPrior"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_LISTING" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "HISTORY_SEASON" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_LISTING" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/checkPlan": {
     input: {
@@ -240,7 +240,7 @@ export type BFSThisMessWire = {
       "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "ALREADY_PRIOR" | "INVALID_INPUT" | "LOCKED_SEASON" | "NOT_AN_EDITOR" | "NO_LISTING" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "OUT_OF_SPAN" };
+    error: { error: AppWideError | "ALREADY_PRIOR" | "HISTORY_SEASON" | "INVALID_INPUT" | "LOCKED_SEASON" | "NOT_AN_EDITOR" | "NO_LISTING" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "OUT_OF_SPAN" };
   };
   "/bfsthismess/previewEndChange": {
     input: {
@@ -329,7 +329,7 @@ export type BFSThisMessWire = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removePrior"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NOT_PRIOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "HISTORY_PRIOR" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NOT_PRIOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/renameRoad": {
     input: {
@@ -348,7 +348,7 @@ export type BFSThisMessWire = {
       "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SEMESTER" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "HISTORY_SEASON" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SEMESTER" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/searchSubjects": {
     input: {
@@ -411,7 +411,7 @@ export type BFSThisMessWire = {
       "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "HISTORY_SEASON" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/setMajor": {
     input: {
@@ -459,7 +459,7 @@ export type BFSThisMessWire = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: AppWideError | "INVALID_INPUT" | "LOCKED_SEASON" | "NOT_AN_EDITOR" | "NOT_PINNED" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+    error: { error: AppWideError | "HISTORY_SEASON" | "INVALID_INPUT" | "LOCKED_SEASON" | "NOT_AN_EDITOR" | "NOT_PINNED" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/unshareRoad": {
     input: {
@@ -730,7 +730,7 @@ export type BFSThisMessWireHttp = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addPrior"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INTERNAL_ERROR" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/checkPlan": {
     input: {
@@ -928,7 +928,7 @@ export type BFSThisMessWireHttp = {
       "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INTERNAL_ERROR" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/previewEndChange": {
     input: {
@@ -1017,7 +1017,7 @@ export type BFSThisMessWireHttp = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["removePrior"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INTERNAL_ERROR" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/renameRoad": {
     input: {
@@ -1036,7 +1036,7 @@ export type BFSThisMessWireHttp = {
       "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["resetSemester"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INTERNAL_ERROR" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/searchSubjects": {
     input: {
@@ -1099,7 +1099,7 @@ export type BFSThisMessWireHttp = {
       "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setLocked"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INTERNAL_ERROR" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/setMajor": {
     input: {
@@ -1147,7 +1147,7 @@ export type BFSThisMessWireHttp = {
       "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["unPin"]>[0], ["subject"]>>;
     };
     output: Record<string, never>;
-    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INTERNAL_ERROR" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/unshareRoad": {
     input: {

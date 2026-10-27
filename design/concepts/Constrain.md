@@ -34,10 +34,12 @@ a set of Roads with
   an endYear Number
   an endTerm Term
   a prior set of Subject
+  a history String
   Rule: major is a label, e.g. "6-3" or "2-A". Its requirements are added to the road as blocks by whoever sets them up.
   Rule: The start is the student's first semester at MIT and is a FALL or SPRING season. The end is the last season they plan to be enrolled and comes after the start.
   Rule: By default the end is eight FALL and SPRING semesters after the start, counting the start itself. A FALL start in year Y ends in SPRING of Y + 4; a SPRING start in year Y ends in FALL of Y + 3. A plan that finishes after the end needs an extra semester the student has not yet decided on.
   Rule: prior is credit the student brought in before their first semester (AP, transfer, ASE and so on). It is history: it belongs to no season, is part of every plan, and counts toward blocks. A subject is never both prior credit and pinned in the same road.
+  Rule: history is the account history of the road's owner as last applied (see applyHistory): JSON of the form {"prior": [subjects], "seasons": [{"year", "term", "subjects": [subjects]}]}, or empty for a road it has never been applied to. A road made before history existed has an empty history.
 
 a set of Blocks with
   a Road
@@ -71,6 +73,7 @@ a set of Semesters with
   a year Number
   a term Term
   a locked Flag
+  a fromHistory Flag
   an optional maxUnits Number
   an optional maxTechnicalUnits Number
   unique road and year and term
@@ -78,6 +81,7 @@ a set of Semesters with
   Rule: Caps are measured in units, using the units of each subject. A cap that is absent means no cap; a cap of 0 allows nothing.
   Rule: A locked semester contains exactly the subjects pinned to it, no more and no fewer; it is how history is recorded. A locked semester with no pins is empty.
   Rule: Any semester can be locked or unlocked on its own, so locked semesters need not be contiguous.
+  Rule: fromHistory says the semester holds a season of the road's history, so it is locked and is changed only by applying the history again. A Semester made before fromHistory existed is not from history.
 
 a set of Listings with
   a unique Subject
@@ -106,6 +110,8 @@ a Catalog with
   Rule: snapshot is the id of the last catalog snapshot whose subjects were all copied into Listings, Dependencies and Cancellations, so that a copy that was cut short is made again. Whoever copies may make it include a digest of the snapshot's contents, so that a snapshot edited under the same id is copied again.
 
 Rule: Listings, Dependencies and Cancellations are this concept's copy of the facts it needs about subjects. They are kept up to date by synchronizations with the concept that owns subject information, and by no other means.
+Rule: historyPrior(road) is the prior subjects of the history of road, together with the subjects of every season of the history that lies before the start or after the end of road (taken, but outside the seasons the road shows). historySeasons(road) is the seasons of the history that lie between the start and the end of road.
+Rule: placed(road) holds when the subjects of historyPrior(road) are in the prior credit of road and are pinned nowhere, and for each season of historySeasons(road), road has a locked Semester for it with fromHistory true whose pins are exactly the subjects of that season; no other Semester of road is fromHistory. Placing the history of road makes placed(road) hold: it takes out what the history placed before (the prior credit it added, and the pins of its Semesters, which become unlocked and not from history), deletes any other pin of a subject the history now holds, and removes such a subject from the prior credit if it is in a season.
 Rule: taken(road) is the prior credit of road plus every pinned subject. takenBefore(road, season) is the prior credit plus the subjects pinned to earlier seasons. takenBy(road, season) is the prior credit plus the subjects pinned to that season or an earlier one.
 Rule: canRun(subject, season) holds when the subject has a Listing, its terms include the term of season, and it has no Cancellation for season.
 Rule: dependenciesMet(road, subject, season) holds when every PREREQUISITE dependency of subject has at least count of its options in takenBefore(road, season), and every COREQUISITE dependency has at least count of its options in takenBy(road, season).
@@ -144,7 +150,7 @@ copyRoad(road: Road, name: String) : returns (copy: Road)
     refuses EMPTY_NAME "A road needs a name."
   where road exists and name is not empty
   then
-    create a new road copy with this name and the major, start and end of road, a copy of each of its blocks (with the same options, count, title, technical, group, origin and early), of each of its pins and of each of its semesters (with the same locks and caps), and no prior credit
+    create a new road copy with this name and the major, start and end of road, a copy of each of its blocks (with the same options, count, title, technical, group, origin and early), of each of its pins and of each of its semesters (with the same locks and caps, and none from history), no prior credit and an empty history
     returns copy
 
 renameRoad(road: Road, name: String) : returns ()
@@ -180,6 +186,7 @@ setStart(road: Road, year: Number, term: Term) : returns ()
     move the end of road by as many FALL and SPRING semesters as the start moves, so the road keeps the same number of semesters (including any extra semester added with setEnd)
     set the start of road to this season
     delete every pin of road that now lies before the start or after the end
+    place the history of road again, since the seasons it shows have moved
     returns
 
 setEnd(road: Road, year: Number, term: Term) : returns ()
@@ -193,6 +200,7 @@ setEnd(road: Road, year: Number, term: Term) : returns ()
   then
     set the end of road to this season (moving it later is how the student adds an extra semester)
     delete every pin of road that now lies after the end
+    place the history of road again, since the seasons it shows have moved
     returns
 
 setMajor(road: Road, major: String) : returns ()
@@ -214,7 +222,10 @@ addPrior(road: Road, subject: Subject) : returns ()
   where road exists and subject has no Listing
   then
     refuses NO_LISTING "That subject is not known."
-  where road exists and subject has a Listing
+  where road exists and subject is pinned in a semester from history
+  then
+    refuses HISTORY_SEASON "That semester is part of your history. Change it in your history."
+  where road exists, subject has a Listing and is not pinned in a semester from history
   then
     if subject is pinned in road, delete that pin
     add subject to the prior credit of road
@@ -227,7 +238,10 @@ removePrior(road: Road, subject: Subject) : returns ()
   where road exists and subject is not in the prior credit of road
   then
     refuses NOT_PRIOR "That subject is not prior credit for this road."
-  where road exists and subject is in the prior credit of road
+  where road exists and subject is in historyPrior(road)
+  then
+    refuses HISTORY_PRIOR "That credit is part of your history. Change it in your history."
+  where road exists and subject is in the prior credit of road and not in historyPrior(road)
   then
     remove subject from the prior credit of road
     returns
@@ -323,6 +337,9 @@ pin(road: Road, subject: Subject, year: Number, term: Term) : returns ()
   where road exists and this season is before the start or after the end of road
   then
     refuses OUT_OF_SPAN "That semester is outside the road."
+  where road exists and the semester of this season is from history, or subject is currently pinned in a semester from history
+  then
+    refuses HISTORY_SEASON "That semester is part of your history. Change it in your history."
   where road exists and the semester of this season is locked, or subject is currently pinned in a locked semester
   then
     refuses LOCKED_SEASON "That semester is locked."
@@ -338,6 +355,9 @@ unPin(road: Road, subject: Subject) : returns ()
   where road exists and no pin for subject exists in road
   then
     refuses NOT_PINNED "That subject is not pinned in this road."
+  where road exists and the pin for subject is in a semester from history
+  then
+    refuses HISTORY_SEASON "That semester is part of your history. Change it in your history."
   where road exists and the pin for subject is in a locked semester
   then
     refuses LOCKED_SEASON "That semester is locked."
@@ -350,9 +370,12 @@ setLocked(road: Road, year: Number, term: Term, locked: Flag) : returns ()
   where road does not exist
   then
     refuses NO_SUCH_ROAD "There is no such road."
-  where road exists
+  where road exists and its Semester for this season is from history
   then
-    if road has no Semester for this season, create one, unlocked, with no maxTechnicalUnits and with maxUnits 12 if term is IAP, otherwise no maxUnits
+    refuses HISTORY_SEASON "That semester is part of your history. Change it in your history."
+  where road exists and its Semester for this season, if any, is not from history
+  then
+    if road has no Semester for this season, create one, unlocked, not from history, with no maxTechnicalUnits and with maxUnits 12 if term is IAP, otherwise no maxUnits
     set the locked of that Semester to locked
     a locked semester now contains exactly its pinned subjects (a locked semester with no pins is empty)
     returns
@@ -393,9 +416,25 @@ resetSemester(road: Road, year: Number, term: Term) : returns ()
   where road exists and road has no Semester for this season
   then
     refuses NO_SUCH_SEMESTER "That semester has no settings."
-  where road exists and road has a Semester for this season
+  where road exists and its Semester for this season is from history
+  then
+    refuses HISTORY_SEASON "That semester is part of your history. Change it in your history."
+  where road exists and road has a Semester for this season that is not from history
   then
     delete that Semester, so the season takes the defaults in the state rules (its pins are unaffected)
+    returns
+
+applyHistory(road: Road, history: String) : returns ()
+  where road does not exist
+  then
+    refuses NO_SUCH_ROAD "There is no such road."
+  where road exists and history is not JSON of the form described in the state rules
+  then
+    refuses BAD_HISTORY "That history could not be read."
+  where road exists and history can be read
+  then
+    set the history of road to history
+    place the history of road (see placed in the state rules), so that its prior credit and its past seasons are as the history says, locked
     returns
 
 setListing(subject: Subject, units: Number) : returns ()
@@ -511,8 +550,8 @@ markCatalog(snapshot: String) : returns ()
 _road(road: Road) : one (name: String, major: String, startYear: Number, startTerm: Term, endYear: Number, endTerm: Term)
   where road exists. Answers the name, major, start and end of road.
 
-_prior(road: Road) : many (subject: Subject)
-  where road exists. Answers each subject in the prior credit of road, or no rows if there are none.
+_prior(road: Road) : many (subject: Subject, fromHistory: Flag)
+  where road exists. Answers each subject in the prior credit of road, with whether it is in historyPrior(road), or no rows if there are none.
 
 _blocks(road: Road) : many (block: Block, count: Number, subject: Subject, title: String, technical: Flag, group: String, origin: String, early: Flag)
   where road exists. Answers one row for each option of each block of road, ordered by block (listed blocks first, in the order they were added, then the student's), or no rows if there are none. A block with no options has no rows.
@@ -520,7 +559,7 @@ _blocks(road: Road) : many (block: Block, count: Number, subject: Subject, title
 _pins(road: Road) : many (subject: Subject, year: Number, term: Term)
   where road exists. Answers every pin of road, ordered by season, or no rows if there are none.
 
-_semesters(road: Road) : many (year: Number, term: Term, locked: Flag, maxUnits: Number, maxTechnicalUnits: Number)
+_semesters(road: Road) : many (year: Number, term: Term, locked: Flag, fromHistory: Flag, maxUnits: Number, maxTechnicalUnits: Number)
   where road exists. Answers every Semester of road, ordered by season, or no rows if there are none. A cap that is absent is answered as 0, meaning no cap. Seasons with no Semester take the defaults given in the state rules.
 
 _pinsLostBySetStart(road: Road, year: Number, term: Term) : many (subject: Subject, year: Number, term: Term)
