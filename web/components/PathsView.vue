@@ -8,11 +8,12 @@
 // Each semester says whether its study fits the owner's free time; a hard road shows only
 // the paths that fit, and says which semesters keep the others out. A table compares the
 // paths by when they finish, their units and their hours.
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { call, message, type Constraints, type Output, type PlanRow } from "../api.ts";
 import { canEdit, canShare, isOwner } from "../access.ts";
 import { key, label, MAX_PATHS, rank, sameSeason, seasonsBetween, type Season } from "../util.ts";
 import SemesterDetails from "./SemesterDetails.vue";
+import SubjectDetails from "./SubjectDetails.vue";
 import SlotPicker from "./SlotPicker.vue";
 
 type Judged = Pick<Output<"viewRoad">["paths"], "mode" | "dropped" | "binding">;
@@ -206,7 +207,18 @@ const isPinned = (s: Season, subject: string) =>
   props.constraints.pins.some((p) => p.subject === subject && sameSeason(p, s));
 
 function toggle(s: Season) {
+  subject.value = null;
   selected.value = selected.value && sameSeason(selected.value, s) ? null : s;
+}
+
+// A subject clicked in the grid: its catalog details, as in the Catalog, and what it counts
+// toward in this path.
+const subject = ref<{ subject: string; season: Season; countsToward: string[] } | null>(null);
+const details = ref<HTMLElement | null>(null);
+async function openSubject(s: Season, c: Cell) {
+  subject.value = { subject: c.subject, season: { year: s.year, term: s.term }, countsToward: countsTitles(c) };
+  await nextTick();
+  details.value?.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 const picking = ref<Cell | null>(null);
@@ -439,7 +451,12 @@ function picked(subject: string) {
           :data-cat="categoryOf(c)"
           :title="countsTitles(c).length ? `Counts toward ${countsTitles(c).join(', ')}` : 'Counts toward no requirement'"
         >
-          {{ c.subject }}
+          <button
+            type="button"
+            class="course-name"
+            :aria-label="`Details of ${c.subject}`"
+            @click.stop="openSubject(s, c)"
+          >{{ c.subject }}</button>
           <!-- A locked semester is kept whole: no pin per subject. -->
           <button
             v-if="canEdit && !isLocked(s)"
@@ -497,8 +514,16 @@ function picked(subject: string) {
     />
     <p v-else-if="hasSlots && canEdit" class="hint">Click a <strong>+</strong> card to choose a subject for it.</p>
 
-    <section id="details">
-      <p v-if="!selected" class="hint">Click a semester to see its classes.</p>
+    <section id="details" ref="details">
+      <template v-if="subject">
+        <p>
+          <button type="button" class="link" @click="subject = null">
+            ← {{ selected ? `Back to ${label(selected)}` : "Close" }}
+          </button>
+        </p>
+        <SubjectDetails :course="subject.subject" :counts-toward="subject.countsToward" :season="subject.season" />
+      </template>
+      <p v-else-if="!selected" class="hint">Click a subject to see its details, or a semester to see its classes.</p>
       <SemesterDetails
         v-else
         :season="selected"

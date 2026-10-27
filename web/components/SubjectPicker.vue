@@ -1,14 +1,24 @@
 <script setup lang="ts">
 // A field for one subject of the catalog: type a number or part of a name, pick from up
 // to 8 matches with the mouse or the arrow keys, and Enter adds it. Typing an exact
-// subject number and pressing Enter adds it without picking.
+// subject number and pressing Enter adds it without picking. With keep, a picked subject
+// stays in the field (bound with v-model) for a form to submit, as when pinning: Enter
+// then submits the form unless an option is highlighted.
 import { ref, watch } from "vue";
 import { call, type CourseRow } from "../api.ts";
 
-const props = defineProps<{ label: string; busy?: boolean }>();
-const emit = defineEmits<{ pick: [subject: string] }>();
+const props = defineProps<{ label: string; busy?: boolean; keep?: boolean; modelValue?: string; required?: boolean }>();
+const emit = defineEmits<{ pick: [subject: string]; "update:modelValue": [text: string] }>();
 
-const text = ref("");
+const text = ref(props.modelValue ?? "");
+// Set when the field is filled in by a pick, so that it does not search again.
+let filled = false;
+watch(() => props.modelValue, (v) => {
+  if (v !== undefined && v !== text.value) {
+    filled = true;
+    text.value = v;
+  }
+});
 const matches = ref<CourseRow[]>([]);
 const open = ref(false);
 const active = ref(-1);
@@ -17,8 +27,15 @@ let timer: ReturnType<typeof setTimeout> | undefined;
 let token = 0;
 
 watch(text, (t) => {
+  emit("update:modelValue", t);
   clearTimeout(timer);
   active.value = -1;
+  if (filled) {
+    filled = false;
+    matches.value = [];
+    open.value = false;
+    return;
+  }
   const query = t.trim();
   if (query.length < 2) {
     matches.value = [];
@@ -44,7 +61,9 @@ watch(text, (t) => {
 
 function pick(subject: string) {
   emit("pick", subject);
-  text.value = "";
+  const next = props.keep ? subject : "";
+  filled = next !== text.value; // an unchanged field fires no watch to clear it
+  text.value = next;
   matches.value = [];
   open.value = false;
   clearTimeout(timer);
@@ -62,9 +81,15 @@ function onKey(e: KeyboardEvent) {
     open.value = true;
     active.value = (active.value - 1 + n) % n;
   } else if (e.key === "Enter") {
-    e.preventDefault();
-    if (open.value && active.value >= 0) pick(matches.value[active.value].course);
-    else if (text.value.trim()) pick(text.value.trim());
+    if (open.value && active.value >= 0) {
+      e.preventDefault();
+      pick(matches.value[active.value].course);
+    } else if (props.keep) {
+      open.value = false; // the form is submitted with what is typed
+    } else {
+      e.preventDefault();
+      if (text.value.trim()) pick(text.value.trim());
+    }
   } else if (e.key === "Escape" && open.value) {
     e.preventDefault();
     e.stopPropagation();
@@ -86,6 +111,7 @@ function onKey(e: KeyboardEvent) {
       :aria-controls="`${id}-list`"
       :aria-activedescendant="active >= 0 ? `${id}-${active}` : undefined"
       :disabled="busy"
+      :required="required"
       placeholder="e.g. 18.01 or Calculus"
       @keydown="onKey"
       @blur="open = false"

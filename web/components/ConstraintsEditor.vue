@@ -10,6 +10,7 @@ import { isListedMajor, majorLabel, majors } from "../majors.ts";
 import { key, label, sameSeason, seasonsOf, type Season } from "../util.ts";
 import BlocksEditor from "./BlocksEditor.vue";
 import RequirementsView from "./RequirementsView.vue";
+import SubjectPicker from "./SubjectPicker.vue";
 import { canEdit } from "../access.ts";
 
 const props = defineProps<{ road: string; constraints: Constraints; requirements: Requirements | null }>();
@@ -248,11 +249,14 @@ function unPin(subject: string) {
       </li>
       <li v-if="!constraints.pins.length" class="hint">None</li>
     </ul>
-    <form @submit.prevent="addPin">
-      <input v-model="pinForm.subject" placeholder="6.1010" required aria-label="Subject to pin" />
-      <select v-model="pinForm.season">
-        <option v-for="s in seasons" :key="key(s)" :value="key(s)">{{ label(s) }}</option>
-      </select>
+    <form class="pin-form" @submit.prevent="addPin">
+      <SubjectPicker v-model="pinForm.subject" label="Subject to pin" keep required :busy="busy" />
+      <label>
+        Semester
+        <select v-model="pinForm.season">
+          <option v-for="s in seasons" :key="key(s)" :value="key(s)">{{ label(s) }}</option>
+        </select>
+      </label>
       <button :disabled="busy">Pin</button>
     </form>
 
