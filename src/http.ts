@@ -61,5 +61,15 @@ export const policy = httpPolicy({
     BAD_FACTOR: "INVALID_REQUEST",
     BAD_BUFFER: "INVALID_REQUEST",
     NO_SUBJECT_FACTOR: "NOT_FOUND",
+    // On addTimeBlock and setTimeBlock, NOT_FOUND is a week, block or category that is gone.
+    NO_DEFAULT: "NOT_FOUND",
+    NOT_OVERRIDDEN: "CONFLICT",
+    NO_SUCH_TEMPLATE: "NOT_FOUND",
+    NO_SUCH_CATEGORY: "NOT_FOUND",
+    MANAGED_CATEGORY: "FORBIDDEN",
+    BAD_SLOT: "INVALID_REQUEST",
+    OVERLAP: "CONFLICT",
+    NAME_TAKEN: "CONFLICT",
+    NOT_YOUR_CATEGORY: "FORBIDDEN",
   },
 });

@@ -165,6 +165,26 @@ BFSThisMess.SetSubjectFactor at /bfsthismess/setSubjectFactor
 BFSThisMess.ClearSubjectFactor at /bfsthismess/clearSubjectFactor
 ```
 
+## Weekly time budget
+
+Each signed-in person has their own weeks of blocked time (TimeBudget), which only they can see or change here; no request reads or changes another person's, so they need no Share check, and TimeBudget itself refuses a week, block or category that is not the requester's. They [view their regular week](reaction:BFSThisMess.ViewWeek), which is made with the worksheet's defaults the first time (TimeBudget.ensureDefault), shown as [a week of blocked time](former:BFSThisMess.Week) (TimeBudget._blocks, _rollup and _blocked) together with [the weeks of a user](former:BFSThisMess.WeekSetup): their categories (TimeBudget._categories), the semesters with a week of their own (TimeBudget._overrides) and the current season (History._profile), from which the semesters that may have one are reckoned. They [view the week of a semester](reaction:BFSThisMess.ViewSemesterWeek), shown as [the week of a semester](former:BFSThisMess.SemesterWeek) (TimeBudget._templateFor: its own week, or else the regular one); [give a semester a week of its own](reaction:BFSThisMess.OverrideWeek), a copy of the regular week (TimeBudget.override); and [reset it](reaction:BFSThisMess.ResetWeek) to the regular week (TimeBudget.resetToDefault).
+
+They [paint a block](reaction:BFSThisMess.AddTimeBlock) of time in a category, [move or resize it](reaction:BFSThisMess.SetTimeBlock) and [remove it](reaction:BFSThisMess.RemoveTimeBlock) (TimeBudget.addBlock, setBlock and removeBlock), and [add](reaction:BFSThisMess.AddCategory), [rename](reaction:BFSThisMess.RenameCategory), [recolor](reaction:BFSThisMess.RecolorCategory) and [delete](reaction:BFSThisMess.DeleteCategory) categories of their own (TimeBudget.addCategory, renameCategory, recolorCategory and deleteCategory). In class is never painted: it comes from the classes of a plan. A request without a valid session is refused with NO_SUCH_SESSION.
+
+```endpoints
+BFSThisMess.ViewWeek at /bfsthismess/viewWeek
+BFSThisMess.ViewSemesterWeek at /bfsthismess/viewSemesterWeek
+BFSThisMess.OverrideWeek at /bfsthismess/overrideWeek
+BFSThisMess.ResetWeek at /bfsthismess/resetWeek
+BFSThisMess.AddTimeBlock at /bfsthismess/addTimeBlock
+BFSThisMess.SetTimeBlock at /bfsthismess/setTimeBlock
+BFSThisMess.RemoveTimeBlock at /bfsthismess/removeTimeBlock
+BFSThisMess.AddCategory at /bfsthismess/addCategory
+BFSThisMess.RenameCategory at /bfsthismess/renameCategory
+BFSThisMess.RecolorCategory at /bfsthismess/recolorCategory
+BFSThisMess.DeleteCategory at /bfsthismess/deleteCategory
+```
+
 ## Paths and viewing
 
 A signed-in person can [list their roads](reaction:BFSThisMess.MyRoads): the roads they own (Share._roadsOwnedBy) and the roads shared with them (Share._roadsSharedWith), each shown with its name and major (Constrain._road) as [the roads of a user](former:BFSThisMess.UserRoads), so that an advisor can find every road shared with them. A shared road also shows the person's role and, where Share._ownerVisibleTo allows, the owner's username.

@@ -20,9 +20,10 @@ import ConstraintsEditor from "./components/ConstraintsEditor.vue";
 import ShareDialog from "./components/ShareDialog.vue";
 import CopyDialog from "./components/CopyDialog.vue";
 import HistoryView from "./components/HistoryView.vue";
+import WeekView from "./components/WeekView.vue";
 
 const road = ref("");
-const view = ref<"start" | "catalog" | "paths" | "edit" | "history">("start");
+const view = ref<"start" | "catalog" | "paths" | "edit" | "history" | "week">("start");
 const status = ref<{ text: string; kind: "ok" | "error" }>({ text: "", kind: "ok" });
 const constraints = ref<Constraints | null>(null);
 const requirements = ref<Requirements | null>(null);
@@ -141,11 +142,12 @@ function route() {
     return void join(takePendingJoin());
   }
   road.value = params.get("road") ?? "";
-  if (params.has("history")) {
+  for (const page of ["history", "week"] as const) {
+    if (!params.has(page)) continue;
     road.value = "";
     setAccess(null);
     dialog.value = null;
-    view.value = "history";
+    view.value = page;
     return;
   }
   setAccess(null);
@@ -198,6 +200,7 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
         <button class="link light" @click="goStart">Roads</button>
         <button class="link light" @click="view = 'catalog'">Catalog</button>
         <a class="link light" href="#history">History</a>
+        <a class="link light" href="#week">Week</a>
       </nav>
       <span class="spacer" />
       <span>{{ username }}</span>
@@ -212,6 +215,8 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
     <CatalogView v-if="view === 'catalog'" />
 
     <HistoryView v-else-if="view === 'history'" @changed="checkHistory()" />
+
+    <WeekView v-else-if="view === 'week'" />
 
     <StartView v-else-if="view === 'start'" :history-incomplete="historyComplete === false" @open="openRoad" />
 

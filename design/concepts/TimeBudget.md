@@ -149,7 +149,7 @@ resetToDefault(user: User, year: Number, term: Term) : returns ()
     delete it with its Blocks, so that the season uses the default again
     returns
 
-addBlock(user: User, template: Template, category: Category, day: Number, start: Number, length: Number) : returns (block: Block)
+addBlock(user: User, template: Template, category: Category, day: Number, start: Number, slots: Number) : returns (block: Block)
   where template does not exist or is not owned by user
   then
     refuses NO_SUCH_TEMPLATE "There is no such week."
@@ -159,7 +159,7 @@ addBlock(user: User, template: Template, category: Category, day: Number, start:
   where category is managed
   then
     refuses MANAGED_CATEGORY "Class time comes from your classes; it cannot be painted."
-  where day is not a whole number from 0 to 6, start is not one from 0 to 95, or length is not one from 1 to 671
+  where day is not a whole number from 0 to 6, start is not one from 0 to 95, or slots is not one from 1 to 671
   then
     refuses BAD_SLOT "A block must start on a 15-minute mark and last from 15 minutes to under a week."
   where the slots the block would cover meet the slots of another Block of template
@@ -167,10 +167,10 @@ addBlock(user: User, template: Template, category: Category, day: Number, start:
     refuses OVERLAP "That time is already blocked."
   where all of the above hold
   then
-    create a Block of template in category covering those slots
+    create a Block of template in category from slot start of day day, with length slots
     returns block
 
-setBlock(user: User, block: Block, category: Category, day: Number, start: Number, length: Number) : returns ()
+setBlock(user: User, block: Block, category: Category, day: Number, start: Number, slots: Number) : returns ()
   where block does not exist or its Template is not owned by user
   then
     refuses NO_SUCH_BLOCK "There is no such block."
@@ -180,7 +180,7 @@ setBlock(user: User, block: Block, category: Category, day: Number, start: Numbe
   where category is managed
   then
     refuses MANAGED_CATEGORY "Class time comes from your classes; it cannot be painted."
-  where day, start or length is out of range as in addBlock
+  where day, start or slots is out of range as in addBlock
   then
     refuses BAD_SLOT "A block must start on a 15-minute mark and last from 15 minutes to under a week."
   where the slots the block would cover meet the slots of another Block of its Template
@@ -188,7 +188,7 @@ setBlock(user: User, block: Block, category: Category, day: Number, start: Numbe
     refuses OVERLAP "That time is already blocked."
   where all of the above hold
   then
-    set the category, day, start and length of block (moving or resizing it)
+    set the category, day and start of block, and its length to slots (moving or resizing it)
     returns
 
 removeBlock(user: User, block: Block) : returns ()
@@ -351,8 +351,8 @@ _overrides(user: User) : many (year: Number, term: Term, template: Template)
 _categories(user: User) : many (category: Category, name: String, color: String, own: Flag, managed: Flag)
   Answers the system categories in the order listed in the state rules, then the categories user owns in order of name.
 
-_blocks(template: Template) : many (block: Block, category: Category, day: Number, start: Number, length: Number)
-  Answers the Blocks of template ordered by day and start, or no rows if there are none or template does not exist.
+_blocks(template: Template) : many (block: Block, category: Category, day: Number, start: Number, slots: Number)
+  Answers the Blocks of template, with slots their length, ordered by day and start, or no rows if there are none or template does not exist.
 
 _rollup(template: Template) : many (category: Category, day: Number, hours: Number)
   Answers hours(template, category, day) for each category and day where it is more than 0, ordered by category as in _categories and then by day.
@@ -369,8 +369,8 @@ _subjectFactors(user: User) : many (subject: String, factor: Number)
 _classHours(user: User, subject: String, year: Number, term: Term) : one (known: Flag, inClass: Number, inClassSource: String, outOfClass: Number, outOfClassSource: String, factor: Number, total: Number, schedule: String)
   Answers classHours(user, subject, season) with known true, or, for a subject with no Class, the ASSUMED hours with known false. factor is the one that applies to the subject (used only when outOfClassSource is FORMULA). schedule says what the schedule is for that season: EXACT, ESTIMATE (from another year), ARRANGED (one of its parts is TBA), or NONE.
 
-_sections(subject: String, year: Number, term: Term) : many (kind: Kind, section: Number, room: String, day: Number, start: Number, length: Number)
-  Answers one row for each meeting of each section of each part of the schedule of subject that applies to the season (see the rules above), with section the number of the section in its part, from 1, ordered by part, section and meeting. Arranged parts and seasons with no schedule have no rows.
+_sections(subject: String, year: Number, term: Term) : many (kind: Kind, section: Number, room: String, day: Number, start: Number, slots: Number)
+  Answers one row for each meeting of each section of each part of the schedule of subject that applies to the season (see the rules above), with section the number of the section in its part, from 1, and slots the length of the meeting, ordered by part, section and meeting. Arranged parts and seasons with no schedule have no rows.
 
 _roadSettings(road: Road) : one (mode: Mode, hasBuffer: Flag, buffer: Number, shareMode: ShareMode)
   Answers the RoadSettings of road, or SOFT, no buffer (hasBuffer false, buffer 0) and METRICS if there are none.

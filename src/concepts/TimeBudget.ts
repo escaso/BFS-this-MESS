@@ -353,8 +353,8 @@ export class TimeBudgetConcept {
   }
 
   async addBlock(
-    { user, template, category, day, start, length }:
-      { user: string; template: string; category: string; day: number; start: number; length: number },
+    { user, template, category, day, start, slots: length }:
+      { user: string; template: string; category: string; day: number; start: number; slots: number },
   ) {
     if (!(await this.templates.findOne({ _id: template, owner: user }))) throw new NoSuchTemplate();
     await this.#paintable(user, category);
@@ -373,8 +373,8 @@ export class TimeBudgetConcept {
   }
 
   async setBlock(
-    { user, block, category, day, start, length }:
-      { user: string; block: string; category: string; day: number; start: number; length: number },
+    { user, block, category, day, start, slots: length }:
+      { user: string; block: string; category: string; day: number; start: number; slots: number },
   ) {
     const record = await this.#requireOwnBlock(user, block);
     await this.#paintable(user, category);
@@ -559,7 +559,7 @@ export class TimeBudgetConcept {
     const found = await this.blocks.find({ template }).toArray();
     return found
       .sort((a, b) => a.day - b.day || a.start - b.start)
-      .map(({ _id, category, day, start, length }) => ({ block: _id, category, day, start, length }));
+      .map(({ _id, category, day, start, length }) => ({ block: _id, category, day, start, slots: length }));
   }
 
   async _rollup({ template }: { template: string }) {
@@ -633,7 +633,7 @@ export class TimeBudgetConcept {
     if (scheduleFor(c, year, term) === "NONE") return [];
     return c!.parts.flatMap((p) =>
       p.sections.flatMap((s, i) =>
-        s.meetings.map((m) => ({ kind: p.kind, section: i + 1, room: s.room, day: m.day, start: m.start, length: m.length }))));
+        s.meetings.map((m) => ({ kind: p.kind, section: i + 1, room: s.room, day: m.day, start: m.start, slots: m.length }))));
   }
 
   async _roadSettings({ road }: { road: string }) {

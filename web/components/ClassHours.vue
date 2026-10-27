@@ -83,7 +83,7 @@ function sectionsOf(kind: string) {
   return [...bySection.values()].map((meetings) => {
     const times = new Map<string, string[]>();
     for (const m of meetings) {
-      const t = `${time(m.start)}–${time(m.start + m.length)}`;
+      const t = `${time(m.start)}–${time(m.start + m.slots)}`;
       times.set(t, [...(times.get(t) ?? []), DAYS[m.day]!]);
     }
     const when = [...times.entries()].map(([t, days]) => `${days.join(", ")} ${t}`).join("; ");

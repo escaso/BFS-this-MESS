@@ -519,6 +519,47 @@ li.block form { margin: 0; }
 .class-hours .sections ul { margin: var(--space-1) 0 var(--space-2); padding-left: var(--space-4); }
 .factor-form { flex-wrap: wrap; gap: var(--space-3); }
 
+/* ---------- Weekly time budget ---------- */
+.week-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); margin-bottom: var(--space-3); }
+.week-toolbar fieldset, .palette { border: 0; margin: 0; padding: 0; }
+.week-toolbar legend, .palette legend { font-weight: 600; padding: 0; margin-bottom: var(--space-1); }
+.zoom label { margin-right: var(--space-2); }
+.palette { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin-bottom: var(--space-3); }
+.palette legend { width: 100%; }
+.palette .hint { width: 100%; margin: 0; }
+.swatch-option { display: inline-flex; align-items: center; gap: var(--space-1); }
+.swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; }
+.week-scroll { max-height: 70vh; overflow: auto; border: 1.5px solid var(--color-border); border-radius: var(--radius-sm); background: var(--surface); }
+.week-grid { min-width: 640px; user-select: none; touch-action: pan-x pan-y; }
+.week-head { position: sticky; top: 0; z-index: 3; display: grid; grid-template-columns: 52px repeat(7, 1fr); background: var(--surface); border-bottom: 1.5px solid var(--color-border); font-weight: 700; text-align: center; padding: var(--space-1) 0; }
+.week-body { display: grid; grid-template-columns: 52px repeat(7, 1fr); }
+.week-body .time-col { position: relative; }
+.hour-label { position: absolute; right: 6px; font-size: var(--text-xs); color: var(--text-muted); transform: translateY(-2px); }
+.day-col { position: relative; border-left: 1px solid var(--color-border); }
+.day-col .cell { display: block; width: 100%; padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent; border-top: 1px dotted var(--gray-100); cursor: crosshair; }
+.day-col .cell.hour { border-top: 1px solid var(--color-border); }
+.day-col .cell:hover { background: var(--hover-tint); }
+.day-col .cell:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; z-index: 1; position: relative; }
+.tblock { position: absolute; left: 2px; right: 2px; z-index: 2; padding: 1px 4px; margin: 0; border: 0; border-radius: 6px; font-size: var(--text-xs); text-align: left; overflow: hidden; cursor: grab; line-height: 1.2; display: flex; flex-direction: column; align-items: flex-start; }
+.tblock.continues { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.tblock.continued { border-top-left-radius: 0; border-top-right-radius: 0; }
+.tblock.selected { outline: 3px solid var(--text); outline-offset: 1px; z-index: 4; }
+.tblock:focus-visible { outline: 3px solid var(--focus); outline-offset: 1px; z-index: 4; }
+.tblock-name { font-weight: 700; }
+.tblock-handle { position: absolute; left: 0; right: 0; bottom: 0; height: 6px; cursor: ns-resize; background: rgba(255, 255, 255, 0.35); }
+.tblock.pending { background: repeating-linear-gradient(45deg, var(--hover-tint), var(--hover-tint) 4px, var(--surface) 4px, var(--surface) 8px); border: 2px dashed; pointer-events: none; }
+.block-form { margin: var(--space-3) 0; padding: var(--space-3); border: 1.5px solid var(--color-border); border-radius: var(--radius-sm); background: var(--surface); }
+.block-form form { flex-wrap: wrap; gap: var(--space-2); align-items: flex-end; }
+.table-scroll { overflow-x: auto; }
+.rollup { border-collapse: collapse; min-width: 560px; }
+.rollup th, .rollup td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--color-border); text-align: right; }
+.rollup th[scope="row"] { text-align: left; font-weight: 600; white-space: nowrap; }
+.rollup tfoot th, .rollup tfoot td { border-top: 1.5px solid var(--color-border-strong); }
+.rollup .muted-row td.hint { text-align: left; }
+.own-categories { list-style: none; padding: 0; margin: 0 0 var(--space-3); display: grid; gap: var(--space-2); }
+.own-categories li { display: flex; align-items: center; gap: var(--space-2); }
+.own-categories input[type="color"], .week-view form input[type="color"] { width: 36px; height: 28px; padding: 0; border: 0; background: none; }
+
 /* ---------- Sharing ---------- */
 .access-banner { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border-left: 4px solid var(--gray-500); background: var(--gray-100); }
 .access-banner.editing { border-left-color: var(--primary); background: var(--color-violet-50); }

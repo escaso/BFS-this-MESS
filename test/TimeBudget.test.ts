@@ -114,9 +114,9 @@ describe("templates", () => {
 describe("blocks", () => {
   it("covers painting, moving, resizing and removing", async () => {
     const template = await emptyWeek();
-    const { block } = await t.addBlock({ user: "u", template, category: WORK, day: 5, start: 36, length: 16 });
-    expect(await t._blocks({ template })).toEqual([{ block, category: WORK, day: 5, start: 36, length: 16 }]);
-    await t.setBlock({ user: "u", block, category: WORK, day: 5, start: 32, length: 24 });
+    const { block } = await t.addBlock({ user: "u", template, category: WORK, day: 5, start: 36, slots: 16 });
+    expect(await t._blocks({ template })).toEqual([{ block, category: WORK, day: 5, start: 36, slots: 16 }]);
+    await t.setBlock({ user: "u", block, category: WORK, day: 5, start: 32, slots: 24 });
     expect(await t._blocked({ template })).toEqual({ blocked: 6, free: 162 });
     await t.removeBlock({ user: "u", block });
     expect(await t._blocks({ template })).toEqual([]);
@@ -125,12 +125,12 @@ describe("blocks", () => {
 
   it("covers overlaps, also across midnight, and a block moved over itself", async () => {
     const template = await emptyWeek();
-    const { block } = await t.addBlock({ user: "u", template, category: SLEEP, day: 6, start: 92, length: 32 }); // Sun 23:00 to Mon 7:00
+    const { block } = await t.addBlock({ user: "u", template, category: SLEEP, day: 6, start: 92, slots: 32 }); // Sun 23:00 to Mon 7:00
     await expectRefusal("addBlock", "OVERLAP",
-      t.addBlock({ user: "u", template, category: WORK, day: 0, start: 24, length: 4 })); // Mon 6:00
-    await t.addBlock({ user: "u", template, category: WORK, day: 0, start: 28, length: 4 }); // Mon 7:00, just after
-    await t.setBlock({ user: "u", block, category: SLEEP, day: 6, start: 88, length: 36 }); // overlaps only itself
-    await expectRefusal("setBlock", "OVERLAP", t.setBlock({ user: "u", block, category: SLEEP, day: 6, start: 88, length: 37 }));
+      t.addBlock({ user: "u", template, category: WORK, day: 0, start: 24, slots: 4 })); // Mon 6:00
+    await t.addBlock({ user: "u", template, category: WORK, day: 0, start: 28, slots: 4 }); // Mon 7:00, just after
+    await t.setBlock({ user: "u", block, category: SLEEP, day: 6, start: 88, slots: 36 }); // overlaps only itself
+    await expectRefusal("setBlock", "OVERLAP", t.setBlock({ user: "u", block, category: SLEEP, day: 6, start: 88, slots: 37 }));
     const rollup = await t._rollup({ template });
     expect(rollup.filter((r) => r.category === SLEEP)).toEqual([
       { category: SLEEP, day: 0, hours: 7 },
@@ -141,22 +141,22 @@ describe("blocks", () => {
   it("covers slots out of range", async () => {
     const template = await emptyWeek();
     for (const [day, start, length] of [[7, 0, 1], [-1, 0, 1], [0, 96, 1], [0, 0, 0], [0, 0, 672], [0, 1.5, 4], [0.5, 0, 4]]) {
-      await expectRefusal("addBlock", "BAD_SLOT", t.addBlock({ user: "u", template, category: WORK, day: day!, start: start!, length: length! }));
+      await expectRefusal("addBlock", "BAD_SLOT", t.addBlock({ user: "u", template, category: WORK, day: day!, start: start!, slots: length! }));
     }
   });
 
   it("covers whose template and category it is, and the managed category", async () => {
     const template = await emptyWeek();
     const mine = await emptyWeek("v");
-    await expectRefusal("addBlock", "NO_SUCH_TEMPLATE", t.addBlock({ user: "u", template: mine, category: WORK, day: 0, start: 0, length: 1 }));
-    await expectRefusal("addBlock", "NO_SUCH_TEMPLATE", t.addBlock({ user: "u", template: "nope", category: WORK, day: 0, start: 0, length: 1 }));
+    await expectRefusal("addBlock", "NO_SUCH_TEMPLATE", t.addBlock({ user: "u", template: mine, category: WORK, day: 0, start: 0, slots: 1 }));
+    await expectRefusal("addBlock", "NO_SUCH_TEMPLATE", t.addBlock({ user: "u", template: "nope", category: WORK, day: 0, start: 0, slots: 1 }));
     const { category } = await t.addCategory({ user: "v", name: "Rowing", color: "#123456" });
-    await expectRefusal("addBlock", "NO_SUCH_CATEGORY", t.addBlock({ user: "u", template, category, day: 0, start: 0, length: 1 }));
-    await expectRefusal("addBlock", "MANAGED_CATEGORY", t.addBlock({ user: "u", template, category: CLASS, day: 0, start: 0, length: 1 }));
-    const { block } = await t.addBlock({ user: "v", template: mine, category, day: 0, start: 0, length: 1 });
-    await expectRefusal("setBlock", "NO_SUCH_BLOCK", t.setBlock({ user: "u", block, category: WORK, day: 0, start: 0, length: 1 }));
-    await expectRefusal("setBlock", "MANAGED_CATEGORY", t.setBlock({ user: "v", block, category: CLASS, day: 0, start: 0, length: 1 }));
-    await expectRefusal("setBlock", "BAD_SLOT", t.setBlock({ user: "v", block, category, day: 0, start: 0, length: 0 }));
+    await expectRefusal("addBlock", "NO_SUCH_CATEGORY", t.addBlock({ user: "u", template, category, day: 0, start: 0, slots: 1 }));
+    await expectRefusal("addBlock", "MANAGED_CATEGORY", t.addBlock({ user: "u", template, category: CLASS, day: 0, start: 0, slots: 1 }));
+    const { block } = await t.addBlock({ user: "v", template: mine, category, day: 0, start: 0, slots: 1 });
+    await expectRefusal("setBlock", "NO_SUCH_BLOCK", t.setBlock({ user: "u", block, category: WORK, day: 0, start: 0, slots: 1 }));
+    await expectRefusal("setBlock", "MANAGED_CATEGORY", t.setBlock({ user: "v", block, category: CLASS, day: 0, start: 0, slots: 1 }));
+    await expectRefusal("setBlock", "BAD_SLOT", t.setBlock({ user: "v", block, category, day: 0, start: 0, slots: 0 }));
     await expectRefusal("removeBlock", "NO_SUCH_BLOCK", t.removeBlock({ user: "u", block }));
   });
 });
@@ -195,7 +195,7 @@ describe("categories", () => {
     const { category } = await t.addCategory({ user: "v", name: "Therapy", color: "#000" });
     await expectRefusal("deleteCategory", "NOT_YOUR_CATEGORY", t.deleteCategory({ user: "u", category }));
     const template = await emptyWeek("v");
-    await t.addBlock({ user: "v", template, category, day: 2, start: 64, length: 4 });
+    await t.addBlock({ user: "v", template, category, day: 2, start: 64, slots: 4 });
     await t.deleteCategory({ user: "v", category });
     expect(await t._blocks({ template })).toEqual([]);
   });
@@ -278,12 +278,12 @@ describe("classes", () => {
     expect(spring).toMatchObject({ inClass: 4.11, inClassSource: "EVALUATIONS", schedule: "NONE" });
     expect(await t._sections({ subject: "6.1210", year: 2027, term: "SPRING" })).toEqual([]);
     expect(await t._sections({ subject: "6.1210", year: 2026, term: "FALL" })).toEqual([
-      { kind: "LECTURE", section: 1, room: "26-100", day: 1, start: 44, length: 6 },
-      { kind: "LECTURE", section: 1, room: "26-100", day: 3, start: 44, length: 6 },
-      { kind: "RECITATION", section: 1, room: "34-304", day: 2, start: 40, length: 4 },
-      { kind: "RECITATION", section: 1, room: "34-304", day: 4, start: 40, length: 4 },
-      { kind: "RECITATION", section: 2, room: "34-304", day: 2, start: 44, length: 4 },
-      { kind: "RECITATION", section: 2, room: "34-304", day: 4, start: 44, length: 4 },
+      { kind: "LECTURE", section: 1, room: "26-100", day: 1, start: 44, slots: 6 },
+      { kind: "LECTURE", section: 1, room: "26-100", day: 3, start: 44, slots: 6 },
+      { kind: "RECITATION", section: 1, room: "34-304", day: 2, start: 40, slots: 4 },
+      { kind: "RECITATION", section: 1, room: "34-304", day: 4, start: 40, slots: 4 },
+      { kind: "RECITATION", section: 2, room: "34-304", day: 2, start: 44, slots: 4 },
+      { kind: "RECITATION", section: 2, room: "34-304", day: 4, start: 44, slots: 4 },
     ]);
   });
 

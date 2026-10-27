@@ -1094,15 +1094,15 @@ const ClassHours = former(
   "the hours of a class",
   (
     { user, subject, year, term },
-    { known, inClass, inClassSource, outOfClass, outOfClassSource, factor, total, schedule, kind, section, room, day, start, length },
+    { known, inClass, inClassSource, outOfClass, outOfClassSource, factor, total, schedule, kind, section, room, day, start, slots },
   ) =>
     where(
       TimeBudget._classHours({ user, subject, year, term })
         .is({ known, inClass, inClassSource, outOfClass, outOfClassSource, factor, total, schedule }),
     ).form({
       known, inClass, inClassSource, outOfClass, outOfClassSource, factor, total, schedule,
-      sections: each(TimeBudget._sections({ subject, year, term }).is({ kind, section, room, day, start, length }))
-        .form({ kind, section, room, day, start, length }),
+      sections: each(TimeBudget._sections({ subject, year, term }).is({ kind, section, room, day, start, slots }))
+        .form({ kind, section, room, day, start, slots }),
     }),
 );
 
@@ -1160,6 +1160,149 @@ const ClearSubjectFactor = endpoint("/bfsthismess/clearSubjectFactor", ({ sessio
       .then(TimeBudget.clearSubjectFactor({ user, subject }).responds({}))
       .then(respond({}))
       .named("signed-in"),
+  ),
+);
+
+// ---------- Weekly time budget ----------
+// A person's weeks are their own: each request reads or changes only the requester's,
+// and TimeBudget refuses a template, block or category that is not theirs.
+
+// The blocks, totals and hours per category and day of the template.
+const weekOf = (template: Var, v: Record<string, Var>) => ({
+  template,
+  blocked: v.blocked!,
+  free: v.free!,
+  blocks: each(TimeBudget._blocks({ template }).is({ block: v.block!, category: v.category!, day: v.day!, start: v.start!, slots: v.slots! }))
+    .form({ block: v.block!, category: v.category!, day: v.day!, start: v.start!, slots: v.slots! }),
+  rollup: each(TimeBudget._rollup({ template }).is({ category: v.rollCategory!, day: v.rollDay!, hours: v.hours! }))
+    .form({ category: v.rollCategory!, day: v.rollDay!, hours: v.hours! }),
+});
+
+const Week = former("a week of blocked time", ({ template }, v) =>
+  where(TimeBudget._blocked({ template }).is({ blocked: v.blocked, free: v.free })).form(weekOf(template, v)),
+);
+
+// The week a semester uses: its own if it has one, otherwise the regular week.
+const SemesterWeek = former("the week of a semester", ({ user, year, term }, v) =>
+  where(
+    TimeBudget._templateFor({ user, year, term }).is({ template: v.template, overridden: v.overridden }),
+    TimeBudget._blocked({ template: v.template }).is({ blocked: v.blocked, free: v.free }),
+  ).form({ overridden: v.overridden, ...weekOf(v.template, v) }),
+);
+
+const WeekSetup = former(
+  "the weeks of a user",
+  (
+    { user },
+    { category, name, color, own, managed, year, term, overrideTemplate, started, startYear, startTerm, priorDone, currentYear, currentTerm, complete },
+  ) =>
+    where(History._profile({ user }).is({ started, startYear, startTerm, priorDone, currentYear, currentTerm, complete })).form({
+      currentYear,
+      currentTerm,
+      categories: each(TimeBudget._categories({ user }).is({ category, name, color, own, managed }))
+        .form({ category, name, color, own, managed }),
+      overrides: each(TimeBudget._overrides({ user }).is({ year, term, template: overrideTemplate }))
+        .form({ year, term, template: overrideTemplate }),
+    }),
+);
+
+// The regular week, made with the worksheet's defaults the first time it is asked for.
+const ViewWeek = endpoint("/bfsthismess/viewWeek", ({ session, user, template }) =>
+  receive({ session }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.ensureDefault({ user }).responds({ template }))
+      .then(respond({ setup: WeekSetup({ user }), week: Week({ template }) }))
+      .named("signed-in"),
+  ),
+);
+
+// Answers once the regular week exists, so a semester always has a week.
+const ViewSemesterWeek = endpoint("/bfsthismess/viewSemesterWeek", ({ session, user, year, term }) =>
+  receive({ session, year, term }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.ensureDefault({ user }).responds({}))
+      .then(respond({ week: SemesterWeek({ user, year, term }) }))
+      .named("signed-in"),
+  ),
+);
+
+const OverrideWeek = endpoint("/bfsthismess/overrideWeek", ({ session, user, year, term, template }) =>
+  receive({ session, year, term }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.ensureDefault({ user }).responds({}))
+      .then(TimeBudget.override({ user, year, term }).responds({ template }))
+      .then(respond({ template }))
+      .named("signed-in"),
+  ),
+);
+
+const ResetWeek = endpoint("/bfsthismess/resetWeek", ({ session, user, year, term }) =>
+  receive({ session, year, term }).then(
+    noSession(session),
+    signedIn(session, user).then(TimeBudget.resetToDefault({ user, year, term }).responds({})).then(respond({})).named("signed-in"),
+  ),
+);
+
+// TimeBudget names a block's length slots: a field named length is never matched in an
+// action's occurrence or a request, which then goes unanswered.
+const AddTimeBlock = endpoint("/bfsthismess/addTimeBlock", ({ session, user, template, category, day, start, slots, block }) =>
+  receive({ session, template, category, day, start, slots }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.addBlock({ user, template, category, day, start, slots }).responds({ block }))
+      .then(respond({ block }))
+      .named("signed-in"),
+  ),
+);
+
+const SetTimeBlock = endpoint("/bfsthismess/setTimeBlock", ({ session, user, block, category, day, start, slots }) =>
+  receive({ session, block, category, day, start, slots }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.setBlock({ user, block, category, day, start, slots }).responds({}))
+      .then(respond({}))
+      .named("signed-in"),
+  ),
+);
+
+const RemoveTimeBlock = endpoint("/bfsthismess/removeTimeBlock", ({ session, user, block }) =>
+  receive({ session, block }).then(
+    noSession(session),
+    signedIn(session, user).then(TimeBudget.removeBlock({ user, block }).responds({})).then(respond({})).named("signed-in"),
+  ),
+);
+
+const AddCategory = endpoint("/bfsthismess/addCategory", ({ session, user, name, color, category }) =>
+  receive({ session, name, color }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.addCategory({ user, name, color }).responds({ category }))
+      .then(respond({ category }))
+      .named("signed-in"),
+  ),
+);
+
+const RenameCategory = endpoint("/bfsthismess/renameCategory", ({ session, user, category, name }) =>
+  receive({ session, category, name }).then(
+    noSession(session),
+    signedIn(session, user).then(TimeBudget.renameCategory({ user, category, name }).responds({})).then(respond({})).named("signed-in"),
+  ),
+);
+
+const RecolorCategory = endpoint("/bfsthismess/recolorCategory", ({ session, user, category, color }) =>
+  receive({ session, category, color }).then(
+    noSession(session),
+    signedIn(session, user).then(TimeBudget.recolorCategory({ user, category, color }).responds({})).then(respond({})).named("signed-in"),
+  ),
+);
+
+const DeleteCategory = endpoint("/bfsthismess/deleteCategory", ({ session, user, category }) =>
+  receive({ session, category }).then(
+    noSession(session),
+    signedIn(session, user).then(TimeBudget.deleteCategory({ user, category }).responds({})).then(respond({})).named("signed-in"),
   ),
 );
 
@@ -1295,6 +1438,20 @@ export const composition = {
   ViewHistory,
   ClassHours,
   StudySettings,
+  Week,
+  SemesterWeek,
+  WeekSetup,
+  ViewWeek,
+  ViewSemesterWeek,
+  OverrideWeek,
+  ResetWeek,
+  AddTimeBlock,
+  SetTimeBlock,
+  RemoveTimeBlock,
+  AddCategory,
+  RenameCategory,
+  RecolorCategory,
+  DeleteCategory,
   ViewClassHours,
   ViewStudySettings,
   SetStudyFactor,

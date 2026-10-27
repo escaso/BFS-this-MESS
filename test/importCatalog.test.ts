@@ -110,10 +110,10 @@ describe("importCatalog", () => {
       .toMatchObject({ inClass: 5, inClassSource: "SCHEDULE", outOfClass: 7.61, schedule: "EXACT" });
     expect((await budget._sections({ subject: "6.1210", year: 2026, term: "FALL" })).filter((r) => r.kind === "RECITATION"))
       .toEqual([
-        { kind: "RECITATION", section: 1, room: "34-304", day: 2, start: 40, length: 4 },
-        { kind: "RECITATION", section: 1, room: "34-304", day: 4, start: 40, length: 4 },
-        { kind: "RECITATION", section: 2, room: "34-304", day: 2, start: 44, length: 4 },
-        { kind: "RECITATION", section: 2, room: "34-304", day: 4, start: 44, length: 4 },
+        { kind: "RECITATION", section: 1, room: "34-304", day: 2, start: 40, slots: 4 },
+        { kind: "RECITATION", section: 1, room: "34-304", day: 4, start: 40, slots: 4 },
+        { kind: "RECITATION", section: 2, room: "34-304", day: 2, start: 44, slots: 4 },
+        { kind: "RECITATION", section: 2, room: "34-304", day: 4, start: 44, slots: 4 },
       ]);
     expect(await budget._classHours({ user: "u", subject: "21M.301", year: 2026, term: "FALL" }))
       .toMatchObject({ inClass: 3, inClassSource: "UNITS", outOfClass: 6, outOfClassSource: "FORMULA" });

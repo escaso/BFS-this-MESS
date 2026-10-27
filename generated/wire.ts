@@ -26,6 +26,17 @@ export type BFSThisMessWire = {
     };
     error: { error: AppWideError | "BAD_COUNT" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/addCategory": {
+    input: {
+      "color": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addCategory"]>[0], ["color"]>>;
+      "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addCategory"]>[0], ["name"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "category": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addCategory"]>>, ["category"]>>;
+    };
+    error: { error: AppWideError | "EMPTY_NAME" | "INVALID_INPUT" | "NAME_TAKEN" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/addOption": {
     input: {
       "block": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_roadOfBlock"]>[0], ["block"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["addOption"]>[0], ["block"]>]>>;
@@ -61,6 +72,20 @@ export type BFSThisMessWire = {
     };
     output: Record<string, never>;
     error: { error: AppWideError | "ALREADY_TAKEN" | "BAD_HISTORY" | "INVALID_INPUT" | "LOCKED" | "NOT_PAST" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "UNKNOWN_SUBJECT" };
+  };
+  "/bfsthismess/addTimeBlock": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["category"]>>;
+      "day": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["day"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "slots": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["slots"]>>;
+      "start": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["start"]>>;
+      "template": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["template"]>>;
+    };
+    output: {
+      "block": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>>, ["block"]>>;
+    };
+    error: { error: AppWideError | "BAD_SLOT" | "INVALID_INPUT" | "MANAGED_CATEGORY" | "NO_SUCH_CATEGORY" | "NO_SUCH_SESSION" | "NO_SUCH_TEMPLATE" | "OVERLAP" };
   };
   "/bfsthismess/checkPlan": {
     input: {
@@ -113,6 +138,14 @@ export type BFSThisMessWire = {
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["copyChoices"]>[0], ["to"]>>;
     };
     error: { error: AppWideError | "BAD_HISTORY" | "EMPTY_NAME" | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "ROAD_ALREADY_OWNED" };
+  };
+  "/bfsthismess/deleteCategory": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["deleteCategory"]>[0], ["category"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_YOUR_CATEGORY" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/deleteRoad": {
     input: {
@@ -273,6 +306,17 @@ export type BFSThisMessWire = {
     };
     error: { error: AppWideError | "BAD_COUNT" | "BAD_HISTORY" | "BAD_START" | "EMPTY_NAME" | "INVALID_INPUT" | "NO_LISTING" | "NO_SUCH_BLOCK" | "NO_SUCH_MAJOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "ROAD_ALREADY_OWNED" };
   };
+  "/bfsthismess/overrideWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["override"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["override"]>[0], ["year"]>>;
+    };
+    output: {
+      "template": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["override"]>>, ["template"]>>;
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_DEFAULT" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/pin": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
@@ -319,6 +363,15 @@ export type BFSThisMessWire = {
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/recolorCategory": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["recolorCategory"]>[0], ["category"]>>;
+      "color": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["recolorCategory"]>[0], ["color"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_YOUR_CATEGORY" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/refreshRequirements": {
     input: {
@@ -391,6 +444,23 @@ export type BFSThisMessWire = {
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_HISTORY" | "INVALID_INPUT" | "LOCKED" | "NOT_TAKEN" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/removeTimeBlock": {
+    input: {
+      "block": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["removeBlock"]>[0], ["block"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_BLOCK" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/renameCategory": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["renameCategory"]>[0], ["category"]>>;
+      "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["renameCategory"]>[0], ["name"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "EMPTY_NAME" | "INVALID_INPUT" | "NAME_TAKEN" | "NOT_YOUR_CATEGORY" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/renameRoad": {
     input: {
       "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["renameRoad"]>[0], ["name"]>>;
@@ -409,6 +479,15 @@ export type BFSThisMessWire = {
     };
     output: Record<string, never>;
     error: { error: AppWideError | "HISTORY_SEASON" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SEMESTER" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/resetWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["resetToDefault"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["resetToDefault"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_OVERRIDDEN" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/searchSubjects": {
     input: {
@@ -536,6 +615,18 @@ export type BFSThisMessWire = {
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_FACTOR" | "INVALID_INPUT" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/setTimeBlock": {
+    input: {
+      "block": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["block"]>>;
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["category"]>>;
+      "day": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["day"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "slots": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["slots"]>>;
+      "start": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["start"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_SLOT" | "INVALID_INPUT" | "MANAGED_CATEGORY" | "NO_SUCH_BLOCK" | "NO_SUCH_CATEGORY" | "NO_SUCH_SESSION" | "OVERLAP" };
+  };
   "/bfsthismess/shareRoad": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["share"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canEdit"]>[0], ["road"]>]>>;
@@ -592,9 +683,9 @@ export type BFSThisMessWire = {
         "sections": {
           "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["day"]>>;
           "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["kind"]>>;
-          "length": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["length"]>>;
           "room": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["room"]>>;
           "section": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["section"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["slots"]>>;
           "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["start"]>>;
         }[];
         "total": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["total"]>>;
@@ -807,6 +898,34 @@ export type BFSThisMessWire = {
     };
     error: { error: AppWideError | "INVALID_INPUT" };
   };
+  "/bfsthismess/viewSemesterWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["year"]>>;
+    };
+    output: {
+      "week": {
+        "blocked": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["blocked"]>>;
+        "blocks": {
+          "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["block"]>>;
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["day"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["start"]>>;
+        }[];
+        "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["free"]>>;
+        "overridden": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>>>, ["overridden"]>>;
+        "rollup": {
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["day"]>>;
+          "hours": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["hours"]>>;
+        }[];
+        "template": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>[0], ["template"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>>>, ["template"]>]>>;
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/viewSharing": {
     input: {
       "road": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canEdit"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_grantsVisibleTo"]>[0], ["road"]>]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
@@ -897,6 +1016,47 @@ export type BFSThisMessWire = {
     };
     error: { error: AppWideError | "INVALID_INPUT" };
   };
+  "/bfsthismess/viewWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "setup": {
+        "categories": {
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["category"]>>;
+          "color": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["color"]>>;
+          "managed": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["managed"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["name"]>>;
+          "own": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["own"]>>;
+        }[];
+        "currentTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["History"]["_profile"]>>>, ["currentTerm"]>>;
+        "currentYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["History"]["_profile"]>>>, ["currentYear"]>>;
+        "overrides": {
+          "template": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_overrides"]>>>, ["template"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_overrides"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_overrides"]>>>, ["year"]>>;
+        }[];
+      };
+      "week": {
+        "blocked": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["blocked"]>>;
+        "blocks": {
+          "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["block"]>>;
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["day"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["start"]>>;
+        }[];
+        "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["free"]>>;
+        "rollup": {
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["day"]>>;
+          "hours": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["hours"]>>;
+        }[];
+        "template": Jsonify<AllOf<[AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["ensureDefault"]>>, ["template"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>[0], ["template"]>]>>;
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_SESSION" };
+  };
 };
 
 export type HttpAppWideError = never;
@@ -913,6 +1073,17 @@ export type BFSThisMessWireHttp = {
       "block": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["addBlock"]>>, ["block"]>>;
     };
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/addCategory": {
+    input: {
+      "color": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addCategory"]>[0], ["color"]>>;
+      "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addCategory"]>[0], ["name"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "category": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addCategory"]>>, ["category"]>>;
+    };
+    error: { error: HttpAppWideError | "CONFLICT" | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/addOption": {
     input: {
@@ -948,6 +1119,20 @@ export type BFSThisMessWireHttp = {
       "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["History"]["addTaken"]>[0], ["year"]>>;
     };
     output: Record<string, never>;
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/addTimeBlock": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["category"]>>;
+      "day": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["day"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "slots": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["slots"]>>;
+      "start": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["start"]>>;
+      "template": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>[0], ["template"]>>;
+    };
+    output: {
+      "block": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["addBlock"]>>, ["block"]>>;
+    };
     error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/checkPlan": {
@@ -1001,6 +1186,14 @@ export type BFSThisMessWireHttp = {
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["copyChoices"]>[0], ["to"]>>;
     };
     error: { error: HttpAppWideError | "CONFLICT" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/deleteCategory": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["deleteCategory"]>[0], ["category"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/deleteRoad": {
     input: {
@@ -1161,6 +1354,17 @@ export type BFSThisMessWireHttp = {
     };
     error: { error: HttpAppWideError | "CONFLICT" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
+  "/bfsthismess/overrideWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["override"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["override"]>[0], ["year"]>>;
+    };
+    output: {
+      "template": Jsonify<AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["override"]>>, ["template"]>>;
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/pin": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["pin"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
@@ -1207,6 +1411,15 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/recolorCategory": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["recolorCategory"]>[0], ["category"]>>;
+      "color": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["recolorCategory"]>[0], ["color"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/refreshRequirements": {
     input: {
@@ -1279,6 +1492,23 @@ export type BFSThisMessWireHttp = {
     output: Record<string, never>;
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
+  "/bfsthismess/removeTimeBlock": {
+    input: {
+      "block": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["removeBlock"]>[0], ["block"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/renameCategory": {
+    input: {
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["renameCategory"]>[0], ["category"]>>;
+      "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["renameCategory"]>[0], ["name"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/renameRoad": {
     input: {
       "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["renameRoad"]>[0], ["name"]>>;
@@ -1297,6 +1527,15 @@ export type BFSThisMessWireHttp = {
     };
     output: Record<string, never>;
     error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/resetWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["resetToDefault"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["resetToDefault"]>[0], ["year"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "CONFLICT" | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/searchSubjects": {
     input: {
@@ -1424,6 +1663,18 @@ export type BFSThisMessWireHttp = {
     output: Record<string, never>;
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
+  "/bfsthismess/setTimeBlock": {
+    input: {
+      "block": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["block"]>>;
+      "category": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["category"]>>;
+      "day": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["day"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "slots": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["slots"]>>;
+      "start": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBlock"]>[0], ["start"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/shareRoad": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["share"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canEdit"]>[0], ["road"]>]>>;
@@ -1480,9 +1731,9 @@ export type BFSThisMessWireHttp = {
         "sections": {
           "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["day"]>>;
           "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["kind"]>>;
-          "length": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["length"]>>;
           "room": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["room"]>>;
           "section": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["section"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["slots"]>>;
           "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["start"]>>;
         }[];
         "total": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["total"]>>;
@@ -1695,6 +1946,34 @@ export type BFSThisMessWireHttp = {
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" };
   };
+  "/bfsthismess/viewSemesterWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "term": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["term"]>>;
+      "year": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["year"]>>;
+    };
+    output: {
+      "week": {
+        "blocked": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["blocked"]>>;
+        "blocks": {
+          "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["block"]>>;
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["day"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["start"]>>;
+        }[];
+        "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["free"]>>;
+        "overridden": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>>>, ["overridden"]>>;
+        "rollup": {
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["day"]>>;
+          "hours": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["hours"]>>;
+        }[];
+        "template": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>[0], ["template"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>>>, ["template"]>]>>;
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/viewSharing": {
     input: {
       "road": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canEdit"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_grantsVisibleTo"]>[0], ["road"]>]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
@@ -1784,5 +2063,46 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" };
+  };
+  "/bfsthismess/viewWeek": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "setup": {
+        "categories": {
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["category"]>>;
+          "color": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["color"]>>;
+          "managed": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["managed"]>>;
+          "name": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["name"]>>;
+          "own": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_categories"]>>>, ["own"]>>;
+        }[];
+        "currentTerm": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["History"]["_profile"]>>>, ["currentTerm"]>>;
+        "currentYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["History"]["_profile"]>>>, ["currentYear"]>>;
+        "overrides": {
+          "template": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_overrides"]>>>, ["template"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_overrides"]>>>, ["term"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_overrides"]>>>, ["year"]>>;
+        }[];
+      };
+      "week": {
+        "blocked": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["blocked"]>>;
+        "blocks": {
+          "block": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["block"]>>;
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["day"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocks"]>>>, ["start"]>>;
+        }[];
+        "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>>>, ["free"]>>;
+        "rollup": {
+          "category": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["category"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["day"]>>;
+          "hours": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_rollup"]>>>, ["hours"]>>;
+        }[];
+        "template": Jsonify<AllOf<[AtPath<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["ensureDefault"]>>, ["template"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blocked"]>[0], ["template"]>]>>;
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
 };
