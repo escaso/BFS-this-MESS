@@ -185,6 +185,19 @@ BFSThisMess.RecolorCategory at /bfsthismess/recolorCategory
 BFSThisMess.DeleteCategory at /bfsthismess/deleteCategory
 ```
 
+## Plans against the time budget
+
+Anyone who may view a road (Share._canView) can [see the hours of each semester of its paths](reaction:BFSThisMess.ViewPlanMetrics), shown as [the hours of the semesters of the paths of a road](former:BFSThisMess.PlanMetrics): for each semester of each plan (Constrain._planSeasons, which is Constrain._findPath grouped by season), its hours in and out of class, blocked and free time, the reserve, whether it is feasible, and its conflicts with blocked time (TimeBudget._semesterMetrics). They can also [see the schedule of one semester](reaction:BFSThisMess.ViewSemesterSchedule) of a plan, given its subjects, shown as [the schedule of a semester of a plan](former:BFSThisMess.SemesterSchedule): the sections picked for its classes (TimeBudget._placement), their conflicts (TimeBudget._conflicts), the classes with no place in the week (TimeBudget._unplaced), and the blocks and categories of the week the semester uses (TimeBudget._templateFor, _blocks and _categories). IAP and summer semesters are counted in hours only. Every number is worked out against the week and settings of the road's owner (Share._ownerOf), whoever asks, so that everyone on a road sees the same plan; the owner's username is never part of the answer.
+
+The owner and editors can [pick a section by hand](reaction:BFSThisMess.ChooseSection) for a part of a class in a semester (TimeBudget.chooseSection), and [let it be picked for them again](reaction:BFSThisMess.ClearSection) (TimeBudget.clearSection); viewers are refused with NOT_AN_EDITOR, and anyone who may not view the road with NO_SUCH_ROAD. Everyone has a regular week to measure plans against: it is made with the worksheet's defaults (TimeBudget.ensureDefault) [when they register](reaction:BFSThisMess.MakeRegularWeek) and, for accounts made before weeks existed, [when they come to own a road](reaction:BFSThisMess.MakeRegularWeekForOwner) (Share.claim). When a road is deleted, [its time settings and section choices are forgotten](reaction:BFSThisMess.ForgetRoadTime) (TimeBudget.forgetRoad).
+
+```endpoints
+BFSThisMess.ViewPlanMetrics at /bfsthismess/viewPlanMetrics
+BFSThisMess.ViewSemesterSchedule at /bfsthismess/viewSemesterSchedule
+BFSThisMess.ChooseSection at /bfsthismess/chooseSection
+BFSThisMess.ClearSection at /bfsthismess/clearSection
+```
+
 ## Paths and viewing
 
 A signed-in person can [list their roads](reaction:BFSThisMess.MyRoads): the roads they own (Share._roadsOwnedBy) and the roads shared with them (Share._roadsSharedWith), each shown with its name and major (Constrain._road) as [the roads of a user](former:BFSThisMess.UserRoads), so that an advisor can find every road shared with them. A shared road also shows the person's role and, where Share._ownerVisibleTo allows, the owner's username.

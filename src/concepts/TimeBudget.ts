@@ -1,4 +1,5 @@
 import { MongoServerError, type Collection, type Db } from "mongodb";
+import { pickSections, type BlockedSlots, type PartToPick, type Pick } from "./sections.ts";
 
 export class Refusal extends Error {
   constructor(public readonly code: string, message: string) {
@@ -92,6 +93,17 @@ export class BadClass extends Refusal {
   }
 }
 
+export class NoSuchSection extends Refusal {
+  constructor(message = "That class has no such section that semester.") {
+    super("NO_SUCH_SECTION", message);
+  }
+}
+export class NotChosen extends Refusal {
+  constructor(message = "That section was picked for you already.") {
+    super("NOT_CHOSEN", message);
+  }
+}
+
 export type Term = "IAP" | "SPRING" | "SUMMER" | "FALL";
 type Mode = "SOFT" | "HARD";
 type ShareMode = "METRICS" | "DETAILS";
@@ -150,7 +162,36 @@ interface TemplateRecord {
   owner: string;
   year: number | null; // null on the default
   term: Term | null;
+  version?: number; // absent on templates made before it existed: 0
 }
+
+interface SectionChoiceRecord {
+  _id: string; // `${road}|${year}|${term}|${subject}|${kind}`
+  road: string;
+  year: number;
+  term: Term;
+  subject: string;
+  kind: Kind;
+  section: number;
+}
+
+export type Status = "FEASIBLE" | "TIGHT" | "OVER";
+
+/**
+ * Whether a semester's study fits its free time (feasibility in the design): FEASIBLE
+ * with the reserve kept, TIGHT only by using the reserve, OVER not at all. It is the one
+ * place to extend, e.g. with a heavier load around midterms and finals.
+ */
+export function feasibility({ outOfClass, free, buffer }: { outOfClass: number; free: number; buffer: number }) {
+  const usable = free * (1 - buffer / 100);
+  const status: Status = outOfClass <= usable + 1e-9 ? "FEASIBLE" : outOfClass <= free + 1e-9 ? "TIGHT" : "OVER";
+  return { status, usable, capacity: free - outOfClass };
+}
+
+const subjectsOf = (text: string) => [...new Set(text.split(",").map((x) => x.trim()).filter(Boolean))].sort();
+const placesTerm = (term: Term) => term === "FALL" || term === "SPRING";
+// Picks are kept for the same week version, choices and subjects; only the most recent are.
+const PICKS_KEPT = 500;
 
 interface BlockRecord {
   _id: string;
@@ -271,6 +312,8 @@ export class TimeBudgetConcept {
   private readonly subjectFactors: Collection<SubjectFactorRecord>;
   private readonly roadSettings: Collection<RoadSettingsRecord>;
   private readonly classes: Collection<ClassRecord>;
+  private readonly sectionChoices: Collection<SectionChoiceRecord>;
+  private readonly picks = new Map<string, { pick: Pick; parts: PartToPick[] }>();
   private indexed = false;
 
   constructor(db: Db) {
@@ -281,6 +324,7 @@ export class TimeBudgetConcept {
     this.subjectFactors = db.collection<SubjectFactorRecord>("timebudget.subjectFactors");
     this.roadSettings = db.collection<RoadSettingsRecord>("timebudget.roadSettings");
     this.classes = db.collection<ClassRecord>("timebudget.classes");
+    this.sectionChoices = db.collection<SectionChoiceRecord>("timebudget.sectionChoices");
   }
 
   async #ensureIndexes() {
@@ -290,6 +334,7 @@ export class TimeBudgetConcept {
     await this.blocks.createIndex({ template: 1 });
     await this.categories.createIndex({ owner: 1 });
     await this.subjectFactors.createIndex({ user: 1 });
+    await this.sectionChoices.createIndex({ road: 1, year: 1, term: 1 });
     this.indexed = true;
   }
 
@@ -299,7 +344,7 @@ export class TimeBudgetConcept {
     await this.#ensureIndexes();
     const _id = crypto.randomUUID();
     try {
-      await this.templates.insertOne({ _id, owner, year, term });
+      await this.templates.insertOne({ _id, owner, year, term, version: 0 });
     } catch (error) {
       // Two requests raced to make the same template; the other one's stands.
       if (error instanceof MongoServerError && error.code === 11000) {
@@ -339,6 +384,11 @@ export class TimeBudgetConcept {
 
   // ---------- Blocks ----------
 
+  /** A new version for each template whose blocks changed. */
+  async #changed(templates: string[]) {
+    if (templates.length) await this.templates.updateMany({ _id: { $in: templates } }, { $inc: { version: 1 } });
+  }
+
   /** The category if user has it (a system one or their own); refuses otherwise, and for a managed one. */
   async #paintable(user: string, category: string) {
     const found = SYSTEM.get(category) ?? (await this.categories.findOne({ _id: category, owner: user }));
@@ -363,6 +413,7 @@ export class TimeBudgetConcept {
     const block = crypto.randomUUID();
     await this.#ensureIndexes();
     await this.blocks.insertOne({ _id: block, template, category, day, start, length });
+    await this.#changed([template]);
     return { block };
   }
 
@@ -381,12 +432,14 @@ export class TimeBudgetConcept {
     if (!validSlot(day, start, length)) throw new BadSlot();
     await this.#requireFree(record.template, covers(day, start, length), block);
     await this.blocks.updateOne({ _id: block }, { $set: { category, day, start, length } });
+    await this.#changed([record.template]);
     return {};
   }
 
   async removeBlock({ user, block }: { user: string; block: string }) {
-    await this.#requireOwnBlock(user, block);
+    const record = await this.#requireOwnBlock(user, block);
     await this.blocks.deleteOne({ _id: block });
+    await this.#changed([record.template]);
     return {};
   }
 
@@ -431,7 +484,9 @@ export class TimeBudgetConcept {
 
   async deleteCategory({ user, category }: { user: string; category: string }) {
     await this.#requireOwnCategory(user, category);
+    const templates = await this.blocks.distinct("template", { category });
     await this.blocks.deleteMany({ category });
+    await this.#changed(templates);
     await this.categories.deleteOne({ _id: category });
     return {};
   }
@@ -522,7 +577,72 @@ export class TimeBudgetConcept {
 
   async forgetRoad({ road }: { road: string }) {
     await this.roadSettings.deleteOne({ _id: road });
+    await this.sectionChoices.deleteMany({ road });
     return {};
+  }
+
+  // ---------- Sections ----------
+
+  /** placed(subject, season): the parts of its schedule that get a place in the week. */
+  async #placedParts(subject: string, year: number, term: Term) {
+    if (!placesTerm(term)) return [];
+    const c = await this.classes.findOne({ _id: subject });
+    if (scheduleFor(c, year, term) === "NONE") return [];
+    return c!.parts.filter((p) => !p.arranged && p.sections.length > 0);
+  }
+
+  async chooseSection(
+    { road, year, term, subject, kind, section }: { road: string; year: number; term: Term; subject: string; kind: string; section: number },
+  ) {
+    const part = (await this.#placedParts(subject, year, term)).find((p) => p.kind === kind);
+    if (!part || !Number.isInteger(section) || section < 1 || section > part.sections.length) throw new NoSuchSection();
+    await this.#ensureIndexes();
+    await this.sectionChoices.updateOne(
+      { _id: `${road}|${year}|${term}|${subject}|${kind}` },
+      { $set: { road, year, term, subject, kind: kind as Kind, section } },
+      { upsert: true },
+    );
+    return {};
+  }
+
+  async clearSection({ road, year, term, subject, kind }: { road: string; year: number; term: Term; subject: string; kind: string }) {
+    const result = await this.sectionChoices.deleteOne({ _id: `${road}|${year}|${term}|${subject}|${kind}` });
+    if (result.deletedCount === 0) throw new NotChosen();
+    return {};
+  }
+
+  /** pick(user, road, season, subjects), kept until the week, the choices or the subjects change. */
+  async #pick(user: string, road: string, year: number, term: Term, subjects: string[]) {
+    const [template] = await this._templateFor({ user, year, term });
+    const version = template ? ((await this.templates.findOne({ _id: template.template }))?.version ?? 0) : -1;
+    const choices = await this.sectionChoices.find({ road, year, term }).toArray();
+    const chosen = new Map(choices.map((c) => [`${c.subject}|${c.kind}`, c.section]));
+    const key = [user, year, term, template?.template ?? "", version, subjects.join(","),
+      choices.map((c) => `${c.subject}|${c.kind}|${c.section}`).sort().join(",")].join("#");
+    const kept = this.picks.get(key);
+    if (kept) return kept;
+
+    const parts: PartToPick[] = [];
+    for (const subject of subjects) {
+      for (const p of await this.#placedParts(subject, year, term)) {
+        parts.push({
+          subject,
+          kind: p.kind,
+          sections: p.sections.map((s) => ({ room: s.room, meetings: s.meetings.map((m) => ({ day: m.day, start: m.start, slots: m.length })) })),
+          chosen: chosen.get(`${subject}|${p.kind}`),
+        });
+      }
+    }
+    const blocked: BlockedSlots = Array(SLOTS_PER_WEEK).fill(undefined);
+    if (template) {
+      for (const b of await this.blocks.find({ template: template.template }).toArray()) {
+        for (const slot of covers(b.day, b.start, b.length)) blocked[slot] = { block: b._id, category: b.category };
+      }
+    }
+    const result = { pick: pickSections(parts, blocked), parts };
+    this.picks.set(key, result);
+    if (this.picks.size > PICKS_KEPT) this.picks.delete(this.picks.keys().next().value!);
+    return result;
   }
 
   // ---------- Queries ----------
@@ -634,6 +754,101 @@ export class TimeBudgetConcept {
     return c!.parts.flatMap((p) =>
       p.sections.flatMap((s, i) =>
         s.meetings.map((m) => ({ kind: p.kind, section: i + 1, room: s.room, day: m.day, start: m.start, slots: m.length }))));
+  }
+
+  async _semesterMetrics(
+    { user, road, year, term, subjects, openSlots }:
+      { user: string; road: string; year: number; term: Term; subjects: string; openSlots: number },
+  ) {
+    const list = subjectsOf(subjects);
+    const [settings, roadSettings, [template]] = await Promise.all([
+      this._settings({ user }), this._roadSettings({ road }), this._templateFor({ user, year, term }),
+    ]);
+    let inClass = 0;
+    let outOfClass = 0;
+    let estimated = openSlots > 0;
+    for (const subject of list) {
+      const h = await this._classHours({ user, subject, year, term });
+      inClass += h.inClass;
+      outOfClass += h.outOfClass;
+      if (!["SCHEDULE", "EVALUATIONS"].includes(h.inClassSource) || h.outOfClassSource === "FORMULA") estimated = true;
+    }
+    inClass += openSlots * ASSUMED_IN_CLASS;
+    outOfClass += openSlots * ASSUMED_IN_CLASS * settings.factor;
+    const { blocked } = template ? await this._blocked({ template: template.template }) : { blocked: 0 };
+    const free = SLOTS_PER_WEEK / 4 - blocked - inClass;
+    const buffer = roadSettings.hasBuffer ? roadSettings.buffer : settings.buffer;
+    const { status, usable, capacity } = feasibility({ outOfClass, free, buffer });
+    const { pick } = await this.#pick(user, road, year, term, list);
+    return {
+      inClass: round2(inClass),
+      outOfClass: round2(outOfClass),
+      total: round2(inClass + outOfClass),
+      blocked,
+      free: round2(free),
+      buffer,
+      usable: round2(usable),
+      capacity: round2(capacity),
+      status,
+      conflicts: pick.conflicts.length,
+      estimated,
+    };
+  }
+
+  async _placement(
+    { user, road, year, term, subjects }: { user: string; road: string; year: number; term: Term; subjects: string },
+  ) {
+    const { pick, parts } = await this.#pick(user, road, year, term, subjectsOf(subjects));
+    type M = { day: number; start: number; slots: number };
+    const meetingsOf = (i: number) => parts[i]!.sections[pick.sections[i]! - 1]?.meetings ?? [];
+    const overlap = (a: M, b: M) => a.day === b.day && a.start < b.start + b.slots && b.start < a.start + a.slots;
+    // A meeting is in a conflict if it overlaps a block, or a meeting of another picked part.
+    const hit = (i: number, m: M) =>
+      pick.conflicts.some((c) => c.withBlock && c.subject === parts[i]!.subject && c.kind === parts[i]!.kind &&
+        c.meeting.day === m.day && c.meeting.start === m.start) ||
+      parts.some((_, j) => j !== i && meetingsOf(j).some((o) => overlap(m, o)));
+    return parts
+      .map((p, i) => ({ p, i, section: pick.sections[i]! }))
+      .sort((a, b) => a.p.subject.localeCompare(b.p.subject) || KINDS.indexOf(a.p.kind as Kind) - KINDS.indexOf(b.p.kind as Kind))
+      .flatMap(({ p, i, section }) => {
+        const s = p.sections[section - 1]!;
+        return s.meetings.map((m) => ({
+          subject: p.subject,
+          kind: p.kind as Kind,
+          section,
+          options: p.sections.length,
+          chosen: p.chosen === section,
+          room: s.room,
+          day: m.day,
+          start: m.start,
+          slots: m.slots,
+          conflicted: hit(i, m),
+        }));
+      });
+  }
+
+  async _conflicts(
+    { user, road, year, term, subjects }: { user: string; road: string; year: number; term: Term; subjects: string },
+  ) {
+    const { pick } = await this.#pick(user, road, year, term, subjectsOf(subjects));
+    return pick.conflicts.map((c) => ({
+      subject: c.subject, kind: c.kind as Kind, day: c.meeting.day, start: c.meeting.start, slots: c.meeting.slots,
+      withBlock: c.withBlock, with: c.with,
+    }));
+  }
+
+  async _unplaced({ year, term, subjects }: { year: number; term: Term; subjects: string }) {
+    const out: { subject: string; reason: string }[] = [];
+    for (const subject of subjectsOf(subjects)) {
+      if (!placesTerm(term)) {
+        out.push({ subject, reason: "TERM" });
+        continue;
+      }
+      const c = await this.classes.findOne({ _id: subject });
+      if (scheduleFor(c, year, term) === "NONE") out.push({ subject, reason: "NONE" });
+      else if (c!.parts.some((p) => p.arranged)) out.push({ subject, reason: "ARRANGED" });
+    }
+    return out;
   }
 
   async _roadSettings({ road }: { road: string }) {

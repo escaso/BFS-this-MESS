@@ -224,6 +224,9 @@ _grantsVisibleTo(road: Road, requester: User) : many (user: User, role: Role, ad
 _ownerVisibleTo(road: Road, user: User) : optional (owner: User)
   Answers the owner of road if ownerVisible(road, user) holds, or no row otherwise (also for a road with no owner).
 
+_ownerOf(road: Road) : optional (owner: User)
+  Answers the owner of road, or no row if it has none. It is for working things out on the owner's behalf, such as the hours of a plan against the owner's week; an application shows the owner only where _ownerVisibleTo answers.
+
 _known(road: Road, requester: User, user: User) : one (known: Flag)
   Answers true if user is the owner of road or is requester, or if requester is the owner and user has a Grant, or if requester is an editor and user has a Grant added by requester; otherwise false. It says whether requester already knows that user has access, so that a list of people to add can leave them out without showing anyone else.
 

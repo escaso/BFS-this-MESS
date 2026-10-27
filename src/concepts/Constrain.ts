@@ -1487,6 +1487,33 @@ export class ConstrainConcept {
     });
   }
 
+  async _planSeasons(
+    { road, includeIAPAndSummer, limit }: { road: string; includeIAPAndSummer: boolean; limit: number },
+  ) {
+    const rows = await this._findPath({ road, includeIAPAndSummer, limit });
+    const record = await this.#requireRoad(road);
+    const seasons = new Map<string, { plan: number; year: number; term: Term; subjects: string[]; slots: number; units: number }>();
+    for (const r of rows) {
+      const k = `${r.plan}|${keyOf(r.year, r.term)}`;
+      const s = seasons.get(k) ?? { plan: r.plan, year: r.year, term: r.term, subjects: [], slots: 0, units: 0 };
+      if (r.subject) s.subjects.push(r.subject);
+      else s.slots++;
+      s.units += r.units;
+      seasons.set(k, s);
+    }
+    return [...seasons.values()]
+      .sort((a, b) => a.plan - b.plan || keyOf(a.year, a.term) - keyOf(b.year, b.term))
+      .map((s) => ({
+        plan: s.plan,
+        year: s.year,
+        term: s.term,
+        subjects: [...s.subjects].sort().join(","),
+        slots: s.slots,
+        units: s.units,
+        locked: isLocked(record, s.year, s.term),
+      }));
+  }
+
   /** One row per unmet dependency of each subject: the history's own, then those of pins. */
   async #warnings(prior: Set<string>, placed: { subject: string; year: number; term: Term }[], of = placed) {
     const deps = await this.dependencies.find({ course: { $in: of.map((p) => p.subject) } }).toArray();

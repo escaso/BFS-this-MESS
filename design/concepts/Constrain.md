@@ -597,6 +597,9 @@ _historyWarnings(history: String) : many (year: Number, term: Term, subject: Sub
 _unmetDependencies(road: Road) : many (year: Number, term: Term, subject: Subject, missing: String)
   where road exists. Answers, in the same form as _historyWarnings, one row for each dependency of each pin of road outside the semesters from history that the prior credit and pins of road do not meet, so that a student who corrects their history is told which planned subjects it leaves without what they need.
 
+_planSeasons(road: Road, includeIAPAndSummer: Flag, limit: Number) : many (plan: Number, year: Number, term: Term, subjects: String, slots: Number, units: Number, locked: Flag)
+  where road exists and limit is at least 1. Answers one row for each season of each plan of _findPath(road, includeIAPAndSummer, limit) that has a subject or a slot, in plan and season order: subjects are the plan's subjects in that season, in subject order, joined by commas; slots the number of its slots; units their units in all; and locked whether the season's Semester is locked. It is _findPath grouped by season, for working out the hours of each semester of each plan.
+
 _slotOptions(road: Road, blocks: String, year: Number, term: Term) : many (subject: Subject)
   where road exists. blocks is the ids of blocks of road joined by commas, as in a slot of _findPath. Answers, in subject order, each subject that is an option of every one of these blocks and canGoIn(road, subject, season) for this season, or no rows if there are none.
 

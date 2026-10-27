@@ -254,6 +254,11 @@ export class ShareConcept {
     return visible ? [{ owner: record.owner }] : [];
   }
 
+  async _ownerOf({ road }: { road: string }) {
+    const record = await this.accesses.findOne({ _id: road });
+    return record ? [{ owner: record.owner }] : [];
+  }
+
   async _known({ road, requester, user }: { road: string; requester: string; user: string }) {
     const record = await this.accesses.findOne({ _id: road });
     if (!record) return { known: user === requester };

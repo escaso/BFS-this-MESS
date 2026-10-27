@@ -6,9 +6,9 @@
 // Any subject of a path can be pinned where the path puts it, and a whole semester can be
 // locked as the path has it. Subjects are coloured by the requirement they count toward.
 import { computed, ref, watch } from "vue";
-import { call, message, type Constraints, type PlanRow } from "../api.ts";
+import { call, message, type Constraints, type Output, type PlanRow } from "../api.ts";
 import { canEdit, canShare, isOwner } from "../access.ts";
-import { key, label, rank, sameSeason, seasonsBetween, type Season } from "../util.ts";
+import { key, label, MAX_PATHS, rank, sameSeason, seasonsBetween, type Season } from "../util.ts";
 import SemesterDetails from "./SemesterDetails.vue";
 import SlotPicker from "./SlotPicker.vue";
 
@@ -31,6 +31,25 @@ const byPlan = computed(() => {
 
 const pathIndex = ref(0);
 const selected = ref<Season | null>(null);
+
+// ---------- Hours against the time budget ----------
+// The hours of every semester of every path, against the owner's week. They come after the
+// paths, so a slow answer never holds up the grid.
+type Metrics = Output<"viewPlanMetrics">["metrics"]["semesters"][number];
+const metrics = ref<Metrics[]>([]);
+let metricsToken = 0;
+async function loadMetrics() {
+  const mine = ++metricsToken;
+  try {
+    const m = (await call("viewPlanMetrics", { road: props.road, includeIAPAndSummer: props.includeIAPAndSummer, limit: MAX_PATHS })).metrics;
+    if (mine === metricsToken) metrics.value = m.semesters;
+  } catch {
+    if (mine === metricsToken) metrics.value = []; // the badges just don't show
+  }
+}
+watch(() => [props.plans, props.includeIAPAndSummer], loadMetrics, { immediate: true });
+const metricsOf = (s: Season) => metrics.value.find((m) => m.plan === pathIndex.value + 1 && sameSeason(m, s));
+const STATUS = { FEASIBLE: "✓ Fits", TIGHT: "⚠ Tight", OVER: "✕ Over" } as const;
 
 // If the paths shrink after an edit, fall back to the first one.
 watch(byPlan, (plans) => {
@@ -305,6 +324,15 @@ function picked(subject: string) {
           <template v-if="capsOf(s).technical"> · technical max {{ capsOf(s).technical }}</template>
           <template v-if="!capsOf(s).total && !capsOf(s).technical"> · no cap</template>
         </p>
+        <p
+          v-if="metricsOf(s) && !isLocked(s)"
+          class="sem-status"
+          :data-status="metricsOf(s)!.status"
+          :title="`${metricsOf(s)!.outOfClass} h of study, ${metricsOf(s)!.usable} h usable of ${metricsOf(s)!.free} h free`"
+        >
+          {{ STATUS[metricsOf(s)!.status] }} · {{ metricsOf(s)!.free }} h free
+          <template v-if="metricsOf(s)!.conflicts"> · ⚠ {{ metricsOf(s)!.conflicts }} clash{{ metricsOf(s)!.conflicts === 1 ? "" : "es" }}</template>
+        </p>
       </div>
     </div>
 
@@ -320,7 +348,14 @@ function picked(subject: string) {
 
     <section id="details">
       <p v-if="!selected" class="hint">Click a semester to see its classes.</p>
-      <SemesterDetails v-else :season="selected" :courses="summaryOf(selected)" />
+      <SemesterDetails
+        v-else
+        :season="selected"
+        :courses="summaryOf(selected)"
+        :road="road"
+        :metrics="metricsOf(selected)"
+        @changed="loadMetrics"
+      />
     </section>
   </main>
 </template>

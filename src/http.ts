@@ -71,5 +71,7 @@ export const policy = httpPolicy({
     OVERLAP: "CONFLICT",
     NAME_TAKEN: "CONFLICT",
     NOT_YOUR_CATEGORY: "FORBIDDEN",
+    NO_SUCH_SECTION: "INVALID_REQUEST",
+    NOT_CHOSEN: "CONFLICT",
   },
 });

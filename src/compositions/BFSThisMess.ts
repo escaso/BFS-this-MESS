@@ -1306,6 +1306,118 @@ const DeleteCategory = endpoint("/bfsthismess/deleteCategory", ({ session, user,
   ),
 );
 
+// ---------- Plans against the time budget ----------
+// A plan's hours are worked out against the week of the road's owner (Share._ownerOf),
+// whoever asks, so everyone on the road sees the same numbers; the owner is never shown.
+
+const PlanMetrics = former(
+  "the hours of the semesters of the paths of a road",
+  ({ road, includeIAPAndSummer, limit }, v) =>
+    form({
+      semesters: each(
+        Constrain._planSeasons({ road, includeIAPAndSummer, limit })
+          .is({ plan: v.plan, year: v.year, term: v.term, subjects: v.subjects, slots: v.slots, units: v.units, locked: v.locked }),
+      )
+        .where(
+          Share._ownerOf({ road }).is({ owner: v.owner }),
+          TimeBudget._semesterMetrics({ user: v.owner, road, year: v.year, term: v.term, subjects: v.subjects, openSlots: v.slots }).is({
+            inClass: v.inClass, outOfClass: v.outOfClass, total: v.total, blocked: v.blocked, free: v.free, buffer: v.buffer,
+            usable: v.usable, capacity: v.capacity, status: v.status, conflicts: v.conflicts, estimated: v.estimated,
+          }),
+        )
+        .form({
+          plan: v.plan, year: v.year, term: v.term, subjects: v.subjects, slots: v.slots, units: v.units, locked: v.locked,
+          inClass: v.inClass, outOfClass: v.outOfClass, total: v.total, blocked: v.blocked, free: v.free, buffer: v.buffer,
+          usable: v.usable, capacity: v.capacity, status: v.status, conflicts: v.conflicts, estimated: v.estimated,
+        }),
+    }),
+);
+
+const SemesterSchedule = former(
+  "the schedule of a semester of a plan",
+  ({ road, year, term, subjects }, v) =>
+    where(Share._ownerOf({ road }).is({ owner: v.owner })).form({
+      placement: each(TimeBudget._placement({ user: v.owner, road, year, term, subjects }).is({
+        subject: v.subject, kind: v.kind, section: v.section, options: v.options, chosen: v.chosen, room: v.room,
+        day: v.day, start: v.start, slots: v.slots, conflicted: v.conflicted,
+      })).form({
+        subject: v.subject, kind: v.kind, section: v.section, options: v.options, chosen: v.chosen, room: v.room,
+        day: v.day, start: v.start, slots: v.slots, conflicted: v.conflicted,
+      }),
+      conflicts: each(TimeBudget._conflicts({ user: v.owner, road, year, term, subjects }).is({
+        subject: v.cSubject, kind: v.cKind, day: v.cDay, start: v.cStart, slots: v.cSlots, withBlock: v.withBlock, with: v.with,
+      })).form({
+        subject: v.cSubject, kind: v.cKind, day: v.cDay, start: v.cStart, slots: v.cSlots, withBlock: v.withBlock, with: v.with,
+      }),
+      unplaced: each(TimeBudget._unplaced({ year, term, subjects }).is({ subject: v.uSubject, reason: v.reason }))
+        .form({ subject: v.uSubject, reason: v.reason }),
+      blocks: each(TimeBudget._templateFor({ user: v.owner, year, term }).is({ template: v.template }))
+        .where(TimeBudget._blocks({ template: v.template }).is({ category: v.bCategory, day: v.bDay, start: v.bStart, slots: v.bSlots }))
+        .form({ category: v.bCategory, day: v.bDay, start: v.bStart, slots: v.bSlots }),
+      categories: each(TimeBudget._categories({ user: v.owner }).is({ category: v.category, name: v.name, color: v.color }))
+        .form({ category: v.category, name: v.name, color: v.color }),
+    }),
+);
+
+const ViewPlanMetrics = endpoint("/bfsthismess/viewPlanMetrics", ({ session, user, road, includeIAPAndSummer, limit }) =>
+  receive({ session, road, includeIAPAndSummer, limit }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    asViewer(session, user, road)
+      .then(respond({ metrics: PlanMetrics({ road, includeIAPAndSummer, limit }) }))
+      .named("viewer"),
+  ),
+);
+
+const ViewSemesterSchedule = endpoint("/bfsthismess/viewSemesterSchedule", ({ session, user, road, year, term, subjects }) =>
+  receive({ session, road, year, term, subjects }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    asViewer(session, user, road)
+      .then(respond({ schedule: SemesterSchedule({ road, year, term, subjects }) }))
+      .named("viewer"),
+  ),
+);
+
+const ChooseSection = endpoint("/bfsthismess/chooseSection", ({ session, user, road, year, term, subject, kind, section }) =>
+  receive({ session, road, year, term, subject, kind, section }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
+      .then(TimeBudget.chooseSection({ road, year, term, subject, kind, section }).responds({}))
+      .then(respond({}))
+      .named("editor"),
+  ),
+);
+
+const ClearSection = endpoint("/bfsthismess/clearSection", ({ session, user, road, year, term, subject, kind }) =>
+  receive({ session, road, year, term, subject, kind }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    viewOnly(session, user, road),
+    asEditor(session, user, road)
+      .then(TimeBudget.clearSection({ road, year, term, subject, kind }).responds({}))
+      .then(respond({}))
+      .named("editor"),
+  ),
+);
+
+// Everyone has a regular week, with the worksheet's defaults until they change it, so that
+// their plans are always measured against one: from registering, and for accounts made
+// before weeks existed, from the moment they own a road.
+const MakeRegularWeek = reaction(({ user }) =>
+  when(Authentication.register({}).responds({ user })).then(TimeBudget.ensureDefault({ user })),
+);
+const MakeRegularWeekForOwner = reaction(({ road, user }) =>
+  when(Share.claim({ road, user }).responds({})).then(TimeBudget.ensureDefault({ user })),
+);
+
+// A deleted road keeps no time settings or section choices.
+const ForgetRoadTime = reaction(({ road }) =>
+  when(Constrain.deleteRoad({ road }).responds({})).then(TimeBudget.forgetRoad({ road })),
+);
+
 // ---------- Paths and viewing ----------
 
 const MyRoads = endpoint("/bfsthismess/myRoads", ({ session, user }) =>
@@ -1438,6 +1550,15 @@ export const composition = {
   ViewHistory,
   ClassHours,
   StudySettings,
+  PlanMetrics,
+  SemesterSchedule,
+  ViewPlanMetrics,
+  ViewSemesterSchedule,
+  ChooseSection,
+  ClearSection,
+  ForgetRoadTime,
+  MakeRegularWeek,
+  MakeRegularWeekForOwner,
   Week,
   SemesterWeek,
   WeekSetup,

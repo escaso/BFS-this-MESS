@@ -330,3 +330,111 @@ describe("classes", () => {
     await expectRefusal("setClass", "BAD_CLASS", t.setClass({ subject: "B", scheduleYear: 2026, parts: "[]" }));
   });
 });
+
+/*
+ * Semester metrics, placement and section choices:
+ *   metrics: hours summed with open slots; free = 168 - blocked - inClass; the road's buffer
+ *     or the user's; status FEASIBLE / TIGHT / OVER at the edges; estimated or not
+ *   placement: Fall and Spring placed, IAP and Summer not; conflicts with a block and with
+ *     another class; a part picked by hand kept; a pick that changes when the week does
+ *   chooseSection / clearSection: a real section / no such section / not chosen
+ *   _unplaced: TERM / ARRANGED / NONE / placed (no row)
+ */
+describe("semesters", () => {
+  const meeting = (day: number, start: number, length: number) => ({ day, start, length });
+  // A: lecture TR 2-3:30pm only. B: lecture MWF 9 or MWF 10. The default week blocks neither.
+  const A = JSON.stringify([{ kind: "LECTURE", arranged: false, sections: [{ room: "1-1", meetings: [meeting(1, 56, 6), meeting(3, 56, 6)] }] }]);
+  const B = JSON.stringify([{ kind: "LECTURE", arranged: false, sections: [
+    { room: "2-1", meetings: [meeting(0, 36, 4), meeting(2, 36, 4), meeting(4, 36, 4)] },
+    { room: "2-2", meetings: [meeting(0, 40, 4), meeting(2, 40, 4), meeting(4, 40, 4)] },
+  ] }]);
+  const fall = { scheduleYear: 2026, scheduleTerm: "FALL" as const };
+  const at = { year: 2026, term: "FALL" as const };
+
+  beforeEach(async () => {
+    await t.setClass({ subject: "A", ...fall, parts: A, outOfClassHours: 6 });
+    await t.setClass({ subject: "B", ...fall, parts: B, outOfClassHours: 9 });
+    await t.setClass({ subject: "C", parts: "[]", contactUnits: 4 });
+    await t.ensureDefault({ user: "u" });
+  });
+
+  it("covers the numbers of a semester, which add up to 168", async () => {
+    const m = await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B", openSlots: 0 });
+    // The default week blocks 84 h; A is 3 h and B 3 h in class.
+    expect(m).toEqual({
+      inClass: 6, outOfClass: 15, total: 21, blocked: 84, free: 78, buffer: 10, usable: 70.2, capacity: 63,
+      status: "FEASIBLE", conflicts: 0, estimated: false,
+    });
+    expect(m.blocked + m.inClass + m.free).toBe(168);
+    const withSlot = await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B,C", openSlots: 1 });
+    expect(withSlot).toMatchObject({ inClass: 6 + 4 + 3, outOfClass: 15 + 8 + 6, estimated: true });
+  });
+
+  it("covers feasibility at its edges, with the road's reserve or the user's", async () => {
+    // Free 78 h after A and B; 25 h of work (1-6pm on five days) leaves 53 h.
+    const { template } = await t.ensureDefault({ user: "u" });
+    for (let day = 5; day < 7; day++) await t.addBlock({ user: "u", template, category: "system:work", day, start: 52, slots: 20 });
+    for (let day = 0; day < 3; day++) await t.addBlock({ user: "u", template, category: "system:work", day, start: 52, slots: 20 });
+    let m = await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B", openSlots: 0 });
+    expect(m.status).toBe("FEASIBLE");
+    await t.setClass({ subject: "D", parts: "[]", inClassHours: 0.01, outOfClassHours: m.usable - 15 + 1 });
+    m = await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B,D", openSlots: 0 });
+    expect(m.status).toBe("TIGHT");
+    await t.setRoadBuffer({ road: "r", buffer: 0 });
+    expect((await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B,D", openSlots: 0 })).status).toBe("FEASIBLE");
+    await t.setClass({ subject: "D", parts: "[]", inClassHours: 0.01, outOfClassHours: 200 });
+    expect((await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B,D", openSlots: 0 })).status).toBe("OVER");
+  });
+
+  it("covers placement, conflicts with a block and between classes, and a week that changes", async () => {
+    // Nothing blocks 9-10, so B takes its first section.
+    let rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    expect(rows.filter((r) => r.subject === "B").map((r) => [r.section, r.options, r.start, r.conflicted])).toEqual([
+      [1, 2, 36, false], [1, 2, 36, false], [1, 2, 36, false],
+    ]);
+    const { template } = await t.ensureDefault({ user: "u" });
+    const { block } = await t.addBlock({ user: "u", template, category: "system:exercise", day: 2, start: 36, slots: 4 }); // Wed 9-10
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    expect(rows.find((r) => r.subject === "B")?.section).toBe(2);
+    // With 10-11 taken too, no section of B is free: the fewer conflicts win (1 each); the first.
+    await t.addBlock({ user: "u", template, category: "system:work", day: 4, start: 40, slots: 4 }); // Fri 10-11
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    expect(rows.filter((r) => r.subject === "B").map((r) => r.conflicted)).toEqual([false, true, false]);
+    expect(await t._conflicts({ user: "u", road: "r", ...at, subjects: "A,B" })).toEqual([
+      { subject: "B", kind: "LECTURE", day: 2, start: 36, slots: 4, withBlock: true, with: "system:exercise" },
+    ]);
+    expect((await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B", openSlots: 0 })).conflicts).toBe(1);
+    await t.removeBlock({ user: "u", block });
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    expect(rows.find((r) => r.subject === "B")?.section).toBe(1);
+  });
+
+  it("covers sections picked by hand, kept even with a conflict, and cleared", async () => {
+    await t.chooseSection({ road: "r", ...at, subject: "B", kind: "LECTURE", section: 2 });
+    let rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    expect(rows.find((r) => r.subject === "B")).toMatchObject({ section: 2, chosen: true, room: "2-2" });
+    expect((await t._placement({ user: "u", road: "other", ...at, subjects: "B" }))[0]).toMatchObject({ section: 1, chosen: false });
+    await t.clearSection({ road: "r", ...at, subject: "B", kind: "LECTURE" });
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "B" });
+    expect(rows[0]).toMatchObject({ section: 1, chosen: false });
+    await expectRefusal("clearSection", "NOT_CHOSEN", t.clearSection({ road: "r", ...at, subject: "B", kind: "LECTURE" }));
+    for (const bad of [{ section: 3 }, { section: 0 }, { kind: "LAB" }, { subject: "C" }, { year: 2027, term: "SPRING" as const }]) {
+      await expectRefusal("chooseSection", "NO_SUCH_SECTION",
+        t.chooseSection({ road: "r", ...at, subject: "B", kind: "LECTURE", section: 1, ...bad }));
+    }
+    await t.chooseSection({ road: "r", ...at, subject: "B", kind: "LECTURE", section: 2 });
+    await t.forgetRoad({ road: "r" });
+    expect((await t._placement({ user: "u", road: "r", ...at, subjects: "B" }))[0]?.chosen).toBe(false);
+  });
+
+  it("covers IAP and summer (hours only) and classes with no place in the week", async () => {
+    const arranged = JSON.stringify([{ kind: "LAB", arranged: true, sections: [] }]);
+    await t.setClass({ subject: "L", ...fall, parts: arranged, contactUnits: 2 });
+    expect(await t._placement({ user: "u", road: "r", year: 2027, term: "IAP", subjects: "A,B" })).toEqual([]);
+    expect((await t._semesterMetrics({ user: "u", road: "r", year: 2027, term: "IAP", subjects: "A,B", openSlots: 0 })).inClass).toBeGreaterThan(0);
+    expect(await t._unplaced({ year: 2027, term: "IAP", subjects: "A" })).toEqual([{ subject: "A", reason: "TERM" }]);
+    expect(await t._unplaced({ ...at, subjects: "A,C,L" })).toEqual([
+      { subject: "C", reason: "NONE" }, { subject: "L", reason: "ARRANGED" },
+    ]);
+  });
+});

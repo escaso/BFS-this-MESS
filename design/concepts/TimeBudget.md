@@ -20,6 +20,9 @@ external Road
 Term is IAP or SPRING or SUMMER or FALL
   The part of an academic year a semester falls in, as named in the subject listing.
 
+Status is FEASIBLE or TIGHT or OVER
+  Whether a semester's study fits its free time: with the reserve kept, only by using the reserve, or not at all.
+
 Mode is SOFT or HARD
   SOFT: plans are shown with their hours and whether they fit. HARD: plans that do not fit are left out.
 
@@ -48,7 +51,9 @@ a set of Templates with
   an owner User
   an optional year Number
   an optional term Term
+  a version Number
   unique owner and year and term
+  Rule: version changes whenever the blocks of the Template do, so that what is worked out from a week can be kept until it changes. A Template made before version existed has version 0.
   Rule: A Template is a regular week. A user has at most one default Template, with no season, and at most one override per season. A season with no override uses the default.
 
 a set of Blocks with
@@ -109,6 +114,20 @@ a set of Meetings with
 
 Rule: The schedule of a Class is exact for its schedule season and an estimate for a season of the same term in another year (classes usually meet at the same times each year); for a season of another term there is no schedule.
 Rule: classHours(user, subject, season) is the time a subject takes in a season, each number with where it came from. inClass is the hours a week of the schedule, if there is one for that season and none of its parts is arranged: for each part, the length of its most common section (source SCHEDULE); otherwise inClassHours (source EVALUATIONS); otherwise contactUnits (source UNITS); otherwise 3, as for a typical 12-unit subject (source ASSUMED). outOfClass is outOfClassHours (source EVALUATIONS) if there is one, otherwise inClass × the factor of user for subject (source FORMULA): their SubjectFactor if they have one, otherwise the factor of their Settings. total is inClass + outOfClass.
+
+a set of SectionChoices with
+  a Road
+  a year Number
+  a term Term
+  a subject String
+  a kind Kind
+  a section Number
+  unique road and year and term and subject and kind
+  Rule: A SectionChoice is a section a student picked by hand for one part of a class in one semester of a road, instead of the one picked for them.
+
+Rule: placed(subject, season) are the parts of the schedule of subject that apply to the season, are not arranged and have sections, if the season is FALL or SPRING; IAP and SUMMER are never placed, since their classes are too irregular for a weekly grid, and are counted in hours only.
+Rule: pick(user, road, season, subjects) is one section for each placed part of each of subjects: its SectionChoice if road has one that names an existing section, otherwise the section found by the search, so that the picked sections have as few conflicts as possible. A conflict is a meeting of a picked section together with a block it overlaps, of the week the season uses for user (templateFor), or a pair of overlapping meetings of two picked sections of different subjects or parts. The search goes through the parts not chosen by hand from the one with the fewest sections, then by subject and kind, and through each part's sections in order; it drops a partial pick as soon as it has as many conflicts as the best found, stops at a pick with no conflicts, and stops after 20000 steps with the best found. So it is deterministic, and finds a pick with no conflicts whenever one exists within its steps.
+Rule: metrics(user, road, season, subjects, openSlots) are the numbers of a semester. inClass and outOfClass are the sums of classHours(user, subject, season) over subjects, plus, for each of openSlots (a subject still to be chosen), 3 hours in class and 3 × the factor of user outside it. blocked is blocked(templateFor(user, season)). free is 168 − blocked − inClass, so that blocked + inClass + free is 168. buffer is the buffer of the RoadSettings of road if it has one, otherwise the buffer of user. usable is free × (1 − buffer / 100) and capacity is free − outOfClass. status is feasibility(outOfClass, free, buffer): FEASIBLE when outOfClass ≤ usable, TIGHT when outOfClass ≤ free, and OVER otherwise. conflicts is the number of conflicts of pick(user, road, season, subjects).
 
 Rule: covers(block) is the set of slots of the week that block covers: day × 96 + start, and the length − 1 slots after it, counted modulo 672.
 Rule: hours(template, category, day) is a quarter of the number of slots of day covered by blocks of template in category. A block past midnight counts toward the day each of its slots is in, so sleep from 11 pm Monday to 7 am Tuesday is 1 hour on Monday and 7 on Tuesday. blocked(template) is a quarter of the number of slots covered by any block of template.
@@ -329,10 +348,28 @@ removeClass(subject: String) : returns ()
     delete the Class of subject if there is one
     returns
 
+chooseSection(road: Road, year: Number, term: Term, subject: String, kind: Kind, section: Number) : returns ()
+  where subject has no section numbered section in a placed part of kind in this season (see placed)
+  then
+    refuses NO_SUCH_SECTION "That class has no such section that semester."
+  where it has
+  then
+    set the SectionChoice of road for this season, subject and kind to section, creating it if there is none
+    returns
+
+clearSection(road: Road, year: Number, term: Term, subject: String, kind: Kind) : returns ()
+  where road has no SectionChoice for this season, subject and kind
+  then
+    refuses NOT_CHOSEN "That section was picked for you already."
+  where road has one
+  then
+    delete it, so that the section is picked for the student again
+    returns
+
 forgetRoad(road: Road) : returns ()
   where true
   then
-    delete the RoadSettings of road if there are any
+    delete the RoadSettings and the SectionChoices of road, if there are any
     returns
 ```
 
@@ -371,6 +408,18 @@ _classHours(user: User, subject: String, year: Number, term: Term) : one (known:
 
 _sections(subject: String, year: Number, term: Term) : many (kind: Kind, section: Number, room: String, day: Number, start: Number, slots: Number)
   Answers one row for each meeting of each section of each part of the schedule of subject that applies to the season (see the rules above), with section the number of the section in its part, from 1, and slots the length of the meeting, ordered by part, section and meeting. Arranged parts and seasons with no schedule have no rows.
+
+_semesterMetrics(user: User, road: Road, year: Number, term: Term, subjects: String, openSlots: Number) : one (inClass: Number, outOfClass: Number, total: Number, blocked: Number, free: Number, buffer: Number, usable: Number, capacity: Number, status: Status, conflicts: Number, estimated: Flag)
+  Answers metrics(user, road, season, subjects, openSlots), where subjects are joined by commas (empty for none). Hours are rounded to hundredths. estimated is true if any hours come from anything but the schedule and subject evaluations (units, an assumption, the factor, or an open slot).
+
+_placement(user: User, road: Road, year: Number, term: Term, subjects: String) : many (subject: String, kind: Kind, section: Number, options: Number, chosen: Flag, room: String, day: Number, start: Number, slots: Number, conflicted: Flag)
+  Answers one row for each meeting of each section of pick(user, road, season, subjects), ordered by subject, kind and meeting: options is how many sections its part has, chosen whether the student picked it by hand, and conflicted whether the meeting is in a conflict. Answers no rows for IAP and SUMMER.
+
+_conflicts(user: User, road: Road, year: Number, term: Term, subjects: String) : many (subject: String, kind: Kind, day: Number, start: Number, slots: Number, withBlock: Flag, with: String)
+  Answers one row for each conflict of pick(user, road, season, subjects): the meeting (day, start, slots) of subject and kind, and what it overlaps: a block (withBlock true, with its category) or the meeting of another class (withBlock false, with that subject). Rows are ordered by day and start.
+
+_unplaced(year: Number, term: Term, subjects: String) : many (subject: String, reason: String)
+  Answers, in subject order, each of subjects that counts toward the hours of the season but has a part with no place in the week: reason is TERM for IAP and SUMMER, ARRANGED when a part is TBA, and NONE when no schedule is published for the season.
 
 _roadSettings(road: Road) : one (mode: Mode, hasBuffer: Flag, buffer: Number, shareMode: ShareMode)
   Answers the RoadSettings of road, or SOFT, no buffer (hasBuffer false, buffer 0) and METRICS if there are none.

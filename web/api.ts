@@ -119,6 +119,8 @@ const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> 
   setSubjectFactor: { INVALID_REQUEST: "Study hours per class hour must be from 2 to 3." },
   clearSubjectFactor: { NOT_FOUND: "That subject uses your usual factor." },
   setReserve: { INVALID_REQUEST: "The reserve must be from 0% to 50% of your free time." },
+  chooseSection: { INVALID_REQUEST: "That class has no such section that semester.", FORBIDDEN: "You can only view this road." },
+  clearSection: { CONFLICT: "That section was picked for you already.", FORBIDDEN: "You can only view this road." },
 };
 
 export class ApiError extends Error {
