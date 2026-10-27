@@ -1889,3 +1889,36 @@ describe("applyHistory", () => {
     expect(keys(await c._pins({ road: copy }))).toEqual(["2025-FALL-X"]);
   });
 });
+
+/*
+ * _findPath with plans, _planSeasons with plans, _plansEncoded:
+ *   plans: absent (all) / some, in another order (renumbered from 1) / empty (none) /
+ *     numbers with no plan (left out); asking again gives the same rows
+ */
+describe("choosing among plans", () => {
+  it("covers answering only the plans asked for, numbered again, and their seasons in one value", async () => {
+    const road = await makeRoad();
+    await addSubject("X", 12);
+    await addSubject("Y", 12);
+    await addBlock(road, 1, ["X", "Y"]);
+    const all = await c._findPath({ road, includeIAPAndSummer: false, limit: 5 });
+    const numbers = [...new Set(all.map((r) => r.plan))];
+    expect(numbers.length).toBe(2);
+    const subjectOf = (rows: typeof all, plan: number) => rows.find((r) => r.plan === plan)!.subject;
+    const swapped = await c._findPath({ road, includeIAPAndSummer: false, limit: 5, plans: "2,1" });
+    expect(subjectOf(swapped, 1)).toBe(subjectOf(all, 2));
+    expect(subjectOf(swapped, 2)).toBe(subjectOf(all, 1));
+    expect(await c._findPath({ road, includeIAPAndSummer: false, limit: 5, plans: "" })).toEqual([]);
+    expect((await c._findPath({ road, includeIAPAndSummer: false, limit: 5, plans: "9,2" })).map((r) => r.plan)).toEqual([1]);
+    expect(await c._findPath({ road, includeIAPAndSummer: false, limit: 5 })).toEqual(all);
+    expect((await c._planSeasons({ road, includeIAPAndSummer: false, limit: 5, plans: "2" })).map((r) => r.subjects))
+      .toEqual([subjectOf(all, 2)]);
+    const encoded = JSON.parse((await c._plansEncoded({ road, includeIAPAndSummer: false, limit: 5 })).plans);
+    // An elective goes in the last semester it can (see _findPath), wherever that is.
+    const seasonOf = (plan: number) => ({ year: all.find((r) => r.plan === plan)!.year, term: all.find((r) => r.plan === plan)!.term });
+    expect(encoded).toEqual([
+      { plan: 1, seasons: [{ ...seasonOf(1), subjects: [subjectOf(all, 1)], slots: 0, locked: false }] },
+      { plan: 2, seasons: [{ ...seasonOf(2), subjects: [subjectOf(all, 2)], slots: 0, locked: false }] },
+    ]);
+  });
+});

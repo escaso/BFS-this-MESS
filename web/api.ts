@@ -121,6 +121,9 @@ const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> 
   setReserve: { INVALID_REQUEST: "The reserve must be from 0% to 50% of your free time." },
   chooseSection: { INVALID_REQUEST: "That class has no such section that semester.", FORBIDDEN: "You can only view this road." },
   clearSection: { CONFLICT: "That section was picked for you already.", FORBIDDEN: "You can only view this road." },
+  setScheduleMode: { INVALID_REQUEST: "The time budget is either soft or hard.", FORBIDDEN: "You can only view this road." },
+  setRoadReserve: { INVALID_REQUEST: "The reserve must be from 0% to 50% of your free time.", FORBIDDEN: "You can only view this road." },
+  clearRoadReserve: { FORBIDDEN: "You can only view this road." },
 };
 
 export class ApiError extends Error {

@@ -349,6 +349,11 @@ function upsertSemester(record: RoadRecord, year: number, term: Term, patch: Par
 /** subject -> key of the season it is placed in (pins, plus extensions during _findPath). */
 type Placed = Map<string, number>;
 
+/** A row of _findPath: a subject (or a slot) in a season of a plan. */
+type PathRow = {
+  plan: number; year: number; term: Term; subject: string; slot: string; title: string; units: number; counts: string;
+};
+
 interface Ctx {
   startKey: number;
   endKey: number;
@@ -949,6 +954,9 @@ export class ConstrainConcept {
   private readonly cancellations: Collection<Cancellation>;
   private readonly catalog: Collection<{ snapshot: string }>;
   private indexed = false;
+  // The rows of _findPath, kept for the same road (as it is now), catalog and options, so that
+  // one request that asks about the same plans several times builds them once.
+  private readonly paths = new Map<string, Promise<PathRow[]>>(); // the 20 most recent
 
   constructor(db: Db) {
     this.roads = db.collection<RoadRecord>("constrain.roads");
@@ -1465,10 +1473,33 @@ export class ConstrainConcept {
   }
 
   async _findPath(
-    { road, includeIAPAndSummer, limit }: { road: string; includeIAPAndSummer: boolean; limit: number },
-  ) {
+    { road, includeIAPAndSummer, limit, plans }: { road: string; includeIAPAndSummer: boolean; limit: number; plans?: string },
+  ): Promise<PathRow[]> {
+    const rows = await this.#paths(road, includeIAPAndSummer, limit);
+    if (plans === undefined) return rows;
+    // Only the plans asked for, in that order, numbered again from 1.
+    const exists = new Set(rows.map((r) => r.plan));
+    const wanted = plans.split(",").map((p) => Number(p.trim())).filter((n) => exists.has(n));
+    return wanted.flatMap((n, i) => rows.filter((r) => r.plan === n).map((r) => ({ ...r, plan: i + 1 })));
+  }
+
+  async #paths(road: string, includeIAPAndSummer: boolean, limit: number) {
     const record = await this.#requireRoad(road);
     if (!(limit >= 1)) throw new Refusal("BAD_LIMIT", "The limit must be at least 1.");
+    const catalog = (await this.catalog.findOne({}))?.snapshot ?? "";
+    // A hash of the road as it is: its record holds thousands of options, too many to keep as a key.
+    const key = String(Bun.hash(JSON.stringify([record, catalog, includeIAPAndSummer, limit])));
+    let found = this.paths.get(key);
+    if (!found) {
+      found = this.#buildPaths(record, includeIAPAndSummer, limit);
+      this.paths.set(key, found);
+      found.catch(() => this.paths.delete(key));
+      if (this.paths.size > 20) this.paths.delete(this.paths.keys().next().value!);
+    }
+    return found;
+  }
+
+  async #buildPaths(record: RoadRecord, includeIAPAndSummer: boolean, limit: number): Promise<PathRow[]> {
     const ctx = await this.#loadCtx(record);
     const titleOf = new Map(ctx.blocks.map((b) => [b.id, b.title || "Open requirement"]));
     return findPlans(ctx, includeIAPAndSummer, limit).flatMap((placed, i) => {
@@ -1487,10 +1518,21 @@ export class ConstrainConcept {
     });
   }
 
+  async _plansEncoded({ road, includeIAPAndSummer, limit }: { road: string; includeIAPAndSummer: boolean; limit: number }) {
+    const rows = await this._planSeasons({ road, includeIAPAndSummer, limit });
+    const plans = new Map<number, { plan: number; seasons: object[] }>();
+    for (const { plan, year, term, subjects, slots, locked } of rows) {
+      const p = plans.get(plan) ?? { plan, seasons: [] };
+      p.seasons.push({ year, term, subjects: subjects ? subjects.split(",") : [], slots, locked });
+      plans.set(plan, p);
+    }
+    return { plans: JSON.stringify([...plans.values()]) };
+  }
+
   async _planSeasons(
-    { road, includeIAPAndSummer, limit }: { road: string; includeIAPAndSummer: boolean; limit: number },
+    { road, includeIAPAndSummer, limit, plans }: { road: string; includeIAPAndSummer: boolean; limit: number; plans?: string },
   ) {
-    const rows = await this._findPath({ road, includeIAPAndSummer, limit });
+    const rows = await this._findPath({ road, includeIAPAndSummer, limit, plans });
     const record = await this.#requireRoad(road);
     const seasons = new Map<string, { plan: number; year: number; term: Term; subjects: string[]; slots: number; units: number }>();
     for (const r of rows) {

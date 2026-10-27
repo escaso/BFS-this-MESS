@@ -581,6 +581,17 @@ li.block form { margin: 0; }
 .conflict-list { margin: 0 0 var(--space-3); padding-left: var(--space-3); }
 .sections-table th, .sections-table td { padding: var(--space-1) var(--space-3) var(--space-1) 0; text-align: left; }
 
+/* ---------- Soft and hard, comparing paths ---------- */
+.time-mode { margin: var(--space-2) 0; }
+.time-mode fieldset { border: 0; padding: 0; margin: 0; flex-wrap: wrap; gap: var(--space-3); }
+.time-mode legend { font-weight: 600; padding: 0; margin-bottom: var(--space-1); }
+.binding { margin: var(--space-3) 0; padding: var(--space-3); border-left: 4px solid var(--error); background: var(--surface); border-radius: var(--radius-sm); }
+.binding ul { margin: var(--space-1) 0; padding-left: var(--space-3); }
+.compare { margin: var(--space-3) 0; }
+.compare-table { border-collapse: collapse; min-width: 560px; }
+.compare-table th, .compare-table td { padding: var(--space-1) var(--space-2); border-bottom: 1px solid var(--color-border); text-align: left; }
+.compare-table tr.picked { background: var(--hover-tint); }
+
 /* ---------- Sharing ---------- */
 .access-banner { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border-left: 4px solid var(--gray-500); background: var(--gray-100); }
 .access-banner.editing { border-left-color: var(--primary); background: var(--color-violet-50); }

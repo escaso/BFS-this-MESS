@@ -247,14 +247,38 @@ const RoadConstraints = former(
     }),
 );
 
-const RoadPaths = former(
-  "the paths of a road",
-  ({ road, includeIAPAndSummer, limit }, { plan, year, term, subject, slot, title, units, counts }) =>
-    form({
-      plans: each(
-        Constrain._findPath({ road, includeIAPAndSummer, limit }).is({ plan, year, term, subject, slot, title, units, counts }),
-      ).form({ plan, year, term, subject, slot, title, units, counts }),
+// The paths of a road, judged against the owner's week. A HARD road leaves out every path
+// with an unlocked semester that does not fit. That is done after the search, not in it:
+// fitting depends on the whole semester (its hours, against a week the planner does not
+// know), and the planner builds plans rather than searching every one, so it cannot drop a
+// subject from a semester for its hours without changing which plans it finds. Instead
+// it is asked for 3 times as many (TimeBudget._searchLimit), TimeBudget keeps those that
+// fit (_keptPlans), and _findPath answers only those; if none fits, _binding says why.
+const judged = (road: Var, includeIAPAndSummer: Var, limit: Var, v: Record<string, Var>) => [
+  TimeBudget._searchLimit({ road, limit }).is({ candidates: v.candidates! }),
+  Constrain._plansEncoded({ road, includeIAPAndSummer, limit: v.candidates! }).is({ plans: v.encoded! }),
+  Share._ownerOf({ road }).is({ owner: v.owner! }),
+  TimeBudget._keptPlans({ user: v.owner!, road, plans: v.encoded!, limit }).is({ mode: v.mode!, kept: v.kept!, dropped: v.dropped! }),
+] as const;
+
+const RoadPaths = former("the paths of a road", ({ road, includeIAPAndSummer, limit }, v) =>
+  where(...judged(road, includeIAPAndSummer, limit, v)).form({
+    mode: v.mode,
+    dropped: v.dropped,
+    plans: each(
+      Constrain._findPath({ road, includeIAPAndSummer, limit: v.candidates, plans: v.kept })
+        .is({ plan: v.plan, year: v.year, term: v.term, subject: v.subject, slot: v.slot, title: v.title, units: v.units, counts: v.counts }),
+    ).form({ plan: v.plan, year: v.year, term: v.term, subject: v.subject, slot: v.slot, title: v.title, units: v.units, counts: v.counts }),
+    binding: each(
+      TimeBudget._binding({ user: v.owner, road, plans: v.encoded, kept: v.kept }).is({
+        plan: v.bPlan, year: v.bYear, term: v.bTerm, inClass: v.bInClass, outOfClass: v.bOutOfClass, free: v.bFree,
+        usable: v.bUsable, status: v.bStatus,
+      }),
+    ).form({
+      plan: v.bPlan, year: v.bYear, term: v.bTerm, inClass: v.bInClass, outOfClass: v.bOutOfClass, free: v.bFree,
+      usable: v.bUsable, status: v.bStatus,
     }),
+  }),
 );
 
 // A slot's subjects whose name or description has the topic in it.
@@ -1313,13 +1337,12 @@ const DeleteCategory = endpoint("/bfsthismess/deleteCategory", ({ session, user,
 const PlanMetrics = former(
   "the hours of the semesters of the paths of a road",
   ({ road, includeIAPAndSummer, limit }, v) =>
-    form({
+    where(...judged(road, includeIAPAndSummer, limit, v)).form({
       semesters: each(
-        Constrain._planSeasons({ road, includeIAPAndSummer, limit })
+        Constrain._planSeasons({ road, includeIAPAndSummer, limit: v.candidates, plans: v.kept })
           .is({ plan: v.plan, year: v.year, term: v.term, subjects: v.subjects, slots: v.slots, units: v.units, locked: v.locked }),
       )
         .where(
-          Share._ownerOf({ road }).is({ owner: v.owner }),
           TimeBudget._semesterMetrics({ user: v.owner, road, year: v.year, term: v.term, subjects: v.subjects, openSlots: v.slots }).is({
             inClass: v.inClass, outOfClass: v.outOfClass, total: v.total, blocked: v.blocked, free: v.free, buffer: v.buffer,
             usable: v.usable, capacity: v.capacity, status: v.status, conflicts: v.conflicts, estimated: v.estimated,
@@ -1411,6 +1434,45 @@ const MakeRegularWeek = reaction(({ user }) =>
 );
 const MakeRegularWeekForOwner = reaction(({ road, user }) =>
   when(Share.claim({ road, user }).responds({})).then(TimeBudget.ensureDefault({ user })),
+);
+
+const RoadTime = former("the time settings of a road", ({ road }, { mode, hasBuffer, buffer, shareMode }) =>
+  where(TimeBudget._roadSettings({ road }).is({ mode, hasBuffer, buffer, shareMode })).form({ mode, hasBuffer, buffer, shareMode }),
+);
+
+const ViewRoadTime = endpoint("/bfsthismess/viewRoadTime", ({ session, user, road }) =>
+  receive({ session, road }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    asViewer(session, user, road).then(respond({ time: RoadTime({ road }) })).named("viewer"),
+  ),
+);
+
+const SetScheduleMode = endpoint("/bfsthismess/setScheduleMode", ({ session, user, road, mode }) =>
+  receive({ session, road, mode }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    viewOnly(session, user, road),
+    asEditor(session, user, road).then(TimeBudget.setMode({ road, mode }).responds({})).then(respond({})).named("editor"),
+  ),
+);
+
+const SetRoadReserve = endpoint("/bfsthismess/setRoadReserve", ({ session, user, road, buffer }) =>
+  receive({ session, road, buffer }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    viewOnly(session, user, road),
+    asEditor(session, user, road).then(TimeBudget.setRoadBuffer({ road, buffer }).responds({})).then(respond({})).named("editor"),
+  ),
+);
+
+const ClearRoadReserve = endpoint("/bfsthismess/clearRoadReserve", ({ session, user, road }) =>
+  receive({ session, road }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    viewOnly(session, user, road),
+    asEditor(session, user, road).then(TimeBudget.clearRoadBuffer({ road }).responds({})).then(respond({})).named("editor"),
+  ),
 );
 
 // A deleted road keeps no time settings or section choices.
@@ -1557,6 +1619,11 @@ export const composition = {
   ChooseSection,
   ClearSection,
   ForgetRoadTime,
+  RoadTime,
+  ViewRoadTime,
+  SetScheduleMode,
+  SetRoadReserve,
+  ClearRoadReserve,
   MakeRegularWeek,
   MakeRegularWeekForOwner,
   Week,

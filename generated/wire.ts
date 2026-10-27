@@ -133,6 +133,14 @@ export type BFSThisMessWire = {
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_CAP_TYPE" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/clearRoadReserve": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["clearRoadBuffer"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/clearSection": {
     input: {
       "kind": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["clearSection"]>[0], ["kind"]>>;
@@ -200,13 +208,25 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/findPaths": {
     input: {
-      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
-      "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
+      "includeIAPAndSummer": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_plansEncoded"]>[0], ["includeIAPAndSummer"]>]>>;
+      "limit": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>[0], ["limit"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_searchLimit"]>[0], ["limit"]>]>>;
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: {
       "paths": {
+        "binding": {
+          "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["free"]>>;
+          "inClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["inClass"]>>;
+          "outOfClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["outOfClass"]>>;
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["plan"]>>;
+          "status": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["status"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["term"]>>;
+          "usable": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["usable"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["year"]>>;
+        }[];
+        "dropped": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["dropped"]>>;
+        "mode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["mode"]>>;
         "plans": {
           "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
@@ -603,6 +623,15 @@ export type BFSThisMessWire = {
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_BUFFER" | "INVALID_INPUT" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/setRoadReserve": {
+    input: {
+      "buffer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setRoadBuffer"]>[0], ["buffer"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setRoadBuffer"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_BUFFER" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/setRole": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["setRole"]>[0], ["road"]>]>>;
@@ -612,6 +641,15 @@ export type BFSThisMessWire = {
     };
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_ROLE" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NOT_SHARED" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "NO_SUCH_USER" };
+  };
+  "/bfsthismess/setScheduleMode": {
+    input: {
+      "mode": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setMode"]>[0], ["mode"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setMode"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_MODE" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/setStart": {
     input: {
@@ -804,8 +842,8 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/viewPlanMetrics": {
     input: {
-      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_planSeasons"]>[0], ["includeIAPAndSummer"]>>;
-      "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_planSeasons"]>[0], ["limit"]>>;
+      "includeIAPAndSummer": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_planSeasons"]>[0], ["includeIAPAndSummer"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_plansEncoded"]>[0], ["includeIAPAndSummer"]>]>>;
+      "limit": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>[0], ["limit"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_searchLimit"]>[0], ["limit"]>]>>;
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
@@ -852,8 +890,8 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/viewRoad": {
     input: {
-      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
-      "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
+      "includeIAPAndSummer": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_plansEncoded"]>[0], ["includeIAPAndSummer"]>]>>;
+      "limit": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>[0], ["limit"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_searchLimit"]>[0], ["limit"]>]>>;
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
@@ -898,6 +936,18 @@ export type BFSThisMessWire = {
         "startYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["startYear"]>>;
       };
       "paths": {
+        "binding": {
+          "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["free"]>>;
+          "inClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["inClass"]>>;
+          "outOfClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["outOfClass"]>>;
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["plan"]>>;
+          "status": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["status"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["term"]>>;
+          "usable": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["usable"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["year"]>>;
+        }[];
+        "dropped": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["dropped"]>>;
+        "mode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["mode"]>>;
         "plans": {
           "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
@@ -936,6 +986,21 @@ export type BFSThisMessWire = {
         "major": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>]>>;
         "shortTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["shortTitle"]>>;
         "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["title"]>>;
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/viewRoadTime": {
+    input: {
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "time": {
+        "buffer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["buffer"]>>;
+        "hasBuffer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["hasBuffer"]>>;
+        "mode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["mode"]>>;
+        "shareMode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["shareMode"]>>;
       };
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
@@ -1289,6 +1354,14 @@ export type BFSThisMessWireHttp = {
     output: Record<string, never>;
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
+  "/bfsthismess/clearRoadReserve": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["clearRoadBuffer"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/clearSection": {
     input: {
       "kind": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["clearSection"]>[0], ["kind"]>>;
@@ -1356,13 +1429,25 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/findPaths": {
     input: {
-      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
-      "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
+      "includeIAPAndSummer": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_plansEncoded"]>[0], ["includeIAPAndSummer"]>]>>;
+      "limit": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>[0], ["limit"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_searchLimit"]>[0], ["limit"]>]>>;
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
     output: {
       "paths": {
+        "binding": {
+          "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["free"]>>;
+          "inClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["inClass"]>>;
+          "outOfClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["outOfClass"]>>;
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["plan"]>>;
+          "status": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["status"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["term"]>>;
+          "usable": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["usable"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["year"]>>;
+        }[];
+        "dropped": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["dropped"]>>;
+        "mode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["mode"]>>;
         "plans": {
           "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
@@ -1759,6 +1844,15 @@ export type BFSThisMessWireHttp = {
     output: Record<string, never>;
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
+  "/bfsthismess/setRoadReserve": {
+    input: {
+      "buffer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setRoadBuffer"]>[0], ["buffer"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setRoadBuffer"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/setRole": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["setRole"]>[0], ["road"]>]>>;
@@ -1768,6 +1862,15 @@ export type BFSThisMessWireHttp = {
     };
     output: Record<string, never>;
     error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/setScheduleMode": {
+    input: {
+      "mode": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setMode"]>[0], ["mode"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setMode"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/setStart": {
     input: {
@@ -1960,8 +2063,8 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/viewPlanMetrics": {
     input: {
-      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_planSeasons"]>[0], ["includeIAPAndSummer"]>>;
-      "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_planSeasons"]>[0], ["limit"]>>;
+      "includeIAPAndSummer": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_planSeasons"]>[0], ["includeIAPAndSummer"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_plansEncoded"]>[0], ["includeIAPAndSummer"]>]>>;
+      "limit": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>[0], ["limit"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_searchLimit"]>[0], ["limit"]>]>>;
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
@@ -2008,8 +2111,8 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/viewRoad": {
     input: {
-      "includeIAPAndSummer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>>;
-      "limit": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["limit"]>>;
+      "includeIAPAndSummer": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>[0], ["includeIAPAndSummer"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["_plansEncoded"]>[0], ["includeIAPAndSummer"]>]>>;
+      "limit": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>[0], ["limit"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_searchLimit"]>[0], ["limit"]>]>>;
       "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
     };
@@ -2054,6 +2157,18 @@ export type BFSThisMessWireHttp = {
         "startYear": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["startYear"]>>;
       };
       "paths": {
+        "binding": {
+          "free": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["free"]>>;
+          "inClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["inClass"]>>;
+          "outOfClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["outOfClass"]>>;
+          "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["plan"]>>;
+          "status": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["status"]>>;
+          "term": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["term"]>>;
+          "usable": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["usable"]>>;
+          "year": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_binding"]>>>, ["year"]>>;
+        }[];
+        "dropped": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["dropped"]>>;
+        "mode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_keptPlans"]>>>, ["mode"]>>;
         "plans": {
           "counts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["counts"]>>;
           "plan": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_findPath"]>>>, ["plan"]>>;
@@ -2092,6 +2207,21 @@ export type BFSThisMessWireHttp = {
         "major": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>[0], ["list"]>, AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Constrain"]["_road"]>>>, ["major"]>]>>;
         "shortTitle": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["shortTitle"]>>;
         "title": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["Requirements"]["_list"]>>>, ["title"]>>;
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/viewRoadTime": {
+    input: {
+      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "time": {
+        "buffer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["buffer"]>>;
+        "hasBuffer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["hasBuffer"]>>;
+        "mode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["mode"]>>;
+        "shareMode": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_roadSettings"]>>>, ["shareMode"]>>;
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };

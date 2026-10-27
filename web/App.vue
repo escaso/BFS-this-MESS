@@ -7,7 +7,7 @@
 // opened while signed out, it waits until they sign in. A new account starts with the
 // history setup (#history); one whose history is unfinished is nudged to finish it.
 import { onMounted, onUnmounted, ref, watch } from "vue";
-import { ApiError, call, message, type Constraints, type PlanRow, type Requirements } from "./api.ts";
+import { ApiError, call, message, type Constraints, type Output, type PlanRow, type Requirements } from "./api.ts";
 import { canEdit, isOwner, role, setAccess, sharedBy } from "./access.ts";
 import { loadMajors, majorLabel } from "./majors.ts";
 import { hasPendingJoin, keepPendingJoin, session, signOut, takePendingJoin, username } from "./session.ts";
@@ -28,6 +28,9 @@ const status = ref<{ text: string; kind: "ok" | "error" }>({ text: "", kind: "ok
 const constraints = ref<Constraints | null>(null);
 const requirements = ref<Requirements | null>(null);
 const plans = ref<PlanRow[]>([]);
+// How the paths were judged against the time budget: the road's mode, how many were left
+// out, and, when none is left, the semesters that do not fit.
+const judged = ref<Pick<Output<"viewRoad">["paths"], "mode" | "dropped" | "binding"> | null>(null);
 const includeIAPAndSummer = ref(false);
 const loading = ref(false);
 const dialog = ref<"share" | "copy" | null>(null);
@@ -62,6 +65,7 @@ async function load() {
     constraints.value = data.constraints;
     requirements.value = data.requirements;
     plans.value = data.paths.plans;
+    judged.value = { mode: data.paths.mode, dropped: data.paths.dropped, binding: data.paths.binding };
     // Only the owner and editors may list a road's blocks again; viewers see it as it is.
     if (canEdit.value && stale(data.constraints, data.requirements) && refreshed !== road.value) {
       refreshed = road.value;
@@ -155,6 +159,7 @@ function route() {
   constraints.value = null;
   requirements.value = null;
   plans.value = [];
+  judged.value = null;
   view.value = road.value ? "paths" : "start";
   load();
 }
@@ -241,6 +246,7 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
         :road="road"
         :constraints="constraints"
         :plans="plans"
+        :judged="judged"
         @edit="view = 'edit'"
         @share="dialog = 'share'"
         @copy="dialog = 'copy'"

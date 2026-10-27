@@ -73,5 +73,6 @@ export const policy = httpPolicy({
     NOT_YOUR_CATEGORY: "FORBIDDEN",
     NO_SUCH_SECTION: "INVALID_REQUEST",
     NOT_CHOSEN: "CONFLICT",
+    BAD_MODE: "INVALID_REQUEST",
   },
 });

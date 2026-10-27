@@ -150,10 +150,11 @@ Defined in [Constrain](../design/concepts/Constrain.md), line 1.
 - `_pinsLostBySetEnd(road: Road, year: Number, term: Term) : many (subject: Subject, year: Number, term: Term)`
 - `_satisfies(road: Road) : one (satisfied: Flag)`
 - `_options(road: Road, includeIAPAndSummer: Flag) : many (year: Number, term: Term, subject: Subject, fitsByEnd: Flag)`
-- `_findPath(road: Road, includeIAPAndSummer: Flag, limit: Number) : many (plan: Number, year: Number, term: Term, subject: Subject, slot: String, title: String, units: Number, counts: String)`
+- `_findPath(road: Road, includeIAPAndSummer: Flag, limit: Number, plans?: String) : many (plan: Number, year: Number, term: Term, subject: Subject, slot: String, title: String, units: Number, counts: String)`
 - `_historyWarnings(history: String) : many (year: Number, term: Term, subject: Subject, missing: String)`
 - `_unmetDependencies(road: Road) : many (year: Number, term: Term, subject: Subject, missing: String)`
-- `_planSeasons(road: Road, includeIAPAndSummer: Flag, limit: Number) : many (plan: Number, year: Number, term: Term, subjects: String, slots: Number, units: Number, locked: Flag)`
+- `_planSeasons(road: Road, includeIAPAndSummer: Flag, limit: Number, plans?: String) : many (plan: Number, year: Number, term: Term, subjects: String, slots: Number, units: Number, locked: Flag)`
+- `_plansEncoded(road: Road, includeIAPAndSummer: Flag, limit: Number) : one (plans: String)`
 - `_slotOptions(road: Road, blocks: String, year: Number, term: Term) : many (subject: Subject)`
 - `_loadedCatalog() : one (found: Flag, id: String)`
 - `_roadOfBlock(block: Block) : optional (road: Road)`
@@ -398,6 +399,9 @@ Defined in [TimeBudget](../design/concepts/TimeBudget.md), line 1.
 - `_placement(user: User, road: Road, year: Number, term: Term, subjects: String) : many (subject: String, kind: Kind, section: Number, options: Number, chosen: Flag, room: String, day: Number, start: Number, slots: Number, conflicted: Flag)`
 - `_conflicts(user: User, road: Road, year: Number, term: Term, subjects: String) : many (subject: String, kind: Kind, day: Number, start: Number, slots: Number, withBlock: Flag, with: String)`
 - `_unplaced(year: Number, term: Term, subjects: String) : many (subject: String, reason: String)`
+- `_searchLimit(road: Road, limit: Number) : one (candidates: Number)`
+- `_keptPlans(user: User, road: Road, plans: String, limit: Number) : one (mode: Mode, kept: String, dropped: Number)`
+- `_binding(user: User, road: Road, plans: String, kept: String) : many (plan: Number, year: Number, term: Term, inClass: Number, outOfClass: Number, free: Number, usable: Number, status: Status)`
 - `_roadSettings(road: Road) : one (mode: Mode, hasBuffer: Flag, buffer: Number, shareMode: ShareMode)`
 
 #### Instances
@@ -446,7 +450,7 @@ Former "a week of blocked time" — inputs (template); bindings (blocked, free, 
 ### the constraints of a road
 
 Authored path: `BFSThisMess.RoadConstraints`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 207.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 213.
 
 ```former
 Former "the constraints of a road" — inputs (road); bindings (name, major, startYear, startTerm, endYear, endTerm, priorSubject, priorFromHistory, block, count, option, blockTitle, blockTechnical, blockOrigin, pinSubject, pinYear, pinTerm, year, term, locked, fromHistory, maxUnits, maxTechnicalUnits); promises exactly one record — forms:
@@ -611,10 +615,13 @@ Authored path: `BFSThisMess.PlanMetrics`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 190.
 
 ```former
-Former "the hours of the semesters of the paths of a road" — inputs (road, includeIAPAndSummer, limit); bindings (plan, year, term, subjects, slots, units, locked, owner, inClass, outOfClass, total, blocked, free, buffer, usable, capacity, status, conflicts, estimated); promises exactly one record — forms:
+Former "the hours of the semesters of the paths of a road" — inputs (road, includeIAPAndSummer, limit); bindings (candidates, encoded, owner, mode, kept, dropped, plan, year, term, subjects, slots, units, locked, inClass, outOfClass, total, blocked, free, buffer, usable, capacity, status, conflicts, estimated); promises exactly one record — forms:
   a record of
-    semesters: each Constrain._planSeasons (includeIAPAndSummer, limit, road) has (locked, plan, slots, subjects, term, units, year)
-      where Share._ownerOf (road) has (owner)
+    where TimeBudget._searchLimit (limit, road) has (candidates)
+    where Constrain._plansEncoded (includeIAPAndSummer, limit: candidates, road) has (plans: encoded)
+    where Share._ownerOf (road) has (owner)
+    where TimeBudget._keptPlans (limit, plans: encoded, road, user: owner) has (dropped, kept, mode)
+    semesters: each Constrain._planSeasons (includeIAPAndSummer, limit: candidates, plans: kept, road) has (locked, plan, slots, subjects, term, units, year)
       where TimeBudget._semesterMetrics (openSlots: slots, road, subjects, term, user: owner, year) has (blocked, buffer, capacity, conflicts, estimated, free, inClass, outOfClass, status, total, usable)
       form a record of
         blocked
@@ -690,7 +697,7 @@ Former "the matching courses" — inputs (query, level, term); bindings (course,
 ### the options of a road
 
 Authored path: `BFSThisMess.RoadOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
 
 ```former
 Former "the options of a road" — inputs (road, includeIAPAndSummer); bindings (year, term, subject, fitsByEnd); promises exactly one record — forms:
@@ -706,12 +713,28 @@ Former "the options of a road" — inputs (road, includeIAPAndSummer); bindings 
 ### the paths of a road
 
 Authored path: `BFSThisMess.RoadPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 205.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
 
 ```former
-Former "the paths of a road" — inputs (road, includeIAPAndSummer, limit); bindings (plan, year, term, subject, slot, title, units, counts); promises exactly one record — forms:
+Former "the paths of a road" — inputs (road, includeIAPAndSummer, limit); bindings (candidates, encoded, owner, mode, kept, dropped, plan, year, term, subject, slot, title, units, counts, bPlan, bYear, bTerm, bInClass, bOutOfClass, bFree, bUsable, bStatus); promises exactly one record — forms:
   a record of
-    plans: each Constrain._findPath (includeIAPAndSummer, limit, road) has (counts, plan, slot, subject, term, title, units, year)
+    where TimeBudget._searchLimit (limit, road) has (candidates)
+    where Constrain._plansEncoded (includeIAPAndSummer, limit: candidates, road) has (plans: encoded)
+    where Share._ownerOf (road) has (owner)
+    where TimeBudget._keptPlans (limit, plans: encoded, road, user: owner) has (dropped, kept, mode)
+    binding: each TimeBudget._binding (kept, plans: encoded, road, user: owner) has (free: bFree, inClass: bInClass, outOfClass: bOutOfClass, plan: bPlan, status: bStatus, term: bTerm, usable: bUsable, year: bYear)
+      form a record of
+        free: bFree
+        inClass: bInClass
+        outOfClass: bOutOfClass
+        plan: bPlan
+        status: bStatus
+        term: bTerm
+        usable: bUsable
+        year: bYear
+    dropped
+    mode
+    plans: each Constrain._findPath (includeIAPAndSummer, limit: candidates, plans: kept, road) has (counts, plan, slot, subject, term, title, units, year)
       form a record of
         counts
         plan
@@ -757,7 +780,7 @@ Former "the people who match" — inputs (road, requester, prefix); bindings (us
 ### the pins lost by moving the end
 
 Authored path: `BFSThisMess.PinsLostByEnd`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
 
 ```former
 Former "the pins lost by moving the end" — inputs (road, year, term); bindings (subject, pinYear, pinTerm); promises exactly one record — forms:
@@ -772,7 +795,7 @@ Former "the pins lost by moving the end" — inputs (road, year, term); bindings
 ### the pins lost by moving the start
 
 Authored path: `BFSThisMess.PinsLostByStart`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
 
 ```former
 Former "the pins lost by moving the start" — inputs (road, year, term); bindings (subject, pinYear, pinTerm); promises exactly one record — forms:
@@ -840,7 +863,7 @@ Former "the requirements of a road" — inputs (road); bindings (major, found, t
 ### the roads of a user
 
 Authored path: `BFSThisMess.UserRoads`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
 
 ```former
 Former "the roads of a user" — inputs (user); bindings (owned, ownedName, ownedMajor, shared, sharedName, sharedMajor, sharedRole, shown, owner, ownerName); promises exactly one record — forms:
@@ -950,7 +973,7 @@ Former "the study settings of a user" — inputs (user); bindings (buffer, facto
 ### the subjects for a slot
 
 Authored path: `BFSThisMess.SlotSubjects`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 217.
 
 ```former
 Former "the subjects for a slot" — inputs (road, blocks, year, term, topic); bindings (subject, name, units); promises exactly one record — forms:
@@ -964,10 +987,25 @@ Former "the subjects for a slot" — inputs (road, blocks, year, term, topic); b
         units
 ```
 
+### the time settings of a road
+
+Authored path: `BFSThisMess.RoadTime`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+
+```former
+Former "the time settings of a road" — inputs (road); bindings (mode, hasBuffer, buffer, shareMode); promises exactly one record — forms:
+  a record of
+    where TimeBudget._roadSettings (road) has (buffer, hasBuffer, mode, shareMode)
+    buffer
+    hasBuffer
+    mode
+    shareMode
+```
+
 ### the verdict on a plan
 
 Authored path: `BFSThisMess.PlanVerdict`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
 
 ```former
 Former "the verdict on a plan" — inputs (road); bindings (satisfied); promises exactly one record — forms:
@@ -1032,7 +1070,7 @@ Former "the weeks of a user" — inputs (user); bindings (category, name, color,
 ### their access to a road
 
 Authored path: `BFSThisMess.RoadAccess`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 207.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 213.
 
 ```former
 Former "their access to a road" — inputs (road, user); bindings (role, owner, username); promises exactly one record — forms:
@@ -1492,8 +1530,8 @@ then
 ### BFSThisMess.CheckPlan:hidden-road
 
 Authored path: `BFSThisMess.CheckPlan`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 218.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 224.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/checkPlan", requestId, road, session)
@@ -1507,8 +1545,8 @@ then
 ### BFSThisMess.CheckPlan:no-session
 
 Authored path: `BFSThisMess.CheckPlan`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 218.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 224.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/checkPlan", requestId, road, session)
@@ -1521,8 +1559,8 @@ then
 ### BFSThisMess.CheckPlan:viewer
 
 Authored path: `BFSThisMess.CheckPlan`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 218.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 224.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/checkPlan", requestId, road, session)
@@ -1624,7 +1662,7 @@ then
 
 Authored path: `BFSThisMess.ChooseSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/chooseSection", requestId, road, section, session, subject, term, year)
@@ -1639,7 +1677,7 @@ then
 
 Authored path: `BFSThisMess.ChooseSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
 
 ```reaction
 when TimeBudget.chooseSection (kind, road, section, subject, term, year), asked by BFSThisMess.ChooseSection:editor
@@ -1653,7 +1691,7 @@ then
 
 Authored path: `BFSThisMess.ChooseSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/chooseSection", requestId, road, section, session, subject, term, year)
@@ -1668,7 +1706,7 @@ then
 
 Authored path: `BFSThisMess.ChooseSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/chooseSection", requestId, road, section, session, subject, term, year)
@@ -1682,7 +1720,7 @@ then
 
 Authored path: `BFSThisMess.ChooseSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/chooseSection", requestId, road, section, session, subject, term, year)
@@ -1768,11 +1806,85 @@ then
   RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
+### BFSThisMess.ClearRoadReserve:editor
+
+Authored path: `BFSThisMess.ClearRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 202.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/clearRoadReserve", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  TimeBudget.clearRoadBuffer (road)
+```
+
+### BFSThisMess.ClearRoadReserve:editor#2
+
+Authored path: `BFSThisMess.ClearRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 202.
+
+```reaction
+when TimeBudget.clearRoadBuffer (road), asked by BFSThisMess.ClearRoadReserve:editor
+where
+  earlier, RequestBoundary.request (path: "/bfsthismess/clearRoadReserve", requestId, road, session)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.ClearRoadReserve:hidden-road
+
+Authored path: `BFSThisMess.ClearRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 202.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/clearRoadReserve", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.ClearRoadReserve:no-session
+
+Authored path: `BFSThisMess.ClearRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 202.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/clearRoadReserve", requestId, road, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.ClearRoadReserve:view-only
+
+Authored path: `BFSThisMess.ClearRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 202.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/clearRoadReserve", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
 ### BFSThisMess.ClearSection:editor
 
 Authored path: `BFSThisMess.ClearSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 204.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/clearSection", requestId, road, session, subject, term, year)
@@ -1787,7 +1899,7 @@ then
 
 Authored path: `BFSThisMess.ClearSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 204.
 
 ```reaction
 when TimeBudget.clearSection (kind, road, subject, term, year), asked by BFSThisMess.ClearSection:editor
@@ -1801,7 +1913,7 @@ then
 
 Authored path: `BFSThisMess.ClearSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 204.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/clearSection", requestId, road, session, subject, term, year)
@@ -1816,7 +1928,7 @@ then
 
 Authored path: `BFSThisMess.ClearSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 204.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/clearSection", requestId, road, session, subject, term, year)
@@ -1830,7 +1942,7 @@ then
 
 Authored path: `BFSThisMess.ClearSection`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 204.
 
 ```reaction
 when RequestBoundary.request (kind, path: "/bfsthismess/clearSection", requestId, road, session, subject, term, year)
@@ -2251,8 +2363,8 @@ then
 ### BFSThisMess.FindPaths:hidden-road
 
 Authored path: `BFSThisMess.FindPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 205.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 221.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/findPaths", requestId, road, session)
@@ -2266,8 +2378,8 @@ then
 ### BFSThisMess.FindPaths:no-session
 
 Authored path: `BFSThisMess.FindPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 205.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 221.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/findPaths", requestId, road, session)
@@ -2280,8 +2392,8 @@ then
 ### BFSThisMess.FindPaths:viewer
 
 Authored path: `BFSThisMess.FindPaths`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 205.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 221.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/findPaths", requestId, road, session)
@@ -2408,7 +2520,7 @@ then
 ### BFSThisMess.ForgetRoadTime
 
 Authored path: `BFSThisMess.ForgetRoadTime`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 194.
 
 ```reaction
 when Constrain.deleteRoad (road)
@@ -2608,7 +2720,7 @@ then
 ### BFSThisMess.MakeRegularWeek
 
 Authored path: `BFSThisMess.MakeRegularWeek`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 194.
 
 ```reaction
 when Authentication.register (user)
@@ -2619,7 +2731,7 @@ then
 ### BFSThisMess.MakeRegularWeekForOwner
 
 Authored path: `BFSThisMess.MakeRegularWeekForOwner`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 194.
 
 ```reaction
 when Share.claim (road, user)
@@ -2630,8 +2742,8 @@ then
 ### BFSThisMess.MyRoads:no-session
 
 Authored path: `BFSThisMess.MyRoads`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 214.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 220.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/myRoads", requestId, session)
@@ -2644,8 +2756,8 @@ then
 ### BFSThisMess.MyRoads:signed-in
 
 Authored path: `BFSThisMess.MyRoads`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 203.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 214.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 220.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/myRoads", requestId, session)
@@ -2986,8 +3098,8 @@ then
 ### BFSThisMess.PreviewEndChange:hidden-road
 
 Authored path: `BFSThisMess.PreviewEndChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 220.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 226.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewEndChange", requestId, road, session, term, year)
@@ -3001,8 +3113,8 @@ then
 ### BFSThisMess.PreviewEndChange:no-session
 
 Authored path: `BFSThisMess.PreviewEndChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 220.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 226.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewEndChange", requestId, road, session, term, year)
@@ -3015,8 +3127,8 @@ then
 ### BFSThisMess.PreviewEndChange:viewer
 
 Authored path: `BFSThisMess.PreviewEndChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 220.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 226.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewEndChange", requestId, road, session, term, year)
@@ -3030,8 +3142,8 @@ then
 ### BFSThisMess.PreviewStartChange:hidden-road
 
 Authored path: `BFSThisMess.PreviewStartChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 219.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 225.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewStartChange", requestId, road, session, term, year)
@@ -3045,8 +3157,8 @@ then
 ### BFSThisMess.PreviewStartChange:no-session
 
 Authored path: `BFSThisMess.PreviewStartChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 219.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 225.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewStartChange", requestId, road, session, term, year)
@@ -3059,8 +3171,8 @@ then
 ### BFSThisMess.PreviewStartChange:viewer
 
 Authored path: `BFSThisMess.PreviewStartChange`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 219.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 225.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/previewStartChange", requestId, road, session, term, year)
@@ -4432,6 +4544,80 @@ then
   RequestBoundary.respond (requestId)
 ```
 
+### BFSThisMess.SetRoadReserve:editor
+
+Authored path: `BFSThisMess.SetRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 201.
+
+```reaction
+when RequestBoundary.request (buffer, path: "/bfsthismess/setRoadReserve", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  TimeBudget.setRoadBuffer (buffer, road)
+```
+
+### BFSThisMess.SetRoadReserve:editor#2
+
+Authored path: `BFSThisMess.SetRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 201.
+
+```reaction
+when TimeBudget.setRoadBuffer (buffer, road), asked by BFSThisMess.SetRoadReserve:editor
+where
+  earlier, RequestBoundary.request (buffer, path: "/bfsthismess/setRoadReserve", requestId, road, session)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.SetRoadReserve:hidden-road
+
+Authored path: `BFSThisMess.SetRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 201.
+
+```reaction
+when RequestBoundary.request (buffer, path: "/bfsthismess/setRoadReserve", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.SetRoadReserve:no-session
+
+Authored path: `BFSThisMess.SetRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 201.
+
+```reaction
+when RequestBoundary.request (buffer, path: "/bfsthismess/setRoadReserve", requestId, road, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.SetRoadReserve:view-only
+
+Authored path: `BFSThisMess.SetRoadReserve`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 201.
+
+```reaction
+when RequestBoundary.request (buffer, path: "/bfsthismess/setRoadReserve", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
+```
+
 ### BFSThisMess.SetRole:hidden-road
 
 Authored path: `BFSThisMess.SetRole`.
@@ -4521,6 +4707,80 @@ where
   earlier, RequestBoundary.request (path: "/bfsthismess/setRole", requestId, road, role, session, username)
 then
   RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.SetScheduleMode:editor
+
+Authored path: `BFSThisMess.SetScheduleMode`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 200.
+
+```reaction
+when RequestBoundary.request (mode, path: "/bfsthismess/setScheduleMode", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canEdit (road, user) has (allowed: true)
+then
+  TimeBudget.setMode (mode, road)
+```
+
+### BFSThisMess.SetScheduleMode:editor#2
+
+Authored path: `BFSThisMess.SetScheduleMode`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 200.
+
+```reaction
+when TimeBudget.setMode (mode, road), asked by BFSThisMess.SetScheduleMode:editor
+where
+  earlier, RequestBoundary.request (mode, path: "/bfsthismess/setScheduleMode", requestId, road, session)
+then
+  RequestBoundary.respond (requestId)
+```
+
+### BFSThisMess.SetScheduleMode:hidden-road
+
+Authored path: `BFSThisMess.SetScheduleMode`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 200.
+
+```reaction
+when RequestBoundary.request (mode, path: "/bfsthismess/setScheduleMode", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.SetScheduleMode:no-session
+
+Authored path: `BFSThisMess.SetScheduleMode`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 200.
+
+```reaction
+when RequestBoundary.request (mode, path: "/bfsthismess/setScheduleMode", requestId, road, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.SetScheduleMode:view-only
+
+Authored path: `BFSThisMess.SetScheduleMode`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 200.
+
+```reaction
+when RequestBoundary.request (mode, path: "/bfsthismess/setScheduleMode", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
+  Share._canEdit (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NOT_AN_EDITOR", requestId)
 ```
 
 ### BFSThisMess.SetStart:editor
@@ -5141,8 +5401,8 @@ then
 ### BFSThisMess.ViewOptions:hidden-road
 
 Authored path: `BFSThisMess.ViewOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 217.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 223.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, path: "/bfsthismess/viewOptions", requestId, road, session)
@@ -5156,8 +5416,8 @@ then
 ### BFSThisMess.ViewOptions:no-session
 
 Authored path: `BFSThisMess.ViewOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 217.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 223.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, path: "/bfsthismess/viewOptions", requestId, road, session)
@@ -5170,8 +5430,8 @@ then
 ### BFSThisMess.ViewOptions:viewer
 
 Authored path: `BFSThisMess.ViewOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 209.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 217.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 215.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 223.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, path: "/bfsthismess/viewOptions", requestId, road, session)
@@ -5186,7 +5446,7 @@ then
 
 Authored path: `BFSThisMess.ViewPlanMetrics`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 190.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 195.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewPlanMetrics", requestId, road, session)
@@ -5201,7 +5461,7 @@ then
 
 Authored path: `BFSThisMess.ViewPlanMetrics`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 190.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 195.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewPlanMetrics", requestId, road, session)
@@ -5215,7 +5475,7 @@ then
 
 Authored path: `BFSThisMess.ViewPlanMetrics`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 190.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 195.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 197.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewPlanMetrics", requestId, road, session)
@@ -5241,8 +5501,8 @@ then
 ### BFSThisMess.ViewRoad:hidden-road
 
 Authored path: `BFSThisMess.ViewRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 207.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 216.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 213.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 222.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewRoad", requestId, road, session)
@@ -5256,8 +5516,8 @@ then
 ### BFSThisMess.ViewRoad:no-session
 
 Authored path: `BFSThisMess.ViewRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 207.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 216.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 213.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 222.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewRoad", requestId, road, session)
@@ -5270,8 +5530,8 @@ then
 ### BFSThisMess.ViewRoad:viewer
 
 Authored path: `BFSThisMess.ViewRoad`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 207.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 216.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 213.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 222.
 
 ```reaction
 when RequestBoundary.request (includeIAPAndSummer, limit, path: "/bfsthismess/viewRoad", requestId, road, session)
@@ -5280,6 +5540,50 @@ where
   Share._canView (road, user) has (allowed: true)
 then
   RequestBoundary.respond (access: former "their access to a road" with (road, user), constraints: former "the constraints of a road" with (road), paths: former "the paths of a road" with (includeIAPAndSummer, limit, road), requestId, requirements: former "the requirements of a road" with (road))
+```
+
+### BFSThisMess.ViewRoadTime:hidden-road
+
+Authored path: `BFSThisMess.ViewRoadTime`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 199.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewRoadTime", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: false)
+then
+  RequestBoundary.respond (error: "NO_SUCH_ROAD", requestId)
+```
+
+### BFSThisMess.ViewRoadTime:no-session
+
+Authored path: `BFSThisMess.ViewRoadTime`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 199.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewRoadTime", requestId, road, session)
+where
+  no Authentication._authenticate (session)
+then
+  RequestBoundary.respond (error: "NO_SUCH_SESSION", requestId)
+```
+
+### BFSThisMess.ViewRoadTime:viewer
+
+Authored path: `BFSThisMess.ViewRoadTime`.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 192.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 199.
+
+```reaction
+when RequestBoundary.request (path: "/bfsthismess/viewRoadTime", requestId, road, session)
+where
+  Authentication._authenticate (session) has (user)
+  Share._canView (road, user) has (allowed: true)
+then
+  RequestBoundary.respond (requestId, time: former "the time settings of a road" with (road))
 ```
 
 ### BFSThisMess.ViewSchedule
@@ -5298,7 +5602,7 @@ then
 
 Authored path: `BFSThisMess.ViewSemesterSchedule`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 190.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 196.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/viewSemesterSchedule", requestId, road, session, subjects, term, year)
@@ -5313,7 +5617,7 @@ then
 
 Authored path: `BFSThisMess.ViewSemesterSchedule`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 190.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 196.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/viewSemesterSchedule", requestId, road, session, subjects, term, year)
@@ -5327,7 +5631,7 @@ then
 
 Authored path: `BFSThisMess.ViewSemesterSchedule`.
 - Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 190.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 196.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 198.
 
 ```reaction
 when RequestBoundary.request (path: "/bfsthismess/viewSemesterSchedule", requestId, road, session, subjects, term, year)
@@ -5443,8 +5747,8 @@ then
 ### BFSThisMess.ViewSlotOptions:hidden-road
 
 Authored path: `BFSThisMess.ViewSlotOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 221.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 217.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 227.
 
 ```reaction
 when RequestBoundary.request (blocks, path: "/bfsthismess/viewSlotOptions", requestId, road, session, term, topic, year)
@@ -5458,8 +5762,8 @@ then
 ### BFSThisMess.ViewSlotOptions:no-session
 
 Authored path: `BFSThisMess.ViewSlotOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 221.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 217.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 227.
 
 ```reaction
 when RequestBoundary.request (blocks, path: "/bfsthismess/viewSlotOptions", requestId, road, session, term, topic, year)
@@ -5472,8 +5776,8 @@ then
 ### BFSThisMess.ViewSlotOptions:viewer
 
 Authored path: `BFSThisMess.ViewSlotOptions`.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 211.
-- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 221.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 217.
+- Covered by [BFSThisMess](../design/compositions/BFSThisMess.md), line 227.
 
 ```reaction
 when RequestBoundary.request (blocks, path: "/bfsthismess/viewSlotOptions", requestId, road, session, term, topic, year)
@@ -5604,6 +5908,7 @@ not listed here have no explicit input contract.
 - `/bfsthismess/chooseAlternative` — requires `alternative`, `choice`, `road`, `session`
 - `/bfsthismess/chooseSection` — requires `kind`, `road`, `section`, `session`, `subject`, `term`, `year`
 - `/bfsthismess/clearCap` — requires `capType`, `road`, `session`, `term`, `year`
+- `/bfsthismess/clearRoadReserve` — requires `road`, `session`
 - `/bfsthismess/clearSection` — requires `kind`, `road`, `session`, `subject`, `term`, `year`
 - `/bfsthismess/clearSubjectFactor` — requires `session`, `subject`
 - `/bfsthismess/copyRoad` — requires `name`, `road`, `session`
@@ -5646,7 +5951,9 @@ not listed here have no explicit input contract.
 - `/bfsthismess/setLocked` — requires `locked`, `road`, `session`, `term`, `year`
 - `/bfsthismess/setMajor` — requires `major`, `road`, `session`
 - `/bfsthismess/setReserve` — requires `buffer`, `session`
+- `/bfsthismess/setRoadReserve` — requires `buffer`, `road`, `session`
 - `/bfsthismess/setRole` — requires `road`, `role`, `session`, `username`
+- `/bfsthismess/setScheduleMode` — requires `mode`, `road`, `session`
 - `/bfsthismess/setStart` — requires `road`, `session`, `term`, `year`
 - `/bfsthismess/setStudyFactor` — requires `factor`, `session`
 - `/bfsthismess/setSubjectFactor` — requires `factor`, `session`, `subject`
@@ -5662,6 +5969,7 @@ not listed here have no explicit input contract.
 - `/bfsthismess/viewPlanMetrics` — requires `includeIAPAndSummer`, `limit`, `road`, `session`
 - `/bfsthismess/viewRatings` — requires `course`
 - `/bfsthismess/viewRoad` — requires `includeIAPAndSummer`, `limit`, `road`, `session`
+- `/bfsthismess/viewRoadTime` — requires `road`, `session`
 - `/bfsthismess/viewSchedule` — requires `course`
 - `/bfsthismess/viewSemesterSchedule` — requires `road`, `session`, `subjects`, `term`, `year`
 - `/bfsthismess/viewSemesterWeek` — requires `session`, `term`, `year`

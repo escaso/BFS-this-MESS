@@ -188,6 +188,18 @@ export function feasibility({ outOfClass, free, buffer }: { outOfClass: number; 
   return { status, usable, capacity: free - outOfClass };
 }
 
+type PlanSeasons = { plan: number; seasons: { year: number; term: Term; subjects: string[]; slots: number; locked: boolean }[] };
+
+/** Plans in the form of Constrain._plansEncoded, or none if they cannot be read. */
+function parsePlans(text: string): PlanSeasons[] {
+  try {
+    const value = JSON.parse(text);
+    return Array.isArray(value) ? value.filter((p) => Number.isInteger(p?.plan) && Array.isArray(p.seasons)) : [];
+  } catch {
+    return [];
+  }
+}
+
 const subjectsOf = (text: string) => [...new Set(text.split(",").map((x) => x.trim()).filter(Boolean))].sort();
 const placesTerm = (term: Term) => term === "FALL" || term === "SPRING";
 // Picks are kept for the same week version, choices and subjects; only the most recent are.
@@ -849,6 +861,48 @@ export class TimeBudgetConcept {
       else if (c!.parts.some((p) => p.arranged)) out.push({ subject, reason: "ARRANGED" });
     }
     return out;
+  }
+
+  async _searchLimit({ road, limit }: { road: string; limit: number }) {
+    const { mode } = await this._roadSettings({ road });
+    return { candidates: mode === "HARD" ? limit * 3 : limit };
+  }
+
+  /** Plans in the form of Constrain._plansEncoded, each with its first unlocked semester that does not fit. */
+  async #judge(user: string, road: string, plans: string) {
+    const judged = [];
+    for (const p of parsePlans(plans)) {
+      let binding: { year: number; term: Term; metrics: Awaited<ReturnType<TimeBudgetConcept["_semesterMetrics"]>> } | null = null;
+      for (const s of p.seasons) {
+        if (s.locked) continue;
+        const metrics = await this._semesterMetrics({
+          user, road, year: s.year, term: s.term, subjects: (s.subjects ?? []).join(","), openSlots: s.slots ?? 0,
+        });
+        if (metrics.status !== "FEASIBLE") {
+          binding = { year: s.year, term: s.term, metrics };
+          break;
+        }
+      }
+      judged.push({ plan: p.plan, binding });
+    }
+    return judged;
+  }
+
+  async _keptPlans({ user, road, plans, limit }: { user: string; road: string; plans: string; limit: number }) {
+    const { mode } = await this._roadSettings({ road });
+    if (mode === "SOFT") return { mode, kept: parsePlans(plans).slice(0, limit).map((p) => p.plan).join(","), dropped: 0 };
+    const judged = await this.#judge(user, road, plans);
+    const fits = judged.filter((j) => !j.binding);
+    return { mode, kept: fits.slice(0, limit).map((j) => j.plan).join(","), dropped: judged.length - fits.length };
+  }
+
+  async _binding({ user, road, plans, kept }: { user: string; road: string; plans: string; kept: string }) {
+    if (kept || (await this._roadSettings({ road })).mode === "SOFT") return [];
+    return (await this.#judge(user, road, plans)).flatMap(({ plan, binding }) =>
+      binding ? [{
+        plan, year: binding.year, term: binding.term, inClass: binding.metrics.inClass, outOfClass: binding.metrics.outOfClass,
+        free: binding.metrics.free, usable: binding.metrics.usable, status: binding.metrics.status,
+      }] : []);
   }
 
   async _roadSettings({ road }: { road: string }) {

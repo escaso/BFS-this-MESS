@@ -438,3 +438,58 @@ describe("semesters", () => {
     ]);
   });
 });
+
+/*
+ * _searchLimit, _keptPlans, _binding:
+ *   mode: SOFT (all kept, up to the limit; no binding) / HARD (only plans whose unlocked
+ *     semesters are FEASIBLE; locked semesters never judged)
+ *   kept: some / none (binding names each plan's first semester that does not fit) /
+ *     more than the limit (the first limit)
+ *   plans that cannot be read: none
+ */
+describe("keeping plans that fit", () => {
+  const plan = (n: number, ...seasons: [number, "FALL" | "SPRING", string[], boolean?][]) => ({
+    plan: n, seasons: seasons.map(([year, term, subjects, locked]) => ({ year, term, subjects, slots: 0, locked: !!locked })),
+  });
+  beforeEach(async () => {
+    await t.ensureDefault({ user: "u" });
+    await t.setClass({ subject: "LIGHT", parts: "[]", inClassHours: 3, outOfClassHours: 6 });
+    await t.setClass({ subject: "HEAVY", parts: "[]", inClassHours: 20, outOfClassHours: 80 }); // more than 168 - 84 - 20 = 64 free
+  });
+  const plans = JSON.stringify([
+    plan(1, [2026, "FALL", ["HEAVY"]]),
+    plan(2, [2026, "FALL", ["LIGHT"]], [2027, "SPRING", ["LIGHT"]]),
+    plan(3, [2026, "FALL", ["HEAVY"], true], [2027, "SPRING", ["LIGHT"]]), // the heavy semester is locked
+  ]);
+
+  it("covers a soft road: everything kept, up to the limit", async () => {
+    expect(await t._searchLimit({ road: "r", limit: 4 })).toEqual({ candidates: 4 });
+    expect(await t._keptPlans({ user: "u", road: "r", plans, limit: 2 })).toEqual({ mode: "SOFT", kept: "1,2", dropped: 0 });
+    expect(await t._binding({ user: "u", road: "r", plans, kept: "" })).toEqual([]);
+  });
+
+  it("covers a hard road: plans with a semester that does not fit are left out; locked ones are not judged", async () => {
+    await t.setMode({ road: "r", mode: "HARD" });
+    expect(await t._searchLimit({ road: "r", limit: 4 })).toEqual({ candidates: 12 });
+    expect(await t._keptPlans({ user: "u", road: "r", plans, limit: 5 })).toEqual({ mode: "HARD", kept: "2,3", dropped: 1 });
+    expect(await t._keptPlans({ user: "u", road: "r", plans, limit: 1 })).toEqual({ mode: "HARD", kept: "2", dropped: 1 });
+    expect(await t._binding({ user: "u", road: "r", plans, kept: "2,3" })).toEqual([]);
+  });
+
+  it("covers a hard road where nothing fits: which semester of each plan, and by how much", async () => {
+    await t.setMode({ road: "r", mode: "HARD" });
+    const none = JSON.stringify([plan(1, [2026, "FALL", ["LIGHT"]], [2027, "SPRING", ["HEAVY"]])]);
+    expect(await t._keptPlans({ user: "u", road: "r", plans: none, limit: 5 })).toEqual({ mode: "HARD", kept: "", dropped: 1 });
+    expect(await t._binding({ user: "u", road: "r", plans: none, kept: "" })).toEqual([
+      { plan: 1, year: 2027, term: "SPRING", inClass: 20, outOfClass: 80, free: 64, usable: 57.6, status: "OVER" },
+    ]);
+    // A semester that fits only by using the reserve does not fit a hard road either.
+    await t.setClass({ subject: "HEAVY", parts: "[]", inClassHours: 20, outOfClassHours: 60 });
+    expect((await t._binding({ user: "u", road: "r", plans: none, kept: "" }))[0]?.status).toBe("TIGHT");
+  });
+
+  it("covers plans that cannot be read", async () => {
+    await t.setMode({ road: "r", mode: "HARD" });
+    expect(await t._keptPlans({ user: "u", road: "r", plans: "nope", limit: 5 })).toEqual({ mode: "HARD", kept: "", dropped: 0 });
+  });
+});

@@ -163,3 +163,60 @@ describe("sections picked by hand", () => {
     expect(await db().collection("timebudget.sectionChoices").countDocuments({ road })).toBe(0);
   });
 });
+
+/*
+ * Soft and hard roads:
+ *   soft (default): the path is shown, with a semester that is OVER / hard: left out, the
+ *   answer says so and which semester does not fit; locked semesters never judged
+ *   settings: viewer refused (NOT_AN_EDITOR); a reserve for the road alone
+ */
+describe("soft and hard roads", () => {
+  async function busyOwner() {
+    const ctx = await setUp();
+    // Work 9am-noon, 3-6pm and 7:30-11pm every day (around meals): 66.5 h, leaving
+    // 168 - 84 - 66.5 - 10 in class = 7.5 h free for 19 h of study.
+    const { template } = value(await api.viewWeek({ session: ctx.omar })).week;
+    for (let day = 0; day < 7; day++) {
+      value(await api.addTimeBlock({ session: ctx.omar, template, category: "system:work", day, start: 36, slots: 12 }));
+      value(await api.addTimeBlock({ session: ctx.omar, template, category: "system:work", day, start: 60, slots: 12 }));
+      value(await api.addTimeBlock({ session: ctx.omar, template, category: "system:work", day, start: 78, slots: 14 }));
+    }
+    return ctx;
+  }
+  const pathsOf = async (session: string, road: string) =>
+    value(await api.viewRoad({ session, road, includeIAPAndSummer: false, limit: 3 })).paths;
+
+  test("a soft road shows the path, with the semester that does not fit", async () => {
+    const { omar, road } = await busyOwner();
+    const paths = await pathsOf(omar, road);
+    expect(paths).toMatchObject({ mode: "SOFT", dropped: 0, binding: [] });
+    expect(paths.plans.length).toBeGreaterThan(0);
+    const [fall] = await metricsOf(omar, road);
+    expect(fall).toMatchObject({ blocked: 150.5, free: 7.5, outOfClass: 19, status: "OVER" });
+  });
+
+  test("a hard road leaves it out, and says which semester does not fit and by how much", async () => {
+    const { omar, ada, ed, road } = await busyOwner();
+    expect(refusal(await api.setScheduleMode({ session: ada, road, mode: "HARD" }))).toBe("NOT_AN_EDITOR");
+    value(await api.setScheduleMode({ session: ed, road, mode: "HARD" }));
+    expect(value(await api.viewRoadTime({ session: ada, road })).time).toMatchObject({ mode: "HARD" });
+    const paths = await pathsOf(ada, road);
+    expect(paths.mode).toBe("HARD");
+    expect(paths.plans).toEqual([]);
+    expect(paths.dropped).toBeGreaterThan(0);
+    expect(paths.binding[0]).toMatchObject({ plan: 1, year: 2026, term: "FALL", outOfClass: 19, free: 7.5, status: "OVER" });
+    expect(await metricsOf(omar, road)).toEqual([]);
+  });
+
+  test("locked semesters are never judged, and a road may keep a reserve of its own", async () => {
+    const { omar, road } = await busyOwner();
+    value(await api.setScheduleMode({ session: omar, road, mode: "HARD" }));
+    value(await api.setLocked({ session: omar, road, year: 2026, term: "FALL", locked: true }));
+    expect((await pathsOf(omar, road)).plans.length).toBeGreaterThan(0);
+    value(await api.setRoadReserve({ session: omar, road, buffer: 30 }));
+    expect(value(await api.viewRoadTime({ session: omar, road })).time).toMatchObject({ hasBuffer: true, buffer: 30 });
+    expect((await metricsOf(omar, road))[0]).toMatchObject({ buffer: 30 });
+    value(await api.clearRoadReserve({ session: omar, road }));
+    expect(value(await api.viewRoadTime({ session: omar, road })).time).toMatchObject({ hasBuffer: false });
+  });
+});

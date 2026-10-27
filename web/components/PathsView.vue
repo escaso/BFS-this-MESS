@@ -5,6 +5,9 @@
 // subjects) are for the student to fill: clicking one lists the subjects that fit.
 // Any subject of a path can be pinned where the path puts it, and a whole semester can be
 // locked as the path has it. Subjects are coloured by the requirement they count toward.
+// Each semester says whether its study fits the owner's free time; a hard road shows only
+// the paths that fit, and says which semesters keep the others out. A table compares the
+// paths by when they finish, their units and their hours.
 import { computed, ref, watch } from "vue";
 import { call, message, type Constraints, type Output, type PlanRow } from "../api.ts";
 import { canEdit, canShare, isOwner } from "../access.ts";
@@ -12,7 +15,14 @@ import { key, label, MAX_PATHS, rank, sameSeason, seasonsBetween, type Season } 
 import SemesterDetails from "./SemesterDetails.vue";
 import SlotPicker from "./SlotPicker.vue";
 
-const props = defineProps<{ road: string; constraints: Constraints; plans: PlanRow[]; includeIAPAndSummer: boolean }>();
+type Judged = Pick<Output<"viewRoad">["paths"], "mode" | "dropped" | "binding">;
+const props = defineProps<{
+  road: string;
+  constraints: Constraints;
+  plans: PlanRow[];
+  judged: Judged | null;
+  includeIAPAndSummer: boolean;
+}>();
 const emit = defineEmits<{
   edit: [];
   share: [];
@@ -50,6 +60,62 @@ async function loadMetrics() {
 watch(() => [props.plans, props.includeIAPAndSummer], loadMetrics, { immediate: true });
 const metricsOf = (s: Season) => metrics.value.find((m) => m.plan === pathIndex.value + 1 && sameSeason(m, s));
 const STATUS = { FEASIBLE: "✓ Fits", TIGHT: "⚠ Tight", OVER: "✕ Over" } as const;
+
+// ---------- Soft or hard ----------
+
+type RoadTime = Output<"viewRoadTime">["time"];
+const time = ref<RoadTime | null>(null);
+async function loadTime() {
+  try {
+    time.value = (await call("viewRoadTime", { road: props.road })).time;
+  } catch {
+    time.value = null;
+  }
+}
+watch(() => props.road, loadTime, { immediate: true });
+
+async function changeTime(run: () => Promise<unknown>, note: string) {
+  busy.value = true;
+  try {
+    await run();
+    await loadTime();
+    emit("changed", note);
+  } catch (e) {
+    emit("error", message(e));
+  } finally {
+    busy.value = false;
+  }
+}
+const setMode = (mode: "SOFT" | "HARD") =>
+  changeTime(() => call("setScheduleMode", { road: props.road, mode }),
+    mode === "HARD" ? "Showing only paths whose semesters fit your free time." : "Showing every path, with its hours.");
+function setReserve(value: string) {
+  if (value === "") return changeTime(() => call("clearRoadReserve", { road: props.road }), "This road uses your usual reserve.");
+  return changeTime(() => call("setRoadReserve", { road: props.road, buffer: Number(value) }), `This road keeps ${value}% in reserve.`);
+}
+const RESERVES = [0, 5, 10, 15, 20, 25, 30, 40, 50];
+
+// ---------- Comparing paths ----------
+
+const comparison = computed(() =>
+  byPlan.value.map((rows, i) => {
+    const sems = metrics.value.filter((m) => m.plan === i + 1);
+    const open = sems.filter((m) => !m.locked);
+    const last = rows.reduce((a, r) => (rank(r) > rank(a) ? r : a), rows[0]!);
+    const count = (status: string) => open.filter((m) => m.status === status).length;
+    return {
+      path: i + 1,
+      finishes: label(last),
+      pastEnd: pastEnd(last),
+      units: rows.reduce((n, r) => n + r.units, 0),
+      peak: sems.length ? Math.max(...open.map((m) => m.total), 0) : null,
+      leastLeft: open.length ? Math.min(...open.map((m) => m.capacity)) : null,
+      fits: count("FEASIBLE"),
+      tight: count("TIGHT"),
+      over: count("OVER"),
+      conflicts: open.reduce((n, m) => n + m.conflicts, 0),
+    };
+  }));
 
 // If the paths shrink after an edit, fall back to the first one.
 watch(byPlan, (plans) => {
@@ -224,12 +290,51 @@ function picked(subject: string) {
       <span v-if="nothingToPlan" class="hint">
         Add a requirement (Edit constraints) to find paths.
       </span>
+      <span v-else-if="noPath && judged?.binding.length" class="error">
+        No path fits your free time. Showing only your pinned subjects.
+      </span>
       <span v-else-if="noPath" class="error">
         No path found. Showing only your pinned subjects.
       </span>
     </nav>
 
-    <div v-if="noPath && !nothingToPlan" class="hint">
+    <section class="time-mode" aria-labelledby="time-mode-title">
+      <h2 id="time-mode-title" class="visually-hidden">Time budget</h2>
+      <fieldset v-if="time && canEdit" class="inline">
+        <legend>Time budget</legend>
+        <label><input type="radio" name="mode" :checked="time.mode === 'SOFT'" :disabled="busy" @change="setMode('SOFT')" /> Soft: every path, with its hours</label>
+        <label><input type="radio" name="mode" :checked="time.mode === 'HARD'" :disabled="busy" @change="setMode('HARD')" /> Hard: only paths whose semesters fit</label>
+        <label>
+          Reserve for this road
+          <select :value="time.hasBuffer ? time.buffer : ''" :disabled="busy" @change="setReserve(($event.target as HTMLSelectElement).value)">
+            <option value="">Usual</option>
+            <option v-for="r in RESERVES" :key="r" :value="r">{{ r }}%</option>
+          </select>
+        </label>
+      </fieldset>
+      <p v-else-if="time" class="hint">
+        Time budget: {{ time.mode === "HARD" ? "hard (only paths whose semesters fit)" : "soft (every path, with its hours)" }}.
+      </p>
+      <p v-if="judged?.mode === 'HARD' && judged.dropped && !noPath" class="hint" role="note">
+        {{ judged.dropped }} path{{ judged.dropped === 1 ? "" : "s" }} left out because a semester doesn't fit the free time.
+      </p>
+    </section>
+
+    <div v-if="noPath && judged?.binding.length" class="binding" role="note">
+      <p><strong>Every path has a semester whose study doesn't fit the free time:</strong></p>
+      <ul>
+        <li v-for="b in judged.binding" :key="b.plan">
+          Path {{ b.plan }}, {{ label(b) }}: study needs {{ b.outOfClass }} h, but {{ b.free }} h is free
+          ({{ b.usable }} h after the reserve){{ b.status === "TIGHT" ? ": it would fit only by using the reserve" : "" }}.
+        </li>
+      </ul>
+      <p class="hint">
+        Free up time in your <a href="#week">week</a>, lower the reserve, spread the subjects over more semesters (move the
+        end of the road later), or switch to soft to see the paths anyway.
+      </p>
+    </div>
+
+    <div v-if="noPath && !nothingToPlan && !judged?.binding.length" class="hint">
       <p>
         A path must meet every requirement, and every subject in it needs its prerequisites in an
         earlier semester. Paths add missing prerequisites themselves, so the usual reasons none is
@@ -256,6 +361,42 @@ function picked(subject: string) {
       subject for it, 📌 to pin a subject where the path puts it, or Lock to keep a whole semester as it is. Requirements marked "not planned" still need room:
       set a cap on units per semester to leave space for them.
     </p>
+
+    <section v-if="comparison.length > 1" aria-labelledby="compare-title" class="compare">
+      <h2 id="compare-title">Compare paths</h2>
+      <div class="table-scroll">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th scope="col">Path</th>
+              <th scope="col">Finishes</th>
+              <th scope="col">Units</th>
+              <th scope="col">Busiest week</th>
+              <th scope="col">Least study time left</th>
+              <th scope="col">Semesters</th>
+              <th scope="col">Conflicts</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="c in comparison" :key="c.path" :class="{ picked: c.path === pathIndex + 1 }">
+              <th scope="row"><button type="button" class="link" :aria-pressed="c.path === pathIndex + 1" @click="pathIndex = c.path - 1">Path {{ c.path }}</button></th>
+              <td>{{ c.finishes }}<span v-if="c.pastEnd" class="hint"> (after the end)</span></td>
+              <td>{{ c.units }}</td>
+              <td>{{ c.peak === null ? "–" : `${c.peak} h` }}</td>
+              <td>{{ c.leastLeft === null ? "–" : `${c.leastLeft} h` }}</td>
+              <td>
+                <span v-if="c.fits">✓ {{ c.fits }}</span>
+                <span v-if="c.tight"> ⚠ {{ c.tight }}</span>
+                <span v-if="c.over"> ✕ {{ c.over }}</span>
+                <span v-if="!c.fits && !c.tight && !c.over">–</span>
+              </td>
+              <td>{{ c.conflicts || "–" }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">Busiest week: the most hours of class and study in one semester. ✓ fits, ⚠ only with the reserve, ✕ over. Locked semesters aren't counted.</p>
+    </section>
 
     <p v-if="constraints.prior.length" class="hint">
       Prior credit: {{ constraints.prior.map((p) => p.subject).join(", ") }}

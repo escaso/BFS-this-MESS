@@ -421,6 +421,15 @@ _conflicts(user: User, road: Road, year: Number, term: Term, subjects: String) :
 _unplaced(year: Number, term: Term, subjects: String) : many (subject: String, reason: String)
   Answers, in subject order, each of subjects that counts toward the hours of the season but has a part with no place in the week: reason is TERM for IAP and SUMMER, ARRANGED when a part is TBA, and NONE when no schedule is published for the season.
 
+_searchLimit(road: Road, limit: Number) : one (candidates: Number)
+  Answers how many plans to search for to show up to limit of them: limit for a SOFT road, and 3 × limit for a HARD one, since some of them are left out.
+
+_keptPlans(user: User, road: Road, plans: String, limit: Number) : one (mode: Mode, kept: String, dropped: Number)
+  plans is a set of plans in the form of Constrain._plansEncoded. For a SOFT road, kept is the first limit of them. For a HARD road it is the first limit of those all of whose unlocked semesters are FEASIBLE by metrics(user, road, season, subjects, slots); locked semesters are history or fixed by the student, and are never judged. kept is the plan numbers joined by commas; dropped is how many were left out for not fitting.
+
+_binding(user: User, road: Road, plans: String, kept: String) : many (plan: Number, year: Number, term: Term, inClass: Number, outOfClass: Number, free: Number, usable: Number, status: Status)
+  For a HARD road where kept (as answered by _keptPlans) is empty, answers, for each of plans, its first unlocked semester that is not FEASIBLE, with its numbers, so that a student whose every plan is left out is told which semesters do not fit and by how much. A SOFT road, or one with a plan kept, answers no rows.
+
 _roadSettings(road: Road) : one (mode: Mode, hasBuffer: Flag, buffer: Number, shareMode: ShareMode)
   Answers the RoadSettings of road, or SOFT, no buffer (hasBuffer false, buffer 0) and METRICS if there are none.
 ```
