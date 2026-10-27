@@ -79,6 +79,124 @@
 
 # MON OCT 19
 
+* **Concept design review:**
+    1. ****CONSTRAIN****
+
+        1. Semesters will be counted with a Season and Term instead of a plain number. Where do the changes go?
+
+            Types, the Pin and Semester state, the semester-numbering rule, the pin and lock actions, and the text of newRoad, _satisfies and _findPath (they all said "k-th set is semester k").
+
+                type Season = "IAP" | "Spring" | "Summer" | "Fall";
+                type Term = { year: number; season: Season };   // e.g. { year: 2026, season: "Spring" }
+
+            Order within a year is IAP < Spring < Summer < Fall. SSF has no records, so in the spec a Season becomes a year field plus a term field (an uppercase enum: IAP, SPRING, SUMMER, FALL). Roads get a start and an end in the same form.
+
+        2. Incoming credit (semester 0)?
+
+            Becomes a separate *prior* set on the road. A Plan is { prior, semesters: { season, subjects }[] }, so prior credit shows up as its own first block.
+
+        3. Do we need lockedThrough?
+
+            No. Each Semester record (road, season) carries its own *locked* flag, maxUnits and maxTechnicalUnits. This allows locking one semester even with a gap before it.
+            No record means unlocked and uncapped. Summer and IAP can be locked to empty, and IAP has a default cap of 12 units.
+            "Lock through" becomes a reaction that locks semesters individually, depending on which semester we are in.
+
+        4. Caps in subjects or in units?
+
+            Units, per semester. The 54/60 first-year limits are a flat cap set by the frontend, not the concept's concern.
+
+        5. Where does the path search start?
+
+            At the first unlocked semester with room (unpinned credits), so it works with no pins at all. The road stores a *start* (Fall by default, but it can be Spring) and an *end* (8 semesters after start by default). setStart moves end by the same amount. IAP and Summer are included optionally, if a flag is set.
+
+        6. Is the state right, with sets of Pins, Semesters and Blocks that depend on Roads?
+
+            Yes, that is idiomatic SSF. Fixes applied:
+            - Boolean is redundant, so use Flag.
+            - Pins get unique (road, subject) and Semesters unique (road, season).
+            - pin and unPin refuse locked semesters. pin also refuses prior credit and seasons outside start to end.
+            - Caps become optional numbers. A cap of 0 had meant "no cap" while the spec said it allows nothing.
+            - Added deleteRoad, renameRoad and resetSemester.
+            - _satisfies is made consistent with _options (offerings, prerequisites, corequisites, caps).
+
+        7. Where does Road live and what does major do?
+
+            Road lives in Constrain. Major generates requirements, sourced from the web per major and catalog year.
+            setMajor only sets the label. A sync (a future MajorRequirements concept) replaces all of the road's blocks. If someone changes major they are refactoring a lot anyway, or should just create a new road.
+
+        8. Required subjects vs elective blocks?
+
+            One structure: a block with options and a count. A required subject is a block with one option and a count of 1. Prerequisites with "or" use the same shape in CourseOffering.
+
+        9. Should history (prior credit, locked pins) be separate from what the student wants?
+
+            No. For the algorithm there is no difference. Any distinction belongs in the UI.
+
+        10. Can a subject count toward two blocks? Can a pin fall outside start to end?
+
+            No to both, for now.
+
+        11. Does BFS stay in Constrain, or do we split out a Planning concept?
+
+            It stays in Constrain, since once the constraints are set, planning is just running BFS. I considered a Planning concept to avoid duplicated code, but chose to mirror the subject facts (Listings, Dependencies, Cancellations) so Constrain never reads another concept's state. A sync copies them whenever CourseOffering loads.
+
+        12. Skeleton and options?
+
+            _options and _placements list the seasons each unpinned required subject could go in. HASSes and electives are left for the user to choose. _findPath is built from them and stays a query, not a reaction.
+            If a choice pushes a required subject past the end, it still shows up in the skeleton, flagged *requiresExtraSemester*, instead of being hidden. The competition between subjects shows up as the user pins, so no expensive search is needed.
+
+        13. _satisfies, _options and _findPath are long and hard to read.
+
+            Reorganized around named definitions (taken, canRun, dependenciesMet, room, canGoIn, covered), with each rule moved next to the state it governs. _findPath now says what a result is (the earliest finish) instead of prescribing the BFS steps.
+
+        14. Consistency review of Constrain against CourseOffering:
+
+            - Technical is orphaned. It becomes a set on the road, filled by the setMajor sync, and not a flag on Listings.
+            - Half-year loading broke canRun. The listing is loaded once per MIT update and stored, and a load replaces only the terms it covers.
+            - Prerequisites that are not in any block could never be scheduled. The solver now adds them itself (candidates are block options, pins, and their prerequisites transitively).
+            - Locked pins are exempt from the offering, prerequisite and cap checks.
+            - Actions that took flags were split: lock and unlock, pin and movePin, addListing and updateListing, one setter per cap.
+            - fitsByEnd is made exact, and setStart and setEnd delete out-of-span semester settings.
+            - Constrain stays one concept. Splitting Roads, Requirements and the solver would make queries cross concepts.
+
+    2. ****COURSE_OFFERING**** (updated to match Constrain's mirror)
+
+        1. Same state shape as Constrain's mirror?
+
+            Yes. Term and DependencyKind types are added, terms becomes a set of Term, and Prerequisites and Corequisites merge into one Dependencies set (course, kind, options, count) so "or" works. A Cancellations set (subject, year, term) is derived from the offering text plus the listing's academic year. Boolean becomes Flag.
+
+        2. Units: string or number?
+
+            Stay a string ("3-0-9") and the sync does the summing. If units are missing or "Arrange", assume 12 with a disclaimer, surfaced to the UI through unitsKnown in _search.
+
+        3. Technical flag?
+
+            Dropped from CourseOffering, because it depends on the road's major (21M for Theatre, 18.700 or 6.120 for 6-3).
+
+        4. Which academic year does a load refer to?
+
+            The year of the listing being loaded, not the fetch date, since the listing comes out in halves (Fall now, IAP and Spring in late November).
+            "Not offered THIS year" or "NEXT year" cancels every term of that year. "Not currently listed" cancels the current and next year. Everything must comply with the catalog: https://student.mit.edu/catalog/index.cgi
+
+        5. Catalog?
+
+            Removed, along with _catalog. _search(query?, level?, term?) returns everything when called with no parameters, including terms and units. Listing is part of search.
+
+        6. Format fixes?
+
+            load gets a LOAD_FAILED refusal, and the Principle becomes a short story like in Reserving.md.
+
+    3. ****DATA SOURCING****
+
+        1. How does CourseRoad handle sourcing? (https://github.com/dannybd/courseroad)
+
+            It doesn't scrape. Subjects come from a SQL query against MIT's Data Warehouse (the Registrar's course catalog table), and the free-text prerequisites are parsed into a JSON tree. Fixes go in a second exceptions table that overrides imported rows, and major requirements are hand-written in js/majors.js. I found no ratings handling.
+
+        2. Are our sources open to the public?
+
+            Not sure (the evaluation reports probably need an MIT login). So the app should never fetch live. A script produces one normalized JSON catalog plus an overrides file for bad parses, and the app only loads that file. Re-run once per half-year listing (Fall, then IAP and Spring).
+            Source options still open: FireRoad's catalog API (check usage terms first), a one-time hand scrape of the Subject Listing, or the Warehouse.
+            User-driven catalog loading should be removed.
 ## Notes on Constrain design
 
 Design notes (not part of the concept's behavior):
@@ -116,3 +234,13 @@ Design notes (not part of the concept's behavior):
 - login refuses with the same message whether the username is unknown or the password is wrong, so a caller cannot use it to find out which usernames exist.
 - _lookup lets someone share a road using a username while Share keeps working with User identities. It reveals whether a username exists, which is acceptable here because the composition only offers it to a signed-in user who is sharing a road.
 - _username lets an interface show a person's name instead of their User identity.
+
+## Today
+
+Unless the user pins something, the rest should be options. I would like to have an option of "topics you are interested in" for the hass to skim through the descriptions of the classes and the titles (with an api call) OR simply leave blank blocks for the non technical classes that can be a button where the user clicks and goes through a list of classes that would feasibly fit that slot. If they select one, that gets added to the road. a user should also be able to pin subjects from the possible paths screen.
+
+The way you construct tracks allows double counting as a cim and a track or AUS, but when they are explicit chooose from xy or z and they are not the extra requirements, usually people will not initially aim to choose more than they have to from that section.
+
+eah I think that is making paths unfeasible because theres no reason why 2.UAR should appeat in 8 of the 10 paths we make... That is not a common subkecty to take. 8.01, and all the girs should be aimed to  be completed earlier if the pinned subjectys allow this. Also when we set a max subjects and technicals, this should show somewhere so that the user can tell it has been set.
+
+next, I dont know why its trying to put elective subjects in the first semester. Also I would like to lock semesters, in which case you dont get pin and lock, just lock (in the ui, int he backend you only get pins for everything). Then I would like a color for GIRs (except the hasses), a color for hasses, a color for the other major requirements, and a color for non-technicals. and a legend of these colors at the top. Then when we get the subject summary at the bottom, I would like to click on subjects and read their description in the same way we can in the catalog section, as well as the unit breakdown and the requirement that subject is satisfying if any.
