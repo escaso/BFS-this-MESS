@@ -244,3 +244,47 @@ The way you construct tracks allows double counting as a cim and a track or AUS,
 eah I think that is making paths unfeasible because theres no reason why 2.UAR should appeat in 8 of the 10 paths we make... That is not a common subkecty to take. 8.01, and all the girs should be aimed to  be completed earlier if the pinned subjectys allow this. Also when we set a max subjects and technicals, this should show somewhere so that the user can tell it has been set.
 
 next, I dont know why its trying to put elective subjects in the first semester. Also I would like to lock semesters, in which case you dont get pin and lock, just lock (in the ui, int he backend you only get pins for everything). Then I would like a color for GIRs (except the hasses), a color for hasses, a color for the other major requirements, and a color for non-technicals. and a legend of these colors at the top. Then when we get the subject summary at the bottom, I would like to click on subjects and read their description in the same way we can in the catalog section, as well as the unit breakdown and the requirement that subject is satisfying if any.
+# MON OCT 26
+
+* Sharing: roles (owner, editor, viewer), share links, username autocomplete, copy a road to my roads, and view-only mode. A viewer added by an editor never learns who owns the road.
+* **Concept design review:**
+    1. ****HISTORY**** (new)
+        1. Should history live on each road, or once per account?
+
+            Once per account. A new History concept keeps prior credit, the start semester and what was taken each past semester (IAP and summer too, "nothing this term" allowed). A sync places it in every road the user owns, as locked semesters marked fromHistory, which cannot be changed from the road. Roads shared with you don't get your history; a copy gets the copier's.
+
+        2. Do we need CourseRoad's term numbers (0 = prior credit, 1 = freshman fall...)?
+
+            No. Seasons and the prior set already cover it; "Sophomore fall" is computed for display only.
+
+        3. What if real history breaks catalog rules (18.01A and 18.02A taken together)?
+
+            Warn, don't block. Subjects in locked semesters are facts: the planner no longer checks their terms or prerequisites. This was the bug where roads with a history found no paths.
+
+    2. ****TIME_BUDGET**** (new)
+        1. How do we model the week?
+
+            7 days x 96 slots of 15 minutes, blocks can cross midnight, no overlaps. Categories from the time budgeting worksheet plus your own; "In class" comes from the plan and is never painted. One regular week per account and a per-semester copy that can be reset.
+
+        2. Where do class hours come from?
+
+            FireRoad, through the committed snapshot. In class: schedule, else evaluations, else lecture + lab units. Out of class: evaluations, else contact hours x factor (2 to 3), always labelled as an estimate. FireRoad only publishes the current term's schedule, so the build infers which term it is (Fall 2026).
+
+        3. When is a semester feasible?
+
+            When study <= free x (1 - reserve), free = 168 - blocked - in class. Reserve defaults to 10%. One feasibility() function so we can add a midterms/finals crunch later.
+
+        4. Section picking?
+
+            Backtracking with pruning and a 20000 step cap: conflict-free if possible, otherwise fewest conflicts. Hand-picked sections are kept. Fall/Spring only, IAP and summer get hours only.
+
+        5. Hard mode: prune inside BFS or after?
+
+            After. Feasibility depends on the whole semester against a week the planner doesn't know, so a hard road builds 3x the paths and keeps the ones that fit, and says which semester doesn't fit when none do.
+
+        6. What do advisors see?
+
+            Hours only by default, enforced on the server: no blocks, category names or times. The owner can choose to share blocked time too.
+
+* The sync engine never answers a request with a field named length, so blocks use slots.
+* UI: subject dropdown when pinning in edit constraints, and clicking a subject in possible paths shows its catalog details.
