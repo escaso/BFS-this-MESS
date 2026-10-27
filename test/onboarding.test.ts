@@ -211,4 +211,23 @@ describe("placing the history in roads", () => {
     value(await api.addPriorCredit({ session: s, subject: "A.1" }));
     expect((await historyOf(s)).warnings).toEqual([]);
   });
+
+  test("a history that does not follow the catalog's rules still leaves the road paths to find", async () => {
+    // B.1 needs A.1 first; this student took B.1 without it. C.1, which needs B.1, is still to take.
+    const s = await signUp("omar");
+    value(await api.finishPriorCredit({ session: s }));
+    value(await api.setHistoryStart({ session: s, year: 2025, term: "FALL" }));
+    value(await api.addTaken({ session: s, year: 2025, term: "FALL", subject: "B.1" }));
+    for (const [year, term] of [[2025, "FALL"], [2026, "IAP"], [2026, "SPRING"], [2026, "SUMMER"]] as const) {
+      value(await api.lockSeason({ session: s, year, term }));
+    }
+    const road = await newRoad(s);
+    value(await api.addBlock({ session: s, road, count: 1, technical: true }).then(async (r) => {
+      const { block } = value(r);
+      return api.addOption({ session: s, block, subject: "C.1" });
+    }));
+    const plans = value(await api.viewRoad({ session: s, road, includeIAPAndSummer: false, limit: 3 })).paths.plans;
+    expect(plans.filter((p) => p.plan === 1).map((p) => p.subject).sort()).toEqual(["B.1", "C.1"]);
+    expect((await historyOf(s)).warnings).toEqual([{ year: 2025, term: "FALL", subject: "B.1", missing: "A.1" }]);
+  });
 });

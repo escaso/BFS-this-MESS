@@ -1922,3 +1922,53 @@ describe("choosing among plans", () => {
     ]);
   });
 });
+
+/*
+ * Locked semesters are facts:
+ *   a locked subject whose prerequisite is missing / that the listing says runs in another
+ *   term -> plans are still found, nothing is added for it, and _satisfies holds;
+ *   the same subject in an unlocked semester -> its prerequisite is still added before it;
+ *   a locked subject still counts toward a later subject's prerequisite
+ */
+describe("locked semesters are facts", () => {
+  it("covers history that does not follow the catalog's rules", async () => {
+    const road = await makeRoad(2026, "FALL");
+    await addSubject("PRE", 12);
+    await addSubject("SEQ", 12); // needs PRE before it, but was taken without it
+    await addSubject("SPRINGONLY", 12, ["SPRING"]); // taken in a fall all the same
+    await addSubject("NEXT", 12);
+    await prerequisite("SEQ", ["PRE"]);
+    await prerequisite("NEXT", ["SEQ"]);
+    await addBlock(road, 1, ["SEQ"]);
+    await addBlock(road, 1, ["SPRINGONLY"]);
+    await addBlock(road, 1, ["NEXT"]);
+    await c.pin({ road, subject: "SEQ", year: 2026, term: "FALL" });
+    await c.pin({ road, subject: "SPRINGONLY", year: 2026, term: "FALL" });
+    await c.setLocked({ road, year: 2026, term: "FALL", locked: true });
+
+    const plan = await c._findPath({ road, includeIAPAndSummer: false, limit: 3 });
+    expect(new Set(plan.map((r) => r.plan)).size).toBeGreaterThan(0);
+    const first = plan.filter((r) => r.plan === 1);
+    // Nothing is added for SEQ, and NEXT, which needs SEQ, comes after it.
+    expect(first.map((r) => r.subject).sort()).toEqual(["NEXT", "SEQ", "SPRINGONLY"]);
+    expect(rank(first.find((r) => r.subject === "NEXT")!.year, first.find((r) => r.subject === "NEXT")!.term))
+      .toBeGreaterThan(rank(2026, "FALL"));
+    // Every subject still says what it counts toward.
+    expect(first.every((r) => r.counts !== "")).toBe(true);
+
+    await c.pin({ road, subject: "NEXT", year: 2027, term: "SPRING" });
+    expect(await satisfied(road)).toBe(true);
+  });
+
+  it("covers the same subject in an unlocked semester, whose prerequisite is still added", async () => {
+    const road = await makeRoad(2026, "FALL");
+    await addSubject("PRE", 12);
+    await addSubject("SEQ", 12);
+    await prerequisite("SEQ", ["PRE"]);
+    await addBlock(road, 1, ["SEQ"]);
+    await c.pin({ road, subject: "SEQ", year: 2027, term: "SPRING" });
+    const first = (await c._findPath({ road, includeIAPAndSummer: false, limit: 1 })).filter((r) => r.plan === 1);
+    expect(first.map((r) => r.subject).sort()).toEqual(["PRE", "SEQ"]);
+    expect(await satisfied(road)).toBe(false);
+  });
+});

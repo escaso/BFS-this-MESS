@@ -364,6 +364,7 @@ interface Ctx {
   technical: Set<string>; // technical(road, subject): options of technical blocks
   early: Map<string, number>; // options of early blocks -> 0 if in a narrow one (a science GIR), else 1
   pins: Placed;
+  fixed: Set<string>; // pinned in a locked semester: facts, whose terms and dependencies are not checked
   semesters: Map<number, Semester>;
   listings: Map<string, Listing>;
   deps: Map<string, DependencyRecord[]>;
@@ -386,6 +387,7 @@ function canRun(ctx: Ctx, subject: string, k: number): boolean {
 }
 
 function dependenciesMet(ctx: Ctx, placed: Placed, subject: string, k: number, includeCoreq = true): boolean {
+  if (ctx.fixed.has(subject)) return true;
   for (const d of ctx.deps.get(subject) ?? []) {
     if (d.kind === "COREQUISITE" && !includeCoreq) continue;
     let n = 0;
@@ -517,7 +519,7 @@ function dependencyClosure(ctx: Ctx, from: Iterable<string>): Set<string> {
 /** candidates(road): block options, plus the dependency closure of those and of the pins. */
 function candidates(ctx: Ctx): string[] {
   const options = blockOptions(ctx);
-  const deps = dependencyClosure(ctx, [...options, ...ctx.pins.keys()]);
+  const deps = dependencyClosure(ctx, [...options, ...[...ctx.pins.keys()].filter((p) => !ctx.fixed.has(p))]);
   return [...new Set([...options, ...deps])].sort();
 }
 
@@ -544,7 +546,8 @@ function reachable(ctx: Ctx, placed: Placed): Set<string> {
 function satisfies(ctx: Ctx, placed: Placed, blocks = ctx.blocks): boolean {
   if (!covered(ctx, takenSet(ctx, placed), blocks)) return false;
   for (const [subject, k] of placed) {
-    if (!canRun(ctx, subject, k) || !dependenciesMet(ctx, placed, subject, k)) return false;
+    if (!ctx.fixed.has(subject) && !canRun(ctx, subject, k)) return false;
+    if (!dependenciesMet(ctx, placed, subject, k)) return false;
     const r = room(ctx, placed, k);
     if (!semesterOf(ctx, k).locked && (r.total < 0 || r.tech < 0)) return false; // locked semesters are exempt
   }
@@ -707,6 +710,7 @@ function chooseSubjects(ctx: Ctx, cost: (s: string) => number, banned: Set<strin
   const queue = [...plan];
   while (queue.length > 0) {
     const s = queue.pop()!;
+    if (ctx.fixed.has(s)) continue; // history: what it needed is not for a plan to add
     for (const d of ctx.deps.get(s) ?? []) {
       const have = d.options.filter((o) => ctx.prior.has(o) || plan.has(o)).length;
       if (have >= d.count) continue;
@@ -769,7 +773,10 @@ function schedule(
     deadline.set(s, by);
     for (const d of ctx.deps.get(s) ?? []) for (const o of d.options) if (subjects.has(o)) pass(o, by);
   };
-  for (const [p, k] of ctx.pins) for (const d of ctx.deps.get(p) ?? []) for (const o of d.options) if (subjects.has(o)) pass(o, k);
+  for (const [p, k] of ctx.pins) {
+    if (ctx.fixed.has(p)) continue;
+    for (const d of ctx.deps.get(p) ?? []) for (const o of d.options) if (subjects.has(o)) pass(o, k);
+  }
 
   // Early subjects, and what they need within the plan, by tier: a science GIR before REST or
   // the lab, which students take later.
@@ -1023,6 +1030,7 @@ export class ConstrainConcept {
       technical: new Set(blocks.filter((b) => b.technical ?? true).flatMap((b) => b.options)),
       early: earlyOptions(blocks),
       pins: new Map(record.pins.map((p) => [p.subject, pinKey(p)])),
+      fixed: new Set(record.pins.filter((p) => isLocked(record, p.year, p.term)).map((p) => p.subject)),
       semesters: new Map(record.semesters.map((s) => [keyOf(s.year, s.term), s])),
       listings: new Map(listings.map((l) => [l._id, l])),
       deps: depMap,
