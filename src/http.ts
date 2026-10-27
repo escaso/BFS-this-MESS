@@ -57,5 +57,9 @@ export const policy = httpPolicy({
     LOCKED: "FORBIDDEN",
     NOT_TAKEN: "NOT_FOUND",
     NOT_LOCKED: "CONFLICT",
+    // TimeBudget
+    BAD_FACTOR: "INVALID_REQUEST",
+    BAD_BUFFER: "INVALID_REQUEST",
+    NO_SUBJECT_FACTOR: "NOT_FOUND",
   },
 });

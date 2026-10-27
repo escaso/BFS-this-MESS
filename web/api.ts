@@ -115,6 +115,10 @@ const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> 
   unPin: { NOT_FOUND: "That subject is not pinned in this road.", CONFLICT: "That semester is locked or part of your history." },
   setLocked: { CONFLICT: "That semester is part of your history. Change it in your history." },
   resetSemester: { CONFLICT: "That semester is part of your history. Change it in your history." },
+  setStudyFactor: { INVALID_REQUEST: "Study hours per class hour must be from 2 to 3." },
+  setSubjectFactor: { INVALID_REQUEST: "Study hours per class hour must be from 2 to 3." },
+  clearSubjectFactor: { NOT_FOUND: "That subject uses your usual factor." },
+  setReserve: { INVALID_REQUEST: "The reserve must be from 0% to 50% of your free time." },
 };
 
 export class ApiError extends Error {

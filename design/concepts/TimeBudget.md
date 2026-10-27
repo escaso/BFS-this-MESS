@@ -23,6 +23,9 @@ Term is IAP or SPRING or SUMMER or FALL
 Mode is SOFT or HARD
   SOFT: plans are shown with their hours and whether they fit. HARD: plans that do not fit are left out.
 
+Kind is LECTURE or RECITATION or LAB or DESIGN
+  A part of a class that meets: a student attends one section of each part.
+
 ShareMode is METRICS or DETAILS
   METRICS: people a road is shared with see hours only, and blocked time as one anonymous total. DETAILS: they also see the categories and blocks.
 ```
@@ -76,6 +79,36 @@ a set of RoadSettings with
   an optional buffer Number
   a shareMode ShareMode
   Rule: A road with no RoadSettings is SOFT, uses the buffer of its owner, and is shared as METRICS. A buffer here replaces the owner's for this road only.
+
+a set of Classes with
+  a unique subject String
+  an optional scheduleYear Number
+  an optional scheduleTerm Term
+  a parts set of Parts
+  an optional inClassHours Number
+  an optional outOfClassHours Number
+  an optional contactUnits Number
+  Rule: A Class is what the catalog says about the time a subject takes: its schedule, published for one season (scheduleYear and scheduleTerm), the hours a week in and out of class that students reported in subject evaluations, and its lecture plus lab and design units (the "contact hours" of a time-budgeting worksheet). Each is absent when the catalog does not say. It is copied from the catalog snapshot when it loads.
+
+a set of Parts with
+  a kind Kind
+  an arranged Flag
+  a sections set of Sections
+  Rule: A Part is one kind of meeting of a class, such as its lecture. An arranged part has no time in the schedule (TBA), so it takes time but has no place in the week.
+
+a set of Sections with
+  a room String
+  a meetings set of Meetings
+  Rule: A Section is one choice for a Part: the meetings a student who picks it attends every week.
+
+a set of Meetings with
+  a day Number
+  a start Number
+  a length Number
+  Rule: A Meeting is on day day from slot start for length slots, as for a Block; meetings do not run past midnight.
+
+Rule: The schedule of a Class is exact for its schedule season and an estimate for a season of the same term in another year (classes usually meet at the same times each year); for a season of another term there is no schedule.
+Rule: classHours(user, subject, season) is the time a subject takes in a season, each number with where it came from. inClass is the hours a week of the schedule, if there is one for that season and none of its parts is arranged: for each part, the length of its most common section (source SCHEDULE); otherwise inClassHours (source EVALUATIONS); otherwise contactUnits (source UNITS); otherwise 3, as for a typical 12-unit subject (source ASSUMED). outOfClass is outOfClassHours (source EVALUATIONS) if there is one, otherwise inClass × the factor of user for subject (source FORMULA): their SubjectFactor if they have one, otherwise the factor of their Settings. total is inClass + outOfClass.
 
 Rule: covers(block) is the set of slots of the week that block covers: day × 96 + start, and the length − 1 slots after it, counted modulo 672.
 Rule: hours(template, category, day) is a quarter of the number of slots of day covered by blocks of template in category. A block past midnight counts toward the day each of its slots is in, so sleep from 11 pm Monday to 7 am Tuesday is 1 hour on Monday and 7 on Tuesday. blocked(template) is a quarter of the number of slots covered by any block of template.
@@ -281,6 +314,21 @@ setShareMode(road: Road, shareMode: ShareMode) : returns ()
     set the shareMode of the RoadSettings of road, creating them as in setMode
     returns
 
+setClass(subject: String, scheduleYear?: Number, scheduleTerm?: Term, parts: String, inClassHours?: Number, outOfClassHours?: Number, contactUnits?: Number) : returns ()
+  where parts is not JSON of the form [{"kind": Kind, "arranged": Flag, "sections": [{"room": String, "meetings": [{"day", "start", "length"}]}]}] with each meeting inside one day, or only one of scheduleYear and scheduleTerm is given
+  then
+    refuses BAD_CLASS "That class could not be read."
+  where parts can be read
+  then
+    replace the Class of subject with one with these facts (its parts read from parts)
+    returns
+
+removeClass(subject: String) : returns ()
+  where true
+  then
+    delete the Class of subject if there is one
+    returns
+
 forgetRoad(road: Road) : returns ()
   where true
   then
@@ -317,6 +365,12 @@ _settings(user: User) : one (buffer: Number, factor: Number)
 
 _subjectFactors(user: User) : many (subject: String, factor: Number)
   Answers the SubjectFactors of user in subject order.
+
+_classHours(user: User, subject: String, year: Number, term: Term) : one (known: Flag, inClass: Number, inClassSource: String, outOfClass: Number, outOfClassSource: String, factor: Number, total: Number, schedule: String)
+  Answers classHours(user, subject, season) with known true, or, for a subject with no Class, the ASSUMED hours with known false. factor is the one that applies to the subject (used only when outOfClassSource is FORMULA). schedule says what the schedule is for that season: EXACT, ESTIMATE (from another year), ARRANGED (one of its parts is TBA), or NONE.
+
+_sections(subject: String, year: Number, term: Term) : many (kind: Kind, section: Number, room: String, day: Number, start: Number, length: Number)
+  Answers one row for each meeting of each section of each part of the schedule of subject that applies to the season (see the rules above), with section the number of the section in its part, from 1, ordered by part, section and meeting. Arranged parts and seasons with no schedule have no rows.
 
 _roadSettings(road: Road) : one (mode: Mode, hasBuffer: Flag, buffer: Number, shareMode: ShareMode)
   Answers the RoadSettings of road, or SOFT, no buffer (hasBuffer false, buffer 0) and METRICS if there are none.

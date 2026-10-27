@@ -77,7 +77,7 @@ const openRow = computed(() => details.value.find((r) => r.course === open.value
     </table>
     <p v-if="details.length && !openRow" class="hint">Click a class to read its description.</p>
     <section v-if="openRow" class="details">
-      <SubjectDetails :course="openRow.course" :counts-toward="openRow.countsToward" />
+      <SubjectDetails :course="openRow.course" :counts-toward="openRow.countsToward" :season="season" />
     </section>
   </template>
 </template>

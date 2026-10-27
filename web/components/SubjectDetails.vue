@@ -1,11 +1,14 @@
 <script setup lang="ts">
 // The details of one subject, as the catalog lists it: description, units (with their
 // breakdown), terms, prerequisites, schedule and rating. Shown by the catalog and by a
-// path's semester summary, which also says what the subject counts toward in that path.
+// path's semester summary, which also says what the subject counts toward in that path
+// and, for that semester, the hours a week it takes.
 import { ref, watch } from "vue";
 import { call, message, type CourseDetails, type Ratings, type Schedule } from "../api.ts";
+import type { Season } from "../util.ts";
+import ClassHours from "./ClassHours.vue";
 
-const props = defineProps<{ course: string; countsToward?: string[] }>();
+const props = defineProps<{ course: string; countsToward?: string[]; season?: Season }>();
 
 const details = ref<{ subject: CourseDetails; ratings: Ratings | null; schedule: Schedule | null } | null>(null);
 const detailsError = ref("");
@@ -116,5 +119,6 @@ function groups(rows: { dependency: string; subject: string }[]) {
         <template v-else>No evaluations</template>
       </dd>
     </dl>
+    <ClassHours v-if="season" :course="details.subject.courseId" :season="season" />
   </template>
 </template>

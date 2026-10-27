@@ -24,7 +24,7 @@ import {
 import {
   NoDefault, NotOverridden, NoSuchTemplate, NoSuchCategory, ManagedCategory, BadSlot, Overlap,
   NoSuchBlock as TimeBudgetNoSuchBlock, EmptyName as TimeBudgetEmptyName, NameTaken, NotYourCategory, BadBuffer,
-  BadFactor, NoSubjectFactor, BadMode, BadShareMode, TimeBudgetConcept,
+  BadFactor, NoSubjectFactor, BadMode, BadShareMode, BadClass, TimeBudgetConcept,
 } from "./concepts/TimeBudget.ts";
 import { LoadFailed, CourseOfferingConcept } from "./concepts/CourseOffering.ts";
 import {
@@ -115,6 +115,7 @@ const timeBudget = registerConcept({
     NO_SUBJECT_FACTOR: NoSubjectFactor,
     BAD_MODE: BadMode,
     BAD_SHARE_MODE: BadShareMode,
+    BAD_CLASS: BadClass,
   },
 });
 

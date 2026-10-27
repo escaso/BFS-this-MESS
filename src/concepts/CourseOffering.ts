@@ -36,8 +36,21 @@ export type SnapshotCourse = {
   totalUnits: number;
   // Students who usually take it; absent in snapshots made before it existed.
   enrollment?: number;
+  // Facts for TimeBudget, absent in snapshots made before they existed: the raw Fireroad
+  // schedule (for scheduleSeason), hours a week from subject evaluations, and lecture + lab units.
+  schedule?: string;
+  inClassHours?: number;
+  outOfClassHours?: number;
+  contactUnits?: number;
 };
-export type Snapshot = { id: string; source: string; academicYear: number; courses: SnapshotCourse[] };
+export type Snapshot = {
+  id: string;
+  source: string;
+  academicYear: number;
+  /** The season the schedules are for; absent when no subject has one. */
+  scheduleSeason?: { year: number; term: string };
+  courses: SnapshotCourse[];
+};
 
 export class LoadFailed extends Error {
   constructor(message = "The catalog snapshot could not be parsed.") {

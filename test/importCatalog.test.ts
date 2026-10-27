@@ -8,6 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { importCatalog } from "../src/catalog/import.ts";
+import { TimeBudgetConcept } from "../src/concepts/TimeBudget.ts";
 import { ConstrainConcept } from "../src/concepts/Constrain.ts";
 import { CourseOfferingConcept, type SnapshotCourse } from "../src/concepts/CourseOffering.ts";
 import { RequirementsConcept } from "../src/concepts/Requirements.ts";
@@ -49,9 +50,9 @@ function writeRequirements(id: string) {
   return path;
 }
 
-function write(id: string, courses: SnapshotCourse[]) {
+function write(id: string, courses: SnapshotCourse[], scheduleSeason?: { year: number; term: string }) {
   const path = join(dir, `${id}.json`);
-  writeFileSync(path, JSON.stringify({ id, source: "test", academicYear: 2026, courses }));
+  writeFileSync(path, JSON.stringify({ id, source: "test", academicYear: 2026, scheduleSeason, courses }));
   return path;
 }
 
@@ -95,6 +96,35 @@ describe("importCatalog", () => {
     expect(season("6.1010")).toBeLessThan(season("6.1020"));
     // 6.1020 runs only in the spring and is not offered next academic year, so not in SPRING 2028.
     expect(plan.find((r) => r.subject === "6.1020")).not.toEqual(expect.objectContaining({ year: 2028, term: "SPRING" }));
+  });
+
+  test("covers: each subject's schedule and hours copied into TimeBudget, the schedule with its season", async () => {
+    const path = write("hours", [
+      course("6.1210", { schedule: "Lecture,26-100/TR/0/11-12.30;Recitation,34-304/WF/0/10,34-304/WF/0/11", inClassHours: 4.11, outOfClassHours: 7.61, contactUnits: 5 }),
+      course("21M.301", { contactUnits: 3 }),
+      course("1.00", { schedule: "Lecture,1-134/T/0/2-4;Lab,TBA" }),
+    ], { year: 2026, term: "FALL" });
+    await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet });
+    const budget = new TimeBudgetConcept(db());
+    expect(await budget._classHours({ user: "u", subject: "6.1210", year: 2026, term: "FALL" }))
+      .toMatchObject({ inClass: 5, inClassSource: "SCHEDULE", outOfClass: 7.61, schedule: "EXACT" });
+    expect((await budget._sections({ subject: "6.1210", year: 2026, term: "FALL" })).filter((r) => r.kind === "RECITATION"))
+      .toEqual([
+        { kind: "RECITATION", section: 1, room: "34-304", day: 2, start: 40, length: 4 },
+        { kind: "RECITATION", section: 1, room: "34-304", day: 4, start: 40, length: 4 },
+        { kind: "RECITATION", section: 2, room: "34-304", day: 2, start: 44, length: 4 },
+        { kind: "RECITATION", section: 2, room: "34-304", day: 4, start: 44, length: 4 },
+      ]);
+    expect(await budget._classHours({ user: "u", subject: "21M.301", year: 2026, term: "FALL" }))
+      .toMatchObject({ inClass: 3, inClassSource: "UNITS", outOfClass: 6, outOfClassSource: "FORMULA" });
+    expect((await budget._classHours({ user: "u", subject: "1.00", year: 2026, term: "FALL" })).schedule).toBe("ARRANGED");
+  });
+
+  test("covers: a snapshot with schedules but no season keeps no schedule", async () => {
+    const path = write("noseason", [course("6.1210", { schedule: "Lecture,26-100/TR/0/11-12.30", contactUnits: 5 })]);
+    await importCatalog(db(), { path, requirementsPath: NO_REQUIREMENTS, log: quiet });
+    expect(await new TimeBudgetConcept(db())._classHours({ user: "u", subject: "6.1210", year: 2026, term: "FALL" }))
+      .toMatchObject({ inClass: 5, inClassSource: "UNITS", schedule: "NONE" });
   });
 
   test("covers: the same snapshot again -> skipped; forced -> loaded", async () => {

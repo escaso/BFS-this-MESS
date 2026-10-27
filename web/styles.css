@@ -511,6 +511,14 @@ li.block form { margin: 0; }
 .history-nudge { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-left: 4px solid var(--info); background: var(--surface); border-radius: var(--radius-sm); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+/* ---------- Class hours ---------- */
+.class-hours { margin-top: var(--space-4); }
+.hours-table { border-collapse: collapse; margin-bottom: var(--space-2); }
+.hours-table th, .hours-table td { padding: var(--space-1) var(--space-3) var(--space-1) 0; text-align: left; }
+.hours-table tr.total { border-top: 1.5px solid var(--color-border-strong); font-weight: 700; }
+.class-hours .sections ul { margin: var(--space-1) 0 var(--space-2); padding-left: var(--space-4); }
+.factor-form { flex-wrap: wrap; gap: var(--space-3); }
+
 /* ---------- Sharing ---------- */
 .access-banner { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); border-left: 4px solid var(--gray-500); background: var(--gray-100); }
 .access-banner.editing { border-left-color: var(--primary); background: var(--color-violet-50); }

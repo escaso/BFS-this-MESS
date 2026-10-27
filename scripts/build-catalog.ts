@@ -56,11 +56,16 @@ const lines = (head: Record<string, unknown>, arrays: Record<string, unknown[]>)
   Object.entries(arrays).map(([key, rows]) => `,${JSON.stringify(key)}:[\n${rows.map((r) => JSON.stringify(r)).join(",\n")}\n]`).join("") +
   "}\n";
 
-await Bun.write(SNAPSHOT_PATH, lines({ id: snapshot.id, source: snapshot.source, academicYear }, { courses: snapshot.courses }));
+await Bun.write(
+  SNAPSHOT_PATH,
+  lines({ id: snapshot.id, source: snapshot.source, academicYear, scheduleSeason: snapshot.scheduleSeason }, { courses: snapshot.courses }),
+);
 
 const count = (f: (c: (typeof snapshot.courses)[number]) => boolean) => snapshot.courses.filter(f).length;
 console.log(`Wrote ${snapshot.courses.length} subjects to ${SNAPSHOT_PATH} (id ${snapshot.id}, academic year ${academicYear}-${academicYear + 1})`);
 console.log(`  with prerequisites: ${count((c) => c.prerequisites.length > 0)}, with ratings: ${count((c) => !!c.rating)}`);
+const season = snapshot.scheduleSeason ? `${snapshot.scheduleSeason.term} ${snapshot.scheduleSeason.year}` : "no term";
+console.log(`  with schedules: ${count((c) => !!c.schedule)} (for ${season}), with evaluation hours: ${count((c) => c.outOfClassHours !== undefined)}`);
 console.log(`  not offered this year: ${count((c) => c.offering === "Not offered THIS year")}, next year: ${count((c) => c.offering === "Not offered NEXT year")}, not listed: ${count((c) => c.offering === "Not currently listed")}`);
 console.log(`  groups dropped as free text (e.g. permission of instructor): ${stats.freeTextGroups}`);
 console.log(`  options dropped as not in the catalog: ${stats.unknownSubjects}`);

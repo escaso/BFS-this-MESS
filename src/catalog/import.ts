@@ -1,5 +1,5 @@
 // Loads catalog/snapshot.json into CourseOffering and copies each subject's facts into
-// Constrain, and loads catalog/requirements.json into Requirements (see the Catalog section
+// Constrain and its schedule and hours into TimeBudget, and loads catalog/requirements.json into Requirements (see the Catalog section
 // of design/compositions/BFSThisMess.md). The server runs it on start, and it does nothing
 // for a snapshot that is already loaded.
 
@@ -8,6 +8,8 @@ import type { Db } from "mongodb";
 import { ConstrainConcept, NoListing, type Term } from "../concepts/Constrain.ts";
 import { CourseOfferingConcept, type Snapshot, type SnapshotCourse } from "../concepts/CourseOffering.ts";
 import { RequirementsConcept } from "../concepts/Requirements.ts";
+import { TimeBudgetConcept, type ClassPart, type Term as BudgetTerm } from "../concepts/TimeBudget.ts";
+import { parseSchedule } from "./schedule.ts";
 
 export const SNAPSHOT_PATH = join(import.meta.dir, "..", "..", "catalog", "snapshot.json");
 export const REQUIREMENTS_PATH = join(import.meta.dir, "..", "..", "catalog", "requirements.json");
@@ -51,6 +53,7 @@ async function importSubjects(db: Db, path: string, force: boolean, log: (line: 
 
   const courseOffering = new CourseOfferingConcept(db);
   const constrain = new ConstrainConcept(db);
+  const timeBudget = new TimeBudgetConcept(db);
 
   // Constrain is marked only once every subject is copied, so a copy cut short by a
   // restart is made again on the next start, and with the file's contents, so an edited
@@ -71,6 +74,7 @@ async function importSubjects(db: Db, path: string, force: boolean, log: (line: 
     Array.from({ length: CONCURRENCY }, async () => {
       for (let course = queue.shift(); course; course = queue.shift()) {
         await copyToConstrain(constrain, courseOffering, course);
+        await copyToTimeBudget(timeBudget, snapshot, course);
       }
     }),
   );
@@ -126,4 +130,33 @@ async function copyToConstrain(constrain: ConstrainConcept, courseOffering: Cour
   for (const { year, term } of await courseOffering._cancellations({ course: subject })) {
     await constrain.markCancelled({ subject, year, term: term as Term });
   }
+}
+
+/** The parts of a Fireroad schedule as TimeBudget keeps them, in 15-minute slots. */
+export function partsOf(schedule: string | undefined): ClassPart[] {
+  return parseSchedule(schedule).components.map((c) => ({
+    kind: c.kind.toUpperCase() as ClassPart["kind"],
+    arranged: c.arranged,
+    sections: c.sections.map((sec) => ({
+      room: sec.room,
+      meetings: sec.meetings.map((m) => ({ day: m.day, start: Math.round(m.start / 15), length: Math.round((m.end - m.start) / 15) })),
+    })),
+  }));
+}
+
+// Replaces TimeBudget's facts about the time one subject takes with the snapshot's.
+async function copyToTimeBudget(timeBudget: TimeBudgetConcept, snapshot: Snapshot, course: SnapshotCourse) {
+  const parts = course.schedule ? partsOf(course.schedule) : [];
+  // A schedule is only kept together with the season it is for.
+  const season = parts.length && snapshot.scheduleSeason
+    ? { scheduleYear: snapshot.scheduleSeason.year, scheduleTerm: snapshot.scheduleSeason.term as BudgetTerm }
+    : undefined;
+  await timeBudget.setClass({
+    subject: course.subject,
+    ...season,
+    parts: JSON.stringify(season ? parts : []),
+    ...(course.inClassHours !== undefined ? { inClassHours: course.inClassHours } : {}),
+    ...(course.outOfClassHours !== undefined ? { outOfClassHours: course.outOfClassHours } : {}),
+    ...(course.contactUnits !== undefined ? { contactUnits: course.contactUnits } : {}),
+  });
 }

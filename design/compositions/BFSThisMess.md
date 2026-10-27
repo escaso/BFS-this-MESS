@@ -30,7 +30,7 @@ BFSThisMess.LogOut at /bfsthismess/logOut
 
 ## Catalog
 
-The catalog is loaded from a snapshot file, catalog/snapshot.json, that the maintainer builds once a semester from Fireroad and commits. When the server starts, it loads the snapshot (CourseOffering.load) unless Constrain._loadedCatalog already has its id together with a digest of the file (so an edited file is loaded again even under the same id), and copies each subject's facts into Constrain: its listing (Constrain.removeListing, setListing, setPopularity from the subject's usual enrollment, and addListingTerm), its prerequisites and corequisites (Constrain.addDependency and addDependencyOption, the same groups CourseOffering._prerequisites and _corequisites answer) and its cancellations (Constrain.markCancelled, from CourseOffering._cancellations). Once every subject is copied, it marks the snapshot, with that digest, in Constrain (Constrain.markCatalog), so a server stopped partway through the copy (a restart or a redeploy) loads and copies the whole snapshot again on its next start. Units are the total units of the subject (e.g. 12 for "3-0-9"), and 12 is assumed when there is no numeric total. A subject is technical when it carries no HASS attribute, until technical subjects can be set per major. Nobody loads the catalog through a request, so loading has no endpoint.
+The catalog is loaded from a snapshot file, catalog/snapshot.json, that the maintainer builds once a semester from Fireroad and commits. When the server starts, it loads the snapshot (CourseOffering.load) unless Constrain._loadedCatalog already has its id together with a digest of the file (so an edited file is loaded again even under the same id), and copies each subject's facts into Constrain: its listing (Constrain.removeListing, setListing, setPopularity from the subject's usual enrollment, and addListingTerm), its prerequisites and corequisites (Constrain.addDependency and addDependencyOption, the same groups CourseOffering._prerequisites and _corequisites answer) and its cancellations (Constrain.markCancelled, from CourseOffering._cancellations). Once every subject is copied, it marks the snapshot, with that digest, in Constrain (Constrain.markCatalog), so a server stopped partway through the copy (a restart or a redeploy) loads and copies the whole snapshot again on its next start. It also copies into TimeBudget what the catalog says about the time each subject takes (TimeBudget.setClass): its schedule, read from Fireroad's schedule text into parts, sections and meetings and kept with the season the snapshot's schedules are for, the hours a week in and out of class from subject evaluations, and its lecture plus lab and design units. Units are the total units of the subject (e.g. 12 for "3-0-9"), and 12 is assumed when there is no numeric total. A subject is technical when it carries no HASS attribute, until technical subjects can be set per major. Nobody loads the catalog through a request, so loading has no endpoint.
 
 Anyone can [search subjects](reaction:BFSThisMess.SearchSubjects) by text, level and term (CourseOffering._search), which answers [the matching courses](former:BFSThisMess.MatchingCourses). For a subject they can [view its details](reaction:BFSThisMess.ViewSubject) (CourseOffering._course, _terms, _prerequisites, _corequisites and _cancellations), shown as [the details of a course](former:BFSThisMess.CourseDetails), [see its ratings](reaction:BFSThisMess.ViewRatings) (CourseOffering._ratings), shown as [the ratings of a course](former:BFSThisMess.CourseRatings), and [its schedule](reaction:BFSThisMess.ViewSchedule) (CourseOffering._schedule), shown as [the schedule of a course](former:BFSThisMess.CourseSchedule).
 
@@ -150,6 +150,19 @@ BFSThisMess.LockSeason at /bfsthismess/lockSeason
 BFSThisMess.LockSeasonRefused at /bfsthismess/lockSeason
 BFSThisMess.UnlockSeason at /bfsthismess/unlockSeason
 BFSThisMess.UnlockSeasonRefused at /bfsthismess/unlockSeason
+```
+
+## Class hours and study settings
+
+A signed-in person can [see the hours a subject takes](reaction:BFSThisMess.ViewClassHours) in a given semester, shown as [the hours of a class](former:BFSThisMess.ClassHours): the hours a week in class and outside it and where each comes from (TimeBudget._classHours), and the sections of its schedule for that semester (TimeBudget._sections). Where the catalog has no hours outside class, they are an estimate: the hours in class times the person's study factor, as on a time-budgeting worksheet. So the answer depends on who asks, and needs a session. They can [see their study settings](reaction:BFSThisMess.ViewStudySettings), shown as [the study settings of a user](former:BFSThisMess.StudySettings) (TimeBudget._settings and _subjectFactors), [set their study factor](reaction:BFSThisMess.SetStudyFactor) (TimeBudget.setFactor), [set the reserve](reaction:BFSThisMess.SetReserve) they keep of their free time (TimeBudget.setBuffer), and [set](reaction:BFSThisMess.SetSubjectFactor) or [clear](reaction:BFSThisMess.ClearSubjectFactor) the factor of one subject (TimeBudget.setSubjectFactor and clearSubjectFactor). Settings are the person's own, so they need no Share check; a request without a valid session is refused with NO_SUCH_SESSION.
+
+```endpoints
+BFSThisMess.ViewClassHours at /bfsthismess/viewClassHours
+BFSThisMess.ViewStudySettings at /bfsthismess/viewStudySettings
+BFSThisMess.SetStudyFactor at /bfsthismess/setStudyFactor
+BFSThisMess.SetReserve at /bfsthismess/setReserve
+BFSThisMess.SetSubjectFactor at /bfsthismess/setSubjectFactor
+BFSThisMess.ClearSubjectFactor at /bfsthismess/clearSubjectFactor
 ```
 
 ## Paths and viewing

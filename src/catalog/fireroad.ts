@@ -26,6 +26,9 @@ export type FireroadCourse = {
   prerequisites?: string;
   corequisites?: string;
   schedule?: string;
+  /** Hours a week in class and outside it, as students reported in subject evaluations. */
+  in_class_hours?: number;
+  out_of_class_hours?: number;
   rating?: number;
   /** Students who usually take it in a term. */
   enrollment_number?: number;
@@ -332,6 +335,35 @@ export function academicYearOf(date: Date) {
   return date.getMonth() >= 6 ? date.getFullYear() : date.getFullYear() - 1;
 }
 
+const TERM_FLAGS = [
+  ["FALL", "offered_fall"], ["IAP", "offered_IAP"], ["SPRING", "offered_spring"], ["SUMMER", "offered_summer"],
+] as const;
+
+/**
+ * The season Fireroad's schedules are for. Fireroad publishes the schedule of one term
+ * only and does not say which, so it is the term whose subjects (those offered in that
+ * term alone) most often have a schedule. FALL is the fall of academicYear; the other
+ * terms are in the calendar year after it. Answers undefined if no subject has one.
+ */
+export function scheduleSeasonOf(raw: FireroadCourse[], academicYear: number) {
+  let best: { term: (typeof TERM_FLAGS)[number][0]; share: number } | undefined;
+  for (const [term, flag] of TERM_FLAGS) {
+    const only = raw.filter((c) => TERM_FLAGS.every(([, f]) => !!c[f] === (f === flag)));
+    const share = only.length ? only.filter((c) => c.schedule?.trim()).length / only.length : 0;
+    if (share > 0 && (!best || share > best.share)) best = { term, share };
+  }
+  return best && { year: best.term === "FALL" ? academicYear : academicYear + 1, term: best.term };
+}
+
+/** Lecture plus lab and design units: the "contact hours" of the time-budgeting worksheet. */
+export function contactUnitsOf(course: FireroadCourse) {
+  if (course.is_variable_units) return undefined;
+  const contact = (course.lecture_units ?? 0) + (course.lab_units ?? 0) + (course.design_units ?? 0);
+  return contact > 0 ? contact : undefined;
+}
+
+const hoursOf = (n: number | undefined) => (typeof n === "number" && Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : undefined);
+
 export function fromFireroad(
   raw: FireroadCourse[],
   { academicYear, id }: { academicYear: number; id: string },
@@ -367,8 +399,17 @@ export function fromFireroad(
       ...(typeof c.rating === "number" ? { rating: { classRating: c.rating, url: evaluationUrl(c.subject_id) } } : {}),
       totalUnits,
       enrollment: Math.round(c.enrollment_number ?? 0),
+      // For the time budget: the raw schedule, parsed when it is loaded (src/catalog/schedule.ts).
+      ...(c.schedule?.trim() ? { schedule: c.schedule.trim() } : {}),
+      ...(hoursOf(c.in_class_hours) !== undefined ? { inClassHours: hoursOf(c.in_class_hours) } : {}),
+      ...(hoursOf(c.out_of_class_hours) !== undefined ? { outOfClassHours: hoursOf(c.out_of_class_hours) } : {}),
+      ...(contactUnitsOf(c) !== undefined ? { contactUnits: contactUnitsOf(c) } : {}),
     };
   });
 
-  return { snapshot: { id, source: FIREROAD_URL, academicYear, courses }, stats };
+  const scheduleSeason = scheduleSeasonOf(raw, academicYear);
+  return {
+    snapshot: { id, source: FIREROAD_URL, academicYear, ...(scheduleSeason ? { scheduleSeason } : {}), courses },
+    stats,
+  };
 }

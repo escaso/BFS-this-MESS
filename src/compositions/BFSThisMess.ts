@@ -2,7 +2,7 @@ import { endpoint, receive, respond } from "@mit-sdg/sync-engine/boundary";
 import { compute, each, form, former, no, reaction, when, where } from "@mit-sdg/sync-engine/language";
 import { concepts } from "../concepts.ts";
 
-const { Authentication, Share, CourseOffering, Constrain, Requirements, History } = concepts;
+const { Authentication, Share, CourseOffering, Constrain, Requirements, History, TimeBudget } = concepts;
 
 type Var = symbol;
 
@@ -1087,6 +1087,82 @@ const PlaceHistoryOnClaim = reaction(({ road, user, history }) =>
     .then(Constrain.applyHistory({ road, history })),
 );
 
+// ---------- Class hours and study settings ----------
+// The hours a subject takes depend on the person's own study factor, so these need a session.
+
+const ClassHours = former(
+  "the hours of a class",
+  (
+    { user, subject, year, term },
+    { known, inClass, inClassSource, outOfClass, outOfClassSource, factor, total, schedule, kind, section, room, day, start, length },
+  ) =>
+    where(
+      TimeBudget._classHours({ user, subject, year, term })
+        .is({ known, inClass, inClassSource, outOfClass, outOfClassSource, factor, total, schedule }),
+    ).form({
+      known, inClass, inClassSource, outOfClass, outOfClassSource, factor, total, schedule,
+      sections: each(TimeBudget._sections({ subject, year, term }).is({ kind, section, room, day, start, length }))
+        .form({ kind, section, room, day, start, length }),
+    }),
+);
+
+const StudySettings = former("the study settings of a user", ({ user }, { buffer, factor, subject, subjectFactor }) =>
+  where(TimeBudget._settings({ user }).is({ buffer, factor })).form({
+    buffer,
+    factor,
+    subjectFactors: each(TimeBudget._subjectFactors({ user }).is({ subject, factor: subjectFactor }))
+      .form({ subject, factor: subjectFactor }),
+  }),
+);
+
+const ViewClassHours = endpoint("/bfsthismess/viewClassHours", ({ session, user, subject, year, term }) =>
+  receive({ session, subject, year, term }).then(
+    noSession(session),
+    signedIn(session, user).then(respond({ hours: ClassHours({ user, subject, year, term }) })).named("signed-in"),
+  ),
+);
+
+const ViewStudySettings = endpoint("/bfsthismess/viewStudySettings", ({ session, user }) =>
+  receive({ session }).then(
+    noSession(session),
+    signedIn(session, user).then(respond({ settings: StudySettings({ user }) })).named("signed-in"),
+  ),
+);
+
+const SetStudyFactor = endpoint("/bfsthismess/setStudyFactor", ({ session, user, factor }) =>
+  receive({ session, factor }).then(
+    noSession(session),
+    signedIn(session, user).then(TimeBudget.setFactor({ user, factor }).responds({})).then(respond({})).named("signed-in"),
+  ),
+);
+
+const SetReserve = endpoint("/bfsthismess/setReserve", ({ session, user, buffer }) =>
+  receive({ session, buffer }).then(
+    noSession(session),
+    signedIn(session, user).then(TimeBudget.setBuffer({ user, buffer }).responds({})).then(respond({})).named("signed-in"),
+  ),
+);
+
+const SetSubjectFactor = endpoint("/bfsthismess/setSubjectFactor", ({ session, user, subject, factor }) =>
+  receive({ session, subject, factor }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.setSubjectFactor({ user, subject, factor }).responds({}))
+      .then(respond({}))
+      .named("signed-in"),
+  ),
+);
+
+const ClearSubjectFactor = endpoint("/bfsthismess/clearSubjectFactor", ({ session, user, subject }) =>
+  receive({ session, subject }).then(
+    noSession(session),
+    signedIn(session, user)
+      .then(TimeBudget.clearSubjectFactor({ user, subject }).responds({}))
+      .then(respond({}))
+      .named("signed-in"),
+  ),
+);
+
 // ---------- Paths and viewing ----------
 
 const MyRoads = endpoint("/bfsthismess/myRoads", ({ session, user }) =>
@@ -1217,6 +1293,14 @@ export const composition = {
   UserRoads,
   UserHistory,
   ViewHistory,
+  ClassHours,
+  StudySettings,
+  ViewClassHours,
+  ViewStudySettings,
+  SetStudyFactor,
+  SetReserve,
+  SetSubjectFactor,
+  ClearSubjectFactor,
   AddPriorCredit,
   AddPriorCreditRefused,
   RemovePriorCredit,

@@ -247,3 +247,86 @@ describe("settings", () => {
     expect(await t._roadSettings({ road: "r" })).toEqual({ mode: "SOFT", hasBuffer: false, buffer: 0, shareMode: "METRICS" });
   });
 });
+
+/*
+ * Classes and classHours:
+ *   schedule: for this season (EXACT) / same term, another year (ESTIMATE) / another term (NONE) /
+ *     a part arranged (ARRANGED) / none
+ *   inClass source: SCHEDULE / EVALUATIONS / UNITS / ASSUMED (no Class at all, or nothing known)
+ *   outOfClass source: EVALUATIONS / FORMULA with the user's factor / with a subject factor
+ *   setClass: replaces / bad parts (not JSON, bad kind, meeting past midnight) / half a season
+ */
+describe("classes", () => {
+  // 6.1210-like: lecture TR 11-12:30, recitations WF 10 or WF 11.
+  const PARTS = JSON.stringify([
+    { kind: "LECTURE", arranged: false, sections: [{ room: "26-100", meetings: [{ day: 1, start: 44, length: 6 }, { day: 3, start: 44, length: 6 }] }] },
+    { kind: "RECITATION", arranged: false, sections: [
+      { room: "34-304", meetings: [{ day: 2, start: 40, length: 4 }, { day: 4, start: 40, length: 4 }] },
+      { room: "34-304", meetings: [{ day: 2, start: 44, length: 4 }, { day: 4, start: 44, length: 4 }] },
+    ] },
+  ]);
+  const fall = { scheduleYear: 2026, scheduleTerm: "FALL" as const };
+
+  it("covers hours from the schedule, exact and estimated, with evaluation hours outside class", async () => {
+    await t.setClass({ subject: "6.1210", ...fall, parts: PARTS, inClassHours: 4.11, outOfClassHours: 7.61, contactUnits: 5 });
+    expect(await t._classHours({ user: "u", subject: "6.1210", year: 2026, term: "FALL" })).toEqual({
+      known: true, inClass: 5, inClassSource: "SCHEDULE", outOfClass: 7.61, outOfClassSource: "EVALUATIONS",
+      factor: 2, total: 12.61, schedule: "EXACT",
+    });
+    expect((await t._classHours({ user: "u", subject: "6.1210", year: 2027, term: "FALL" })).schedule).toBe("ESTIMATE");
+    const spring = await t._classHours({ user: "u", subject: "6.1210", year: 2027, term: "SPRING" });
+    expect(spring).toMatchObject({ inClass: 4.11, inClassSource: "EVALUATIONS", schedule: "NONE" });
+    expect(await t._sections({ subject: "6.1210", year: 2027, term: "SPRING" })).toEqual([]);
+    expect(await t._sections({ subject: "6.1210", year: 2026, term: "FALL" })).toEqual([
+      { kind: "LECTURE", section: 1, room: "26-100", day: 1, start: 44, length: 6 },
+      { kind: "LECTURE", section: 1, room: "26-100", day: 3, start: 44, length: 6 },
+      { kind: "RECITATION", section: 1, room: "34-304", day: 2, start: 40, length: 4 },
+      { kind: "RECITATION", section: 1, room: "34-304", day: 4, start: 40, length: 4 },
+      { kind: "RECITATION", section: 2, room: "34-304", day: 2, start: 44, length: 4 },
+      { kind: "RECITATION", section: 2, room: "34-304", day: 4, start: 44, length: 4 },
+    ]);
+  });
+
+  it("covers the worksheet formula: contact hours times the factor, the user's or the subject's", async () => {
+    await t.setClass({ subject: "21M.301", parts: "[]", contactUnits: 3 });
+    expect(await t._classHours({ user: "u", subject: "21M.301", year: 2026, term: "FALL" })).toEqual({
+      known: true, inClass: 3, inClassSource: "UNITS", outOfClass: 6, outOfClassSource: "FORMULA", factor: 2, total: 9, schedule: "NONE",
+    });
+    await t.setFactor({ user: "u", factor: 3 });
+    expect(await t._classHours({ user: "u", subject: "21M.301", year: 2026, term: "FALL" })).toMatchObject({ outOfClass: 9, factor: 3, total: 12 });
+    await t.setSubjectFactor({ user: "u", subject: "21M.301", factor: 2.5 });
+    expect(await t._classHours({ user: "u", subject: "21M.301", year: 2026, term: "FALL" })).toMatchObject({ outOfClass: 7.5, factor: 2.5 });
+    expect((await t._classHours({ user: "v", subject: "21M.301", year: 2026, term: "FALL" })).outOfClass).toBe(6);
+  });
+
+  it("covers arranged parts and subjects the catalog says nothing about", async () => {
+    const arranged = JSON.stringify([
+      { kind: "LECTURE", arranged: false, sections: [{ room: "1-134", meetings: [{ day: 1, start: 56, length: 8 }] }] },
+      { kind: "LAB", arranged: true, sections: [] },
+    ]);
+    await t.setClass({ subject: "1.00", ...fall, parts: arranged, contactUnits: 4 });
+    expect(await t._classHours({ user: "u", subject: "1.00", year: 2026, term: "FALL" }))
+      .toMatchObject({ inClass: 4, inClassSource: "UNITS", schedule: "ARRANGED" });
+    expect(await t._sections({ subject: "1.00", year: 2026, term: "FALL" })).toHaveLength(1);
+    await t.setClass({ subject: "X", parts: "[]" });
+    expect(await t._classHours({ user: "u", subject: "X", year: 2026, term: "FALL" }))
+      .toMatchObject({ known: true, inClass: 3, inClassSource: "ASSUMED", outOfClass: 6, outOfClassSource: "FORMULA" });
+    expect(await t._classHours({ user: "u", subject: "nope", year: 2026, term: "FALL" }))
+      .toMatchObject({ known: false, inClass: 3, inClassSource: "ASSUMED", total: 9, schedule: "NONE" });
+  });
+
+  it("covers replacing and removing a class, and classes that cannot be read", async () => {
+    await t.setClass({ subject: "A", ...fall, parts: PARTS, outOfClassHours: 8 });
+    await t.setClass({ subject: "A", parts: "[]", contactUnits: 4 });
+    expect(await t._classHours({ user: "u", subject: "A", year: 2026, term: "FALL" }))
+      .toMatchObject({ inClass: 4, outOfClassSource: "FORMULA", schedule: "NONE" });
+    await t.removeClass({ subject: "A" });
+    await t.removeClass({ subject: "A" });
+    expect((await t._classHours({ user: "u", subject: "A", year: 2026, term: "FALL" })).known).toBe(false);
+    for (const parts of ["{", "{}", '[{"kind":"SEMINAR","arranged":false,"sections":[]}]',
+      '[{"kind":"LAB","arranged":false,"sections":[{"room":"x","meetings":[{"day":0,"start":92,"length":8}]}]}]']) {
+      await expectRefusal("setClass", "BAD_CLASS", t.setClass({ subject: "B", parts }));
+    }
+    await expectRefusal("setClass", "BAD_CLASS", t.setClass({ subject: "B", scheduleYear: 2026, parts: "[]" }));
+  });
+});

@@ -86,6 +86,12 @@ export class BadShareMode extends Refusal {
   }
 }
 
+export class BadClass extends Refusal {
+  constructor(message = "That class could not be read.") {
+    super("BAD_CLASS", message);
+  }
+}
+
 export type Term = "IAP" | "SPRING" | "SUMMER" | "FALL";
 type Mode = "SOFT" | "HARD";
 type ShareMode = "METRICS" | "DETAILS";
@@ -175,6 +181,70 @@ interface RoadSettingsRecord {
   shareMode: ShareMode;
 }
 
+// ---------- Classes: the catalog's facts about the time a subject takes ----------
+
+export type Kind = "LECTURE" | "RECITATION" | "LAB" | "DESIGN";
+const KINDS: Kind[] = ["LECTURE", "RECITATION", "LAB", "DESIGN"];
+export type ClassMeeting = { day: number; start: number; length: number };
+export type ClassSection = { room: string; meetings: ClassMeeting[] };
+export type ClassPart = { kind: Kind; arranged: boolean; sections: ClassSection[] };
+
+interface ClassRecord {
+  _id: string; // subject
+  scheduleYear?: number;
+  scheduleTerm?: Term;
+  parts: ClassPart[];
+  inClassHours?: number;
+  outOfClassHours?: number;
+  contactUnits?: number;
+}
+
+/** Reads parts in the form setClass takes, or answers null. Each meeting stays inside one day. */
+function parseParts(text: string): ClassPart[] | null {
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(value)) return null;
+  const meetingOk = (m: any) =>
+    isWhole(m?.day, 0, 6) && isWhole(m?.start, 0, SLOTS_PER_DAY - 1) && isWhole(m?.length, 1, SLOTS_PER_DAY - m.start);
+  const ok = value.every((p: any) =>
+    KINDS.includes(p?.kind) && typeof p.arranged === "boolean" && Array.isArray(p.sections) &&
+    p.sections.every((s: any) => typeof s?.room === "string" && Array.isArray(s.meetings) && s.meetings.every(meetingOk)));
+  if (!ok) return null;
+  return (value as ClassPart[]).map((p) => ({
+    kind: p.kind,
+    arranged: p.arranged,
+    sections: p.sections.map((s) => ({ room: s.room, meetings: s.meetings.map(({ day, start, length }) => ({ day, start, length })) })),
+  }));
+}
+
+/** EXACT for the class's schedule season, ESTIMATE for the same term in another year, else NONE. */
+function scheduleFor(c: ClassRecord | null, year: number, term: Term): "EXACT" | "ESTIMATE" | "NONE" {
+  if (!c || c.scheduleTerm !== term || c.parts.length === 0) return "NONE";
+  return c.scheduleYear === year ? "EXACT" : "ESTIMATE";
+}
+
+/** Hours a week of the schedule: each part's most common section length (ties to the shorter). */
+function scheduledHours(parts: ClassPart[]): number {
+  let slots = 0;
+  for (const p of parts) {
+    const counts = new Map<number, number>();
+    for (const s of p.sections) {
+      const n = s.meetings.reduce((a, m) => a + m.length, 0);
+      counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    const [typical] = [...counts.entries()].sort(([a, na], [b, nb]) => nb - na || a - b)[0] ?? [0];
+    slots += typical;
+  }
+  return slots / 4;
+}
+
+const ASSUMED_IN_CLASS = 3; // a typical 12-unit subject, 3-0-9
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 const DEFAULT_BUFFER = 10;
 const DEFAULT_FACTOR = 2;
 const TERMS: Term[] = ["IAP", "SPRING", "SUMMER", "FALL"];
@@ -200,6 +270,7 @@ export class TimeBudgetConcept {
   private readonly settings: Collection<SettingsRecord>;
   private readonly subjectFactors: Collection<SubjectFactorRecord>;
   private readonly roadSettings: Collection<RoadSettingsRecord>;
+  private readonly classes: Collection<ClassRecord>;
   private indexed = false;
 
   constructor(db: Db) {
@@ -209,6 +280,7 @@ export class TimeBudgetConcept {
     this.settings = db.collection<SettingsRecord>("timebudget.settings");
     this.subjectFactors = db.collection<SubjectFactorRecord>("timebudget.subjectFactors");
     this.roadSettings = db.collection<RoadSettingsRecord>("timebudget.roadSettings");
+    this.classes = db.collection<ClassRecord>("timebudget.classes");
   }
 
   async #ensureIndexes() {
@@ -424,6 +496,30 @@ export class TimeBudgetConcept {
     return {};
   }
 
+  // ---------- Classes ----------
+
+  async setClass(
+    { subject, scheduleYear, scheduleTerm, parts, inClassHours, outOfClassHours, contactUnits }: {
+      subject: string; scheduleYear?: number; scheduleTerm?: Term; parts: string;
+      inClassHours?: number; outOfClassHours?: number; contactUnits?: number;
+    },
+  ) {
+    const parsed = parseParts(parts);
+    if (!parsed || (scheduleYear === undefined) !== (scheduleTerm === undefined)) throw new BadClass();
+    const record: ClassRecord = { _id: subject, parts: parsed };
+    if (scheduleYear !== undefined) Object.assign(record, { scheduleYear, scheduleTerm });
+    if (inClassHours !== undefined) record.inClassHours = inClassHours;
+    if (outOfClassHours !== undefined) record.outOfClassHours = outOfClassHours;
+    if (contactUnits !== undefined) record.contactUnits = contactUnits;
+    await this.classes.replaceOne({ _id: subject }, record, { upsert: true });
+    return {};
+  }
+
+  async removeClass({ subject }: { subject: string }) {
+    await this.classes.deleteOne({ _id: subject });
+    return {};
+  }
+
   async forgetRoad({ road }: { road: string }) {
     await this.roadSettings.deleteOne({ _id: road });
     return {};
@@ -501,6 +597,43 @@ export class TimeBudgetConcept {
     return found
       .sort((a, b) => (a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0))
       .map(({ subject, factor }) => ({ subject, factor }));
+  }
+
+  async _classHours({ user, subject, year, term }: { user: string; subject: string; year: number; term: Term }) {
+    const [c, settings, own] = await Promise.all([
+      this.classes.findOne({ _id: subject }),
+      this._settings({ user }),
+      this.subjectFactors.findOne({ _id: `${user}|${subject}` }),
+    ]);
+    const factor = own?.factor ?? settings.factor;
+    const fit = scheduleFor(c, year, term);
+    const arranged = fit !== "NONE" && c!.parts.some((p) => p.arranged);
+    let inClass: number;
+    let inClassSource: "SCHEDULE" | "EVALUATIONS" | "UNITS" | "ASSUMED";
+    if (fit !== "NONE" && !arranged) [inClass, inClassSource] = [scheduledHours(c!.parts), "SCHEDULE"];
+    else if (c?.inClassHours !== undefined) [inClass, inClassSource] = [c.inClassHours, "EVALUATIONS"];
+    else if (c?.contactUnits !== undefined) [inClass, inClassSource] = [c.contactUnits, "UNITS"];
+    else [inClass, inClassSource] = [ASSUMED_IN_CLASS, "ASSUMED"];
+    const fromEvaluations = c?.outOfClassHours !== undefined;
+    const outOfClass = fromEvaluations ? c!.outOfClassHours! : round2(inClass * factor);
+    return {
+      known: c !== null,
+      inClass: round2(inClass),
+      inClassSource,
+      outOfClass,
+      outOfClassSource: fromEvaluations ? "EVALUATIONS" : "FORMULA",
+      factor,
+      total: round2(inClass + outOfClass),
+      schedule: arranged ? "ARRANGED" : fit,
+    };
+  }
+
+  async _sections({ subject, year, term }: { subject: string; year: number; term: Term }) {
+    const c = await this.classes.findOne({ _id: subject });
+    if (scheduleFor(c, year, term) === "NONE") return [];
+    return c!.parts.flatMap((p) =>
+      p.sections.flatMap((s, i) =>
+        s.meetings.map((m) => ({ kind: p.kind, section: i + 1, room: s.room, day: m.day, start: m.start, length: m.length }))));
   }
 
   async _roadSettings({ road }: { road: string }) {

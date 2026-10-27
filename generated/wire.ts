@@ -95,6 +95,14 @@ export type BFSThisMessWire = {
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_CAP_TYPE" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/clearSubjectFactor": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["clearSubjectFactor"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUBJECT_FACTOR" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/copyRoad": {
     input: {
       "name": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["copyRoad"]>[0], ["name"]>>;
@@ -483,6 +491,14 @@ export type BFSThisMessWire = {
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_COUNT" | "EMPTY_MAJOR" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_LISTING" | "NO_SUCH_BLOCK" | "NO_SUCH_MAJOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/setReserve": {
+    input: {
+      "buffer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBuffer"]>[0], ["buffer"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_BUFFER" | "INVALID_INPUT" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/setRole": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["setRole"]>[0], ["road"]>]>>;
@@ -502,6 +518,23 @@ export type BFSThisMessWire = {
     };
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_START" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/setStudyFactor": {
+    input: {
+      "factor": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setFactor"]>[0], ["factor"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_FACTOR" | "INVALID_INPUT" | "NO_SUCH_SESSION" };
+  };
+  "/bfsthismess/setSubjectFactor": {
+    input: {
+      "factor": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setSubjectFactor"]>[0], ["factor"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setSubjectFactor"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_FACTOR" | "INVALID_INPUT" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/shareRoad": {
     input: {
@@ -539,6 +572,35 @@ export type BFSThisMessWire = {
     };
     output: Record<string, never>;
     error: { error: AppWideError | "INVALID_INPUT" | "NOT_AN_OWNER" | "NOT_SHARED" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" | "NO_SUCH_USER" };
+  };
+  "/bfsthismess/viewClassHours": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>[0], ["subject"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>[0], ["subject"]>]>>;
+      "term": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>[0], ["term"]>]>>;
+      "year": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>[0], ["year"]>]>>;
+    };
+    output: {
+      "hours": {
+        "factor": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["factor"]>>;
+        "inClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["inClass"]>>;
+        "inClassSource": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["inClassSource"]>>;
+        "known": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["known"]>>;
+        "outOfClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["outOfClass"]>>;
+        "outOfClassSource": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["outOfClassSource"]>>;
+        "schedule": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["schedule"]>>;
+        "sections": {
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["day"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["kind"]>>;
+          "length": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["length"]>>;
+          "room": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["room"]>>;
+          "section": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["section"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["start"]>>;
+        }[];
+        "total": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["total"]>>;
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_SESSION" };
   };
   "/bfsthismess/viewHistory": {
     input: {
@@ -781,6 +843,22 @@ export type BFSThisMessWire = {
     };
     error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/viewStudySettings": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "settings": {
+        "buffer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_settings"]>>>, ["buffer"]>>;
+        "factor": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_settings"]>>>, ["factor"]>>;
+        "subjectFactors": {
+          "factor": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_subjectFactors"]>>>, ["factor"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_subjectFactors"]>>>, ["subject"]>>;
+        }[];
+      };
+    };
+    error: { error: AppWideError | "INVALID_INPUT" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/viewSubject": {
     input: {
       "course": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_cancellations"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_corequisites"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_course"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_prerequisites"]>[0], ["course"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["CourseOffering"]["_terms"]>[0], ["course"]>]>>;
@@ -904,6 +982,14 @@ export type BFSThisMessWireHttp = {
     };
     output: Record<string, never>;
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/clearSubjectFactor": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["clearSubjectFactor"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
   "/bfsthismess/copyRoad": {
     input: {
@@ -1293,6 +1379,14 @@ export type BFSThisMessWireHttp = {
     output: Record<string, never>;
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
+  "/bfsthismess/setReserve": {
+    input: {
+      "buffer": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setBuffer"]>[0], ["buffer"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/setRole": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["setRole"]>[0], ["road"]>]>>;
@@ -1312,6 +1406,23 @@ export type BFSThisMessWireHttp = {
     };
     output: Record<string, never>;
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/setStudyFactor": {
+    input: {
+      "factor": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setFactor"]>[0], ["factor"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/setSubjectFactor": {
+    input: {
+      "factor": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setSubjectFactor"]>[0], ["factor"]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setSubjectFactor"]>[0], ["subject"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/shareRoad": {
     input: {
@@ -1349,6 +1460,35 @@ export type BFSThisMessWireHttp = {
     };
     output: Record<string, never>;
     error: { error: HttpAppWideError | "CONFLICT" | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/viewClassHours": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "subject": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>[0], ["subject"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>[0], ["subject"]>]>>;
+      "term": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>[0], ["term"]>]>>;
+      "year": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>[0], ["year"]>]>>;
+    };
+    output: {
+      "hours": {
+        "factor": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["factor"]>>;
+        "inClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["inClass"]>>;
+        "inClassSource": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["inClassSource"]>>;
+        "known": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["known"]>>;
+        "outOfClass": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["outOfClass"]>>;
+        "outOfClassSource": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["outOfClassSource"]>>;
+        "schedule": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["schedule"]>>;
+        "sections": {
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["day"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["kind"]>>;
+          "length": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["length"]>>;
+          "room": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["room"]>>;
+          "section": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["section"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_sections"]>>>, ["start"]>>;
+        }[];
+        "total": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_classHours"]>>>, ["total"]>>;
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/viewHistory": {
     input: {
@@ -1590,6 +1730,22 @@ export type BFSThisMessWireHttp = {
       };
     };
     error: { error: HttpAppWideError | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
+  "/bfsthismess/viewStudySettings": {
+    input: {
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+    };
+    output: {
+      "settings": {
+        "buffer": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_settings"]>>>, ["buffer"]>>;
+        "factor": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_settings"]>>>, ["factor"]>>;
+        "subjectFactors": {
+          "factor": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_subjectFactors"]>>>, ["factor"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_subjectFactors"]>>>, ["subject"]>>;
+        }[];
+      };
+    };
+    error: { error: HttpAppWideError | "INVALID_REQUEST" | "UNAUTHORIZED" };
   };
   "/bfsthismess/viewSubject": {
     input: {

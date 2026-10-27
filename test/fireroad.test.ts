@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-  academicYearOf, dependenciesOf, fromFireroad, indexCatalog, offeringOf, parseRequirement, scheduleOf, toClauses, unitsOf,
+  academicYearOf, contactUnitsOf, dependenciesOf, fromFireroad, scheduleSeasonOf, indexCatalog, offeringOf, parseRequirement, scheduleOf, toClauses, unitsOf,
   type BuildStats, type FireroadCourse,
 } from "../src/catalog/fireroad.ts";
 
@@ -199,7 +199,7 @@ describe("fromFireroad", () => {
       subject_id: "8.02", title: "Physics II", description: "Electromagnetism.", instructors: ["A. Prof"], level: "U",
       offered_fall: true, offered_spring: true, total_units: 12, lecture_units: 3, lab_units: 2, preparation_units: 7,
       prerequisites: "GIR:CAL1, GIR:PHY1", schedule: "Lecture,32-082/MW/0/9-10.30", rating: 5.38,
-      enrollment_number: 412.6,
+      enrollment_number: 412.6, in_class_hours: 4.666, out_of_class_hours: 8.2,
     },
     { subject_id: "18.01", title: "Calculus", level: "U", gir_attribute: "CAL1", offered_fall: true, total_units: 12 },
     { subject_id: "8.01", title: "Physics I", level: "U", gir_attribute: "PHY1", offered_fall: true, total_units: 12 },
@@ -228,7 +228,17 @@ describe("fromFireroad", () => {
       rating: { classRating: 5.38, url: expect.stringContaining("subjectCode=8.02") },
       totalUnits: 12,
       enrollment: 413,
+      schedule: "Lecture,32-082/MW/0/9-10.30",
+      inClassHours: 4.67,
+      outOfClassHours: 8.2,
+      contactUnits: 5,
     });
+  });
+
+  test("schedules: only 8.02 has one, and it runs in fall and spring, so their season is not known", () => {
+    expect(snapshot).not.toHaveProperty("scheduleSeason");
+    expect(get("18.01")).not.toHaveProperty("schedule");
+    expect(get("21M.301")).not.toHaveProperty("contactUnits"); // variable units
   });
 
   test("GIRs leave out historical subjects; GIR:LAB includes LAB2 subjects", () => {
@@ -269,5 +279,27 @@ describe("indexCatalog", () => {
     expect(index.attribute("GIR:REST")).toEqual([]);
     expect(index.attribute("CI-M")).toEqual([]);
     expect(index.attribute("18.01")).toBeNull();
+  });
+});
+
+describe("scheduleSeasonOf and contactUnitsOf", () => {
+  const only = (term: "fall" | "IAP" | "spring" | "summer", schedule?: string): FireroadCourse =>
+    ({ subject_id: `${term}${Math.random()}`, title: "", [`offered_${term}`]: true, schedule });
+
+  test("the term whose own subjects most often have a schedule", () => {
+    const fall = [only("fall", "Lecture,1-1/M/0/10"), only("fall"), only("fall", "Lecture,1-1/T/0/10")];
+    const spring = [only("spring", "Lecture,1-1/M/0/10"), only("spring"), only("spring"), only("spring"), only("spring")];
+    expect(scheduleSeasonOf([...fall, ...spring], 2026)).toEqual({ year: 2026, term: "FALL" });
+    const springNow = [only("fall"), only("fall"), only("spring", "Lecture,1-1/M/0/10"), only("IAP")];
+    expect(scheduleSeasonOf(springNow, 2026)).toEqual({ year: 2027, term: "SPRING" });
+    expect(scheduleSeasonOf([only("fall"), only("spring")], 2026)).toBeUndefined();
+    // Subjects offered in several terms say nothing about which one.
+    expect(scheduleSeasonOf([{ subject_id: "x", title: "", offered_fall: true, offered_spring: true, schedule: "Lecture,1-1/M/0/10" }], 2026)).toBeUndefined();
+  });
+
+  test("contact units are lecture plus lab and design units", () => {
+    expect(contactUnitsOf({ subject_id: "a", title: "", lecture_units: 3, lab_units: 2, design_units: 1, preparation_units: 6 })).toBe(6);
+    expect(contactUnitsOf({ subject_id: "a", title: "", lecture_units: 0, preparation_units: 12 })).toBeUndefined();
+    expect(contactUnitsOf({ subject_id: "a", title: "", is_variable_units: true, lecture_units: 3 })).toBeUndefined();
   });
 });
