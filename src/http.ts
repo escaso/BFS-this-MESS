@@ -74,5 +74,6 @@ export const policy = httpPolicy({
     NO_SUCH_SECTION: "INVALID_REQUEST",
     NOT_CHOSEN: "CONFLICT",
     BAD_MODE: "INVALID_REQUEST",
+    BAD_SHARE_MODE: "INVALID_REQUEST",
   },
 });

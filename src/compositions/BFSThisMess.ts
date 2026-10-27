@@ -1356,29 +1356,51 @@ const PlanMetrics = former(
     }),
 );
 
+// The classes of a semester on the week: the parts that say nothing about the owner's time.
+const classesOf = (road: Var, year: Var, term: Var, subjects: Var, v: Record<string, Var>, withBlocks: boolean) => ({
+  placement: each(TimeBudget._placement({ user: v.owner!, road, year, term, subjects, withBlocks }).is({
+    subject: v.subject!, kind: v.kind!, section: v.section!, options: v.options!, chosen: v.chosen!, room: v.room!,
+    day: v.day!, start: v.start!, slots: v.slots!, conflicted: v.conflicted!,
+  })).form({
+    subject: v.subject!, kind: v.kind!, section: v.section!, options: v.options!, chosen: v.chosen!, room: v.room!,
+    day: v.day!, start: v.start!, slots: v.slots!, conflicted: v.conflicted!,
+  }),
+  conflicts: each(TimeBudget._conflicts({ user: v.owner!, road, year, term, subjects, withBlocks }).is({
+    subject: v.cSubject!, kind: v.cKind!, day: v.cDay!, start: v.cStart!, slots: v.cSlots!, withBlock: v.withBlock!, with: v.with!,
+  })).form({
+    subject: v.cSubject!, kind: v.cKind!, day: v.cDay!, start: v.cStart!, slots: v.cSlots!, withBlock: v.withBlock!, with: v.with!,
+  }),
+  unplaced: each(TimeBudget._unplaced({ year, term, subjects }).is({ subject: v.uSubject!, reason: v.reason! }))
+    .form({ subject: v.uSubject!, reason: v.reason! }),
+});
+
+// With the owner's blocked time: for the owner, and for others when the road shares it.
 const SemesterSchedule = former(
   "the schedule of a semester of a plan",
   ({ road, year, term, subjects }, v) =>
     where(Share._ownerOf({ road }).is({ owner: v.owner })).form({
-      placement: each(TimeBudget._placement({ user: v.owner, road, year, term, subjects }).is({
-        subject: v.subject, kind: v.kind, section: v.section, options: v.options, chosen: v.chosen, room: v.room,
-        day: v.day, start: v.start, slots: v.slots, conflicted: v.conflicted,
-      })).form({
-        subject: v.subject, kind: v.kind, section: v.section, options: v.options, chosen: v.chosen, room: v.room,
-        day: v.day, start: v.start, slots: v.slots, conflicted: v.conflicted,
-      }),
-      conflicts: each(TimeBudget._conflicts({ user: v.owner, road, year, term, subjects }).is({
-        subject: v.cSubject, kind: v.cKind, day: v.cDay, start: v.cStart, slots: v.cSlots, withBlock: v.withBlock, with: v.with,
-      })).form({
-        subject: v.cSubject, kind: v.cKind, day: v.cDay, start: v.cStart, slots: v.cSlots, withBlock: v.withBlock, with: v.with,
-      }),
-      unplaced: each(TimeBudget._unplaced({ year, term, subjects }).is({ subject: v.uSubject, reason: v.reason }))
-        .form({ subject: v.uSubject, reason: v.reason }),
+      shared: "DETAILS",
+      ...classesOf(road, year, term, subjects, v, true),
       blocks: each(TimeBudget._templateFor({ user: v.owner, year, term }).is({ template: v.template }))
         .where(TimeBudget._blocks({ template: v.template }).is({ category: v.bCategory, day: v.bDay, start: v.bStart, slots: v.bSlots }))
         .form({ category: v.bCategory, day: v.bDay, start: v.bStart, slots: v.bSlots }),
       categories: each(TimeBudget._categories({ user: v.owner }).is({ category: v.category, name: v.name, color: v.color }))
         .form({ category: v.category, name: v.name, color: v.color }),
+    }),
+);
+
+// Hours only: the classes, their conflicts with each other, and only how many conflicts
+// there are with blocked time. No block, category or time the owner has blocked.
+const SharedSemesterSchedule = former(
+  "the schedule of a semester of a plan, shared as hours only",
+  ({ road, year, term, subjects }, v) =>
+    where(
+      Share._ownerOf({ road }).is({ owner: v.owner }),
+      TimeBudget._blockConflicts({ user: v.owner, road, year, term, subjects }).is({ count: v.count }),
+    ).form({
+      shared: "METRICS",
+      ...classesOf(road, year, term, subjects, v, false),
+      blockConflicts: v.count,
     }),
 );
 
@@ -1392,13 +1414,37 @@ const ViewPlanMetrics = endpoint("/bfsthismess/viewPlanMetrics", ({ session, use
   ),
 );
 
+// The owner always sees their blocked time; others only when the road shares it (DETAILS).
+const sharesAs = (session: Var, user: Var, road: Var, shareMode: "METRICS" | "DETAILS") =>
+  where(
+    Authentication._authenticate({ session }).is({ user }),
+    Share._canView({ road, user }).is({ allowed: true }),
+    Share._isOwner({ road, user }).is({ owner: false }),
+    TimeBudget._roadSettings({ road }).is({ shareMode }),
+  );
+
 const ViewSemesterSchedule = endpoint("/bfsthismess/viewSemesterSchedule", ({ session, user, road, year, term, subjects }) =>
   receive({ session, road, year, term, subjects }).then(
     noSession(session),
     hiddenRoad(session, user, road),
-    asViewer(session, user, road)
+    asOwner(session, user, road)
       .then(respond({ schedule: SemesterSchedule({ road, year, term, subjects }) }))
-      .named("viewer"),
+      .named("owner"),
+    sharesAs(session, user, road, "DETAILS")
+      .then(respond({ schedule: SemesterSchedule({ road, year, term, subjects }) }))
+      .named("shared-details"),
+    sharesAs(session, user, road, "METRICS")
+      .then(respond({ schedule: SharedSemesterSchedule({ road, year, term, subjects }) }))
+      .named("shared-hours"),
+  ),
+);
+
+const SetShareMode = endpoint("/bfsthismess/setShareMode", ({ session, user, road, shareMode }) =>
+  receive({ session, road, shareMode }).then(
+    noSession(session),
+    hiddenRoad(session, user, road),
+    notOwner(session, user, road),
+    asOwner(session, user, road).then(TimeBudget.setShareMode({ road, shareMode }).responds({})).then(respond({})).named("owner"),
   ),
 );
 
@@ -1614,6 +1660,8 @@ export const composition = {
   StudySettings,
   PlanMetrics,
   SemesterSchedule,
+  SharedSemesterSchedule,
+  SetShareMode,
   ViewPlanMetrics,
   ViewSemesterSchedule,
   ChooseSection,

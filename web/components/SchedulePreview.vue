@@ -4,7 +4,9 @@
 // hatched and marked ⚠, and listed below, so they never rely on colour. Classes with
 // more than one section can be swapped by the owner and editors; "Picked for you" lets
 // the planner choose again. Classes with no time (TBA, or no schedule this term) count
-// in the hours but have no place here.
+// in the hours but have no place here. When the road is shared as hours only and the
+// person is not its owner, the server sends no blocked time at all: only how many
+// meetings overlap it.
 import { computed, ref, watch } from "vue";
 import { call, message, type Output } from "../api.ts";
 import { canEdit } from "../access.ts";
@@ -45,7 +47,8 @@ const PX = 7; // per 15 minutes
 const hours = Array.from({ length: (LAST - FIRST) / 4 }, (_, i) => FIRST + i * 4);
 const PALETTE = ["#7248d7", "#0b7a75", "#b3261e", "#1f5fbf", "#8a5a00", "#7b0082", "#556600", "#21286d"];
 const colorOf = (subject: string) => PALETTE[props.subjects.slice().sort().indexOf(subject) % PALETTE.length] ?? PALETTE[0]!;
-const categories = computed(() => new Map(schedule.value?.categories.map((c) => [c.category, c]) ?? []));
+const details = computed(() => (schedule.value?.shared === "DETAILS" ? schedule.value : null));
+const categories = computed(() => new Map(details.value?.categories.map((c) => [c.category, c]) ?? []));
 const categoryName = (id: string) => categories.value.get(id)?.name ?? "Blocked time";
 const KIND: Record<string, string> = { LECTURE: "lecture", RECITATION: "recitation", LAB: "lab", DESIGN: "design" };
 
@@ -56,7 +59,7 @@ function place(start: number, slots: number) {
   return to > from ? { top: (from - FIRST) * PX, height: (to - from) * PX } : null;
 }
 const blocksOn = (day: number) =>
-  (schedule.value?.blocks ?? []).flatMap((b) => segments(b).filter((s) => s.day === day).map((s) => ({ b, at: place(s.start, s.slots) })))
+  (details.value?.blocks ?? []).flatMap((b) => segments(b).filter((s) => s.day === day).map((s) => ({ b, at: place(s.start, s.slots) })))
     .filter((x) => x.at);
 const classesOn = (day: number) =>
   (schedule.value?.placement ?? []).filter((p) => p.day === day).map((p) => ({ p, at: place(p.start, p.slots) })).filter((x) => x.at);
@@ -135,7 +138,13 @@ const REASON: Record<string, string> = {
           </div>
         </div>
       </div>
-      <p class="hint">Grey: your blocked time. Hatched with ⚠: a class that overlaps blocked time or another class.</p>
+      <p v-if="details" class="hint">Grey: blocked time. Hatched with ⚠: a class that overlaps blocked time or another class.</p>
+      <p v-else class="hint" role="note">
+        This road shares hours only, so its owner's blocked time isn't shown. Hatched with ⚠: a class that overlaps another.
+        <template v-if="schedule.shared === 'METRICS' && schedule.blockConflicts">
+          {{ schedule.blockConflicts }} meeting{{ schedule.blockConflicts === 1 ? "" : "s" }} overlap{{ schedule.blockConflicts === 1 ? "s" : "" }} the owner's blocked time.
+        </template>
+      </p>
       <p v-if="outside.length" class="hint">
         Also meets outside 7am–11pm: {{ outside.map((p) => `${p.subject} ${SHORT_DAYS[p.day]} ${timeOf(p.start)}`).join(", ") }}.
       </p>
@@ -147,7 +156,8 @@ const REASON: Record<string, string> = {
           overlaps {{ c.withBlock ? categoryName(c.with) : c.with }}
         </li>
       </ul>
-      <p v-else class="ok">No conflicts: every class fits around your blocked time.</p>
+      <p v-else-if="details" class="ok">No conflicts: every class fits around the blocked time.</p>
+      <p v-else-if="schedule.shared === 'METRICS' && !schedule.blockConflicts" class="ok">No conflicts.</p>
 
       <h4>Sections</h4>
       <table v-if="parts.length" class="sections-table">

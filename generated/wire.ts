@@ -651,6 +651,15 @@ export type BFSThisMessWire = {
     output: Record<string, never>;
     error: { error: AppWideError | "BAD_MODE" | "INVALID_INPUT" | "NOT_AN_EDITOR" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
   };
+  "/bfsthismess/setShareMode": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setShareMode"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "shareMode": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setShareMode"]>[0], ["shareMode"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: AppWideError | "BAD_SHARE_MODE" | "INVALID_INPUT" | "NOT_AN_OWNER" | "NO_SUCH_ROAD" | "NO_SUCH_SESSION" };
+  };
   "/bfsthismess/setStart": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
@@ -1023,11 +1032,11 @@ export type BFSThisMessWire = {
   };
   "/bfsthismess/viewSemesterSchedule": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_ownerOf"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["road"]>]>]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "subjects": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["subjects"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["subjects"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["subjects"]>]>>;
-      "term": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["term"]>]>>;
-      "year": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["year"]>]>>;
+      "term": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["term"]>]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blockConflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["term"]>]>]>>;
+      "year": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["year"]>]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blockConflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["year"]>]>]>>;
     };
     output: {
       "schedule": {
@@ -1063,6 +1072,37 @@ export type BFSThisMessWire = {
           "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["start"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["subject"]>>;
         }[];
+        "shared": "DETAILS";
+        "unplaced": {
+          "reason": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["reason"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["subject"]>>;
+        }[];
+      };
+    } | {
+      "schedule": {
+        "blockConflicts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blockConflicts"]>>>, ["count"]>>;
+        "conflicts": {
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["day"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["kind"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["start"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["subject"]>>;
+          "with": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["with"]>>;
+          "withBlock": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["withBlock"]>>;
+        }[];
+        "placement": {
+          "chosen": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["chosen"]>>;
+          "conflicted": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["conflicted"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["day"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["kind"]>>;
+          "options": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["options"]>>;
+          "room": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["room"]>>;
+          "section": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["section"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["start"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["subject"]>>;
+        }[];
+        "shared": "METRICS";
         "unplaced": {
           "reason": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["reason"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["subject"]>>;
@@ -1872,6 +1912,15 @@ export type BFSThisMessWireHttp = {
     output: Record<string, never>;
     error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
   };
+  "/bfsthismess/setShareMode": {
+    input: {
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setShareMode"]>[0], ["road"]>]>>;
+      "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
+      "shareMode": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["setShareMode"]>[0], ["shareMode"]>>;
+    };
+    output: Record<string, never>;
+    error: { error: HttpAppWideError | "FORBIDDEN" | "INVALID_REQUEST" | "NOT_FOUND" | "UNAUTHORIZED" };
+  };
   "/bfsthismess/setStart": {
     input: {
       "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Constrain"]["setStart"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>]>>;
@@ -2244,11 +2293,11 @@ export type BFSThisMessWireHttp = {
   };
   "/bfsthismess/viewSemesterSchedule": {
     input: {
-      "road": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>>;
+      "road": Jsonify<OneOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_canView"]>[0], ["road"]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_isOwner"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Share"]["_ownerOf"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["road"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["road"]>]>]>>;
       "session": Jsonify<AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["Authentication"]["_authenticate"]>[0], ["session"]>>;
       "subjects": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["subjects"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["subjects"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["subjects"]>]>>;
-      "term": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["term"]>]>>;
-      "year": Jsonify<AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["year"]>]>>;
+      "term": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["term"]>]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blockConflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["term"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["term"]>]>]>>;
+      "year": Jsonify<OneOf<[AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_templateFor"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["year"]>]>, AllOf<[AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blockConflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>[0], ["year"]>, AtPath<Parameters<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>[0], ["year"]>]>]>>;
     };
     output: {
       "schedule": {
@@ -2284,6 +2333,37 @@ export type BFSThisMessWireHttp = {
           "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["start"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["subject"]>>;
         }[];
+        "shared": "DETAILS";
+        "unplaced": {
+          "reason": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["reason"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["subject"]>>;
+        }[];
+      };
+    } | {
+      "schedule": {
+        "blockConflicts": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_blockConflicts"]>>>, ["count"]>>;
+        "conflicts": {
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["day"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["kind"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["start"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["subject"]>>;
+          "with": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["with"]>>;
+          "withBlock": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_conflicts"]>>>, ["withBlock"]>>;
+        }[];
+        "placement": {
+          "chosen": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["chosen"]>>;
+          "conflicted": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["conflicted"]>>;
+          "day": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["day"]>>;
+          "kind": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["kind"]>>;
+          "options": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["options"]>>;
+          "room": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["room"]>>;
+          "section": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["section"]>>;
+          "slots": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["slots"]>>;
+          "start": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["start"]>>;
+          "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_placement"]>>>, ["subject"]>>;
+        }[];
+        "shared": "METRICS";
         "unplaced": {
           "reason": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["reason"]>>;
           "subject": Jsonify<AtPath<QueryRow<Awaited<ReturnType<(typeof ApplicationConceptSet.concepts)["TimeBudget"]["_unplaced"]>>>, ["subject"]>>;

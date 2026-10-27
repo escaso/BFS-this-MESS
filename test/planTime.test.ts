@@ -124,8 +124,9 @@ describe("the hours of a plan", () => {
   });
 
   test("a semester's schedule: picked sections, conflicts, classes with no place", async () => {
-    const { omar, ada, road } = await setUp();
-    const s = value(await api.viewSemesterSchedule({ session: ada, road, ...fall, subjects: "A.1,B.1,C.1" })).schedule;
+    const { omar, road } = await setUp();
+    const s = value(await api.viewSemesterSchedule({ session: omar, road, ...fall, subjects: "A.1,B.1,C.1" })).schedule;
+    if (s.shared !== "DETAILS") throw new Error("the owner sees their blocked time");
     // B meets TR 9:30-11, and A's recitations are T 9 or R 9: either overlaps B.
     const recitation = s.placement.filter((p) => p.subject === "A.1" && p.kind === "RECITATION");
     expect(recitation).toHaveLength(1);

@@ -388,34 +388,34 @@ describe("semesters", () => {
 
   it("covers placement, conflicts with a block and between classes, and a week that changes", async () => {
     // Nothing blocks 9-10, so B takes its first section.
-    let rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    let rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B", withBlocks: true });
     expect(rows.filter((r) => r.subject === "B").map((r) => [r.section, r.options, r.start, r.conflicted])).toEqual([
       [1, 2, 36, false], [1, 2, 36, false], [1, 2, 36, false],
     ]);
     const { template } = await t.ensureDefault({ user: "u" });
     const { block } = await t.addBlock({ user: "u", template, category: "system:exercise", day: 2, start: 36, slots: 4 }); // Wed 9-10
-    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B", withBlocks: true });
     expect(rows.find((r) => r.subject === "B")?.section).toBe(2);
     // With 10-11 taken too, no section of B is free: the fewer conflicts win (1 each); the first.
     await t.addBlock({ user: "u", template, category: "system:work", day: 4, start: 40, slots: 4 }); // Fri 10-11
-    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B", withBlocks: true });
     expect(rows.filter((r) => r.subject === "B").map((r) => r.conflicted)).toEqual([false, true, false]);
-    expect(await t._conflicts({ user: "u", road: "r", ...at, subjects: "A,B" })).toEqual([
+    expect(await t._conflicts({ user: "u", road: "r", ...at, subjects: "A,B", withBlocks: true })).toEqual([
       { subject: "B", kind: "LECTURE", day: 2, start: 36, slots: 4, withBlock: true, with: "system:exercise" },
     ]);
     expect((await t._semesterMetrics({ user: "u", road: "r", ...at, subjects: "A,B", openSlots: 0 })).conflicts).toBe(1);
     await t.removeBlock({ user: "u", block });
-    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B", withBlocks: true });
     expect(rows.find((r) => r.subject === "B")?.section).toBe(1);
   });
 
   it("covers sections picked by hand, kept even with a conflict, and cleared", async () => {
     await t.chooseSection({ road: "r", ...at, subject: "B", kind: "LECTURE", section: 2 });
-    let rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B" });
+    let rows = await t._placement({ user: "u", road: "r", ...at, subjects: "A,B", withBlocks: true });
     expect(rows.find((r) => r.subject === "B")).toMatchObject({ section: 2, chosen: true, room: "2-2" });
-    expect((await t._placement({ user: "u", road: "other", ...at, subjects: "B" }))[0]).toMatchObject({ section: 1, chosen: false });
+    expect((await t._placement({ user: "u", road: "other", ...at, subjects: "B", withBlocks: true }))[0]).toMatchObject({ section: 1, chosen: false });
     await t.clearSection({ road: "r", ...at, subject: "B", kind: "LECTURE" });
-    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "B" });
+    rows = await t._placement({ user: "u", road: "r", ...at, subjects: "B", withBlocks: true });
     expect(rows[0]).toMatchObject({ section: 1, chosen: false });
     await expectRefusal("clearSection", "NOT_CHOSEN", t.clearSection({ road: "r", ...at, subject: "B", kind: "LECTURE" }));
     for (const bad of [{ section: 3 }, { section: 0 }, { kind: "LAB" }, { subject: "C" }, { year: 2027, term: "SPRING" as const }]) {
@@ -424,13 +424,13 @@ describe("semesters", () => {
     }
     await t.chooseSection({ road: "r", ...at, subject: "B", kind: "LECTURE", section: 2 });
     await t.forgetRoad({ road: "r" });
-    expect((await t._placement({ user: "u", road: "r", ...at, subjects: "B" }))[0]?.chosen).toBe(false);
+    expect((await t._placement({ user: "u", road: "r", ...at, subjects: "B", withBlocks: true }))[0]?.chosen).toBe(false);
   });
 
   it("covers IAP and summer (hours only) and classes with no place in the week", async () => {
     const arranged = JSON.stringify([{ kind: "LAB", arranged: true, sections: [] }]);
     await t.setClass({ subject: "L", ...fall, parts: arranged, contactUnits: 2 });
-    expect(await t._placement({ user: "u", road: "r", year: 2027, term: "IAP", subjects: "A,B" })).toEqual([]);
+    expect(await t._placement({ user: "u", road: "r", year: 2027, term: "IAP", subjects: "A,B", withBlocks: true })).toEqual([]);
     expect((await t._semesterMetrics({ user: "u", road: "r", year: 2027, term: "IAP", subjects: "A,B", openSlots: 0 })).inClass).toBeGreaterThan(0);
     expect(await t._unplaced({ year: 2027, term: "IAP", subjects: "A" })).toEqual([{ subject: "A", reason: "TERM" }]);
     expect(await t._unplaced({ ...at, subjects: "A,C,L" })).toEqual([

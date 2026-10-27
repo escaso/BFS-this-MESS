@@ -412,11 +412,14 @@ _sections(subject: String, year: Number, term: Term) : many (kind: Kind, section
 _semesterMetrics(user: User, road: Road, year: Number, term: Term, subjects: String, openSlots: Number) : one (inClass: Number, outOfClass: Number, total: Number, blocked: Number, free: Number, buffer: Number, usable: Number, capacity: Number, status: Status, conflicts: Number, estimated: Flag)
   Answers metrics(user, road, season, subjects, openSlots), where subjects are joined by commas (empty for none). Hours are rounded to hundredths. estimated is true if any hours come from anything but the schedule and subject evaluations (units, an assumption, the factor, or an open slot).
 
-_placement(user: User, road: Road, year: Number, term: Term, subjects: String) : many (subject: String, kind: Kind, section: Number, options: Number, chosen: Flag, room: String, day: Number, start: Number, slots: Number, conflicted: Flag)
-  Answers one row for each meeting of each section of pick(user, road, season, subjects), ordered by subject, kind and meeting: options is how many sections its part has, chosen whether the student picked it by hand, and conflicted whether the meeting is in a conflict. Answers no rows for IAP and SUMMER.
+_placement(user: User, road: Road, year: Number, term: Term, subjects: String, withBlocks: Flag) : many (subject: String, kind: Kind, section: Number, options: Number, chosen: Flag, room: String, day: Number, start: Number, slots: Number, conflicted: Flag)
+  Answers one row for each meeting of each section of pick(user, road, season, subjects), ordered by subject, kind and meeting: options is how many sections its part has, chosen whether the student picked it by hand, and conflicted whether the meeting is in a conflict: any conflict if withBlocks is true, and only one with another class if it is false, so that the answer says nothing about when user's time is blocked. Answers no rows for IAP and SUMMER.
 
-_conflicts(user: User, road: Road, year: Number, term: Term, subjects: String) : many (subject: String, kind: Kind, day: Number, start: Number, slots: Number, withBlock: Flag, with: String)
-  Answers one row for each conflict of pick(user, road, season, subjects): the meeting (day, start, slots) of subject and kind, and what it overlaps: a block (withBlock true, with its category) or the meeting of another class (withBlock false, with that subject). Rows are ordered by day and start.
+_conflicts(user: User, road: Road, year: Number, term: Term, subjects: String, withBlocks: Flag) : many (subject: String, kind: Kind, day: Number, start: Number, slots: Number, withBlock: Flag, with: String)
+  Answers one row for each conflict of pick(user, road, season, subjects): the meeting (day, start, slots) of subject and kind, and what it overlaps: a block (withBlock true, with its category) or the meeting of another class (withBlock false, with that subject). Rows are ordered by day and start. If withBlocks is false, the conflicts with blocks are left out.
+
+_blockConflicts(user: User, road: Road, year: Number, term: Term, subjects: String) : one (count: Number)
+  Answers how many conflicts of pick(user, road, season, subjects) are with blocks: a number that says how much of the classes' time is blocked without saying when, or in what.
 
 _unplaced(year: Number, term: Term, subjects: String) : many (subject: String, reason: String)
   Answers, in subject order, each of subjects that counts toward the hours of the season but has a part with no place in the week: reason is TERM for IAP and SUMMER, ARRANGED when a part is TBA, and NONE when no schedule is published for the season.

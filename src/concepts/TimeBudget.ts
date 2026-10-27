@@ -808,7 +808,8 @@ export class TimeBudgetConcept {
   }
 
   async _placement(
-    { user, road, year, term, subjects }: { user: string; road: string; year: number; term: Term; subjects: string },
+    { user, road, year, term, subjects, withBlocks }:
+      { user: string; road: string; year: number; term: Term; subjects: string; withBlocks: boolean },
   ) {
     const { pick, parts } = await this.#pick(user, road, year, term, subjectsOf(subjects));
     type M = { day: number; start: number; slots: number };
@@ -816,8 +817,8 @@ export class TimeBudgetConcept {
     const overlap = (a: M, b: M) => a.day === b.day && a.start < b.start + b.slots && b.start < a.start + a.slots;
     // A meeting is in a conflict if it overlaps a block, or a meeting of another picked part.
     const hit = (i: number, m: M) =>
-      pick.conflicts.some((c) => c.withBlock && c.subject === parts[i]!.subject && c.kind === parts[i]!.kind &&
-        c.meeting.day === m.day && c.meeting.start === m.start) ||
+      (withBlocks && pick.conflicts.some((c) => c.withBlock && c.subject === parts[i]!.subject && c.kind === parts[i]!.kind &&
+        c.meeting.day === m.day && c.meeting.start === m.start)) ||
       parts.some((_, j) => j !== i && meetingsOf(j).some((o) => overlap(m, o)));
     return parts
       .map((p, i) => ({ p, i, section: pick.sections[i]! }))
@@ -840,13 +841,21 @@ export class TimeBudgetConcept {
   }
 
   async _conflicts(
-    { user, road, year, term, subjects }: { user: string; road: string; year: number; term: Term; subjects: string },
+    { user, road, year, term, subjects, withBlocks }:
+      { user: string; road: string; year: number; term: Term; subjects: string; withBlocks: boolean },
   ) {
     const { pick } = await this.#pick(user, road, year, term, subjectsOf(subjects));
-    return pick.conflicts.map((c) => ({
+    return pick.conflicts.filter((c) => withBlocks || !c.withBlock).map((c) => ({
       subject: c.subject, kind: c.kind as Kind, day: c.meeting.day, start: c.meeting.start, slots: c.meeting.slots,
       withBlock: c.withBlock, with: c.with,
     }));
+  }
+
+  async _blockConflicts(
+    { user, road, year, term, subjects }: { user: string; road: string; year: number; term: Term; subjects: string },
+  ) {
+    const { pick } = await this.#pick(user, road, year, term, subjectsOf(subjects));
+    return { count: pick.conflicts.filter((c) => c.withBlock).length };
   }
 
   async _unplaced({ year, term, subjects }: { year: number; term: Term; subjects: string }) {

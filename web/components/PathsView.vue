@@ -94,6 +94,11 @@ function setReserve(value: string) {
   return changeTime(() => call("setRoadReserve", { road: props.road, buffer: Number(value) }), `This road keeps ${value}% in reserve.`);
 }
 const RESERVES = [0, 5, 10, 15, 20, 25, 30, 40, 50];
+const setShare = (shareMode: "METRICS" | "DETAILS") =>
+  changeTime(() => call("setShareMode", { road: props.road, shareMode }),
+    shareMode === "DETAILS"
+      ? "People on this road can now see your blocked time and its categories."
+      : "People on this road now see your hours only, not your blocked time.");
 
 // ---------- Comparing paths ----------
 
@@ -315,6 +320,11 @@ function picked(subject: string) {
       <p v-else-if="time" class="hint">
         Time budget: {{ time.mode === "HARD" ? "hard (only paths whose semesters fit)" : "soft (every path, with its hours)" }}.
       </p>
+      <fieldset v-if="time && isOwner" class="inline">
+        <legend>People on this road see</legend>
+        <label><input type="radio" name="share" :checked="time.shareMode === 'METRICS'" :disabled="busy" @change="setShare('METRICS')" /> Hours only</label>
+        <label><input type="radio" name="share" :checked="time.shareMode === 'DETAILS'" :disabled="busy" @change="setShare('DETAILS')" /> Hours and my blocked time (categories and times)</label>
+      </fieldset>
       <p v-if="judged?.mode === 'HARD' && judged.dropped && !noPath" class="hint" role="note">
         {{ judged.dropped }} path{{ judged.dropped === 1 ? "" : "s" }} left out because a semester doesn't fit the free time.
       </p>
