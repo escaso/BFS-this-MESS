@@ -125,6 +125,33 @@ BFSThisMess.CopyRoad at /bfsthismess/copyRoad
 BFSThisMess.CopyRoadRefused at /bfsthismess/copyRoad
 ```
 
+## History
+
+Each signed-in person has one history for their whole account (History), which only they can see or change: no request reads or changes anyone else's, so it needs no Share check. They [view it](reaction:BFSThisMess.ViewHistory), shown as [the history of a user](former:BFSThisMess.UserHistory): their start and the current season (History._profile), their prior credit (History._prior), each past season with whether it is answered and locked (History._seasons) and its subjects (History._allTaken), the first season still to be asked (History._pending), and two kinds of warning. The first is the prerequisites that the answered seasons of the history do not meet (Constrain._historyWarnings, given History._encoded), shown once a season is locked; real history may predate the catalog's rules, so these never refuse anything. The second is, for each road they own (Share._roadsOwnedBy), the planned subjects that their history leaves without what they need (Constrain._unmetDependencies), so that unlocking a semester and changing it shows what it breaks.
+
+Onboarding is these requests, in order, and can be left and taken up again at any point, since everything answered so far is kept: [add](reaction:BFSThisMess.AddPriorCredit) or [remove](reaction:BFSThisMess.RemovePriorCredit) prior credit (History.addPrior and removePrior) and [finish it](reaction:BFSThisMess.FinishPriorCredit) (History.finishPrior); [set the semester they started](reaction:BFSThisMess.SetHistoryStart) (History.setStart); then for each past season, [add](reaction:BFSThisMess.AddTaken) or [remove](reaction:BFSThisMess.RemoveTaken) a subject (History.addTaken and removeTaken) and [lock it](reaction:BFSThisMess.LockSeason) (History.lock), which also answers "nothing this term" for a season with no subjects. To correct a mistake they [unlock a season](reaction:BFSThisMess.UnlockSeason) (History.unlock), change it, and lock it again. A subject added to the history must be in the catalog (CourseOffering._course); otherwise the request is [refused](reaction:BFSThisMess.AddPriorCreditRefused) [likewise](reaction:BFSThisMess.AddTakenRefused) with UNKNOWN_SUBJECT "That subject is not in the catalog." and nothing changes. A request without a valid session is refused with NO_SUCH_SESSION, by the same refusal endpoints and by those of the other changes ([removing prior credit](reaction:BFSThisMess.RemovePriorCreditRefused), [setting the start](reaction:BFSThisMess.SetHistoryStartRefused), [removing a subject](reaction:BFSThisMess.RemoveTakenRefused), [locking](reaction:BFSThisMess.LockSeasonRefused) and [unlocking](reaction:BFSThisMess.UnlockSeasonRefused)).
+
+Every road a person owns starts from their history. After each change to it, the history (History._encoded) is placed again in each of their roads (Constrain.applyHistory): after [adding](reaction:BFSThisMess.PlaceHistoryAfterAddPrior) or [removing](reaction:BFSThisMess.PlaceHistoryAfterRemovePrior) prior credit, [setting the start](reaction:BFSThisMess.PlaceHistoryAfterSetStart), [adding](reaction:BFSThisMess.PlaceHistoryAfterAddTaken) or [removing](reaction:BFSThisMess.PlaceHistoryAfterRemoveTaken) a subject, and [locking](reaction:BFSThisMess.PlaceHistoryAfterLock) or [unlocking](reaction:BFSThisMess.PlaceHistoryAfterUnlock) a season. Each change answers only once its roads are up to date. A road gets its owner's history [when it is claimed](reaction:BFSThisMess.PlaceHistoryOnClaim) (Share.claim), so a new road and a copy start from the history of whoever made them, never from that of the copied road's owner. Roads shared with a person are not theirs, so their history does not reach them. In a road, the past seasons of the history are always locked, even while the season is unlocked in the history to be corrected: a correction reaches the road at once, and plans never add subjects to the past.
+
+```endpoints
+BFSThisMess.ViewHistory at /bfsthismess/viewHistory
+BFSThisMess.AddPriorCredit at /bfsthismess/addPriorCredit
+BFSThisMess.AddPriorCreditRefused at /bfsthismess/addPriorCredit
+BFSThisMess.RemovePriorCredit at /bfsthismess/removePriorCredit
+BFSThisMess.RemovePriorCreditRefused at /bfsthismess/removePriorCredit
+BFSThisMess.FinishPriorCredit at /bfsthismess/finishPriorCredit
+BFSThisMess.SetHistoryStart at /bfsthismess/setHistoryStart
+BFSThisMess.SetHistoryStartRefused at /bfsthismess/setHistoryStart
+BFSThisMess.AddTaken at /bfsthismess/addTaken
+BFSThisMess.AddTakenRefused at /bfsthismess/addTaken
+BFSThisMess.RemoveTaken at /bfsthismess/removeTaken
+BFSThisMess.RemoveTakenRefused at /bfsthismess/removeTaken
+BFSThisMess.LockSeason at /bfsthismess/lockSeason
+BFSThisMess.LockSeasonRefused at /bfsthismess/lockSeason
+BFSThisMess.UnlockSeason at /bfsthismess/unlockSeason
+BFSThisMess.UnlockSeasonRefused at /bfsthismess/unlockSeason
+```
+
 ## Paths and viewing
 
 A signed-in person can [list their roads](reaction:BFSThisMess.MyRoads): the roads they own (Share._roadsOwnedBy) and the roads shared with them (Share._roadsSharedWith), each shown with its name and major (Constrain._road) as [the roads of a user](former:BFSThisMess.UserRoads), so that an advisor can find every road shared with them. A shared road also shows the person's role and, where Share._ownerVisibleTo allows, the owner's username.

@@ -4,7 +4,8 @@
 // views. The road id lives in the URL (#road=...) so a road can be reopened or
 // bookmarked; every edit reloads the road, so the views stay in sync without a
 // page refresh. A share link (#join=<token>) adds the person to its road and opens it;
-// opened while signed out, it waits until they sign in.
+// opened while signed out, it waits until they sign in. A new account starts with the
+// history setup (#history); one whose history is unfinished is nudged to finish it.
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import { ApiError, call, message, type Constraints, type PlanRow, type Requirements } from "./api.ts";
 import { canEdit, isOwner, role, setAccess, sharedBy } from "./access.ts";
@@ -18,9 +19,10 @@ import PathsView from "./components/PathsView.vue";
 import ConstraintsEditor from "./components/ConstraintsEditor.vue";
 import ShareDialog from "./components/ShareDialog.vue";
 import CopyDialog from "./components/CopyDialog.vue";
+import HistoryView from "./components/HistoryView.vue";
 
 const road = ref("");
-const view = ref<"start" | "catalog" | "paths" | "edit">("start");
+const view = ref<"start" | "catalog" | "paths" | "edit" | "history">("start");
 const status = ref<{ text: string; kind: "ok" | "error" }>({ text: "", kind: "ok" });
 const constraints = ref<Constraints | null>(null);
 const requirements = ref<Requirements | null>(null);
@@ -29,6 +31,20 @@ const includeIAPAndSummer = ref(false);
 const loading = ref(false);
 const dialog = ref<"share" | "copy" | null>(null);
 const joinPending = ref(hasPendingJoin());
+// Whether the signed-in person's history is complete; null until known.
+const historyComplete = ref<boolean | null>(null);
+
+/** Reads how far the history is; a brand-new account is taken to the setup. */
+async function checkHistory(openIfNew = false) {
+  try {
+    const h = (await call("viewHistory", {})).history;
+    historyComplete.value = h.complete;
+    const untouched = !h.started && !h.priorDone && !h.prior.length;
+    if (openIfNew && untouched && !road.value) location.hash = "history";
+  } catch {
+    historyComplete.value = null; // the nudge just doesn't show
+  }
+}
 
 const say = (text: string, kind: "ok" | "error" = "ok") => (status.value = { text, kind });
 
@@ -125,6 +141,13 @@ function route() {
     return void join(takePendingJoin());
   }
   road.value = params.get("road") ?? "";
+  if (params.has("history")) {
+    road.value = "";
+    setAccess(null);
+    dialog.value = null;
+    view.value = "history";
+    return;
+  }
   setAccess(null);
   dialog.value = null;
   constraints.value = null;
@@ -151,6 +174,7 @@ watch(session, (now, before) => {
   if (now && !before) {
     say("");
     route();
+    checkHistory(true);
   } else if (!now && before && !status.value.text) {
     say("Your session has ended. Please log in again.", "error");
   }
@@ -161,6 +185,7 @@ onMounted(() => {
   loadMajors().catch(() => {});
   window.addEventListener("hashchange", route);
   route();
+  if (session.value) checkHistory(true);
 });
 onUnmounted(() => window.removeEventListener("hashchange", route));
 </script>
@@ -172,6 +197,7 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
       <nav class="inline">
         <button class="link light" @click="goStart">Roads</button>
         <button class="link light" @click="view = 'catalog'">Catalog</button>
+        <a class="link light" href="#history">History</a>
       </nav>
       <span class="spacer" />
       <span>{{ username }}</span>
@@ -185,7 +211,9 @@ onUnmounted(() => window.removeEventListener("hashchange", route));
   <template v-else>
     <CatalogView v-if="view === 'catalog'" />
 
-    <StartView v-else-if="view === 'start'" @open="openRoad" />
+    <HistoryView v-else-if="view === 'history'" @changed="checkHistory()" />
+
+    <StartView v-else-if="view === 'start'" :history-incomplete="historyComplete === false" @open="openRoad" />
 
     <p v-else-if="!constraints" class="hint padded">{{ loading ? "Loading road…" : "" }}</p>
 

@@ -272,6 +272,26 @@ function parseHistory(text: string): History | null {
   return valid ? { prior: v.prior, seasons: v.seasons } : null;
 }
 
+/**
+ * The dependencies of subject, taken in season k, that are not met when prior is taken
+ * and each subject of at is taken in its season: each worded as its options, e.g.
+ * "18.01 or 18.01A", or "2 of 6.100A, 6.100B, 6.100L" when it needs more than one.
+ */
+function unmetDependencies(
+  deps: DependencyRecord[], prior: Set<string>, at: Map<string, number>, k: number,
+): string[] {
+  return deps
+    .filter((d) => {
+      const have = d.options.filter((o) => {
+        if (prior.has(o)) return true;
+        const when = at.get(o);
+        return when !== undefined && (d.kind === "PREREQUISITE" ? when < k : when <= k);
+      }).length;
+      return have < d.count;
+    })
+    .map((d) => (d.count > 1 ? `${d.count} of ${d.options.join(", ")}` : d.options.join(" or ")));
+}
+
 const historyOf = (record: RoadRecord) => parseHistory(record.history ?? "") ?? NO_HISTORY;
 
 /** historyPrior and historySeasons of the design, for the span of record. */
@@ -1465,6 +1485,30 @@ export class ConstrainConcept {
           return { plan: i + 1, ...seasonOf(k), subject: "", slot, title, units, counts: slot };
         });
     });
+  }
+
+  /** One row per unmet dependency of each subject: the history's own, then those of pins. */
+  async #warnings(prior: Set<string>, placed: { subject: string; year: number; term: Term }[], of = placed) {
+    const deps = await this.dependencies.find({ course: { $in: of.map((p) => p.subject) } }).toArray();
+    const at = new Map(placed.map((p) => [p.subject, keyOf(p.year, p.term)]));
+    return [...of]
+      .sort((a, b) => keyOf(a.year, a.term) - keyOf(b.year, b.term) || (a.subject < b.subject ? -1 : 1))
+      .flatMap(({ subject, year, term }) =>
+        unmetDependencies(deps.filter((d) => d.course === subject), prior, at, keyOf(year, term))
+          .map((missing) => ({ year, term, subject, missing })));
+  }
+
+  async _historyWarnings({ history }: { history: string }) {
+    const parsed = parseHistory(history);
+    if (!parsed) return [];
+    const taken = parsed.seasons.flatMap((s) => s.subjects.map((subject) => ({ subject, year: s.year, term: s.term })));
+    return this.#warnings(new Set(parsed.prior), taken);
+  }
+
+  async _unmetDependencies({ road }: { road: string }) {
+    const record = await this.#requireRoad(road);
+    const planned = record.pins.filter((p) => !isFromHistory(record, p.year, p.term));
+    return this.#warnings(new Set(record.prior), record.pins, planned);
   }
 
   async _slotOptions({ road, blocks, year, term }: { road: string; blocks: string; year: number; term: Term }) {

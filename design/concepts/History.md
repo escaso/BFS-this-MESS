@@ -154,6 +154,9 @@ _seasons(user: User) : many (year: Number, term: Term, answered: Flag, locked: F
 _taken(user: User, year: Number, term: Term) : many (subject: Subject)
   Answers the subjects of the Record of user for the season, in subject order, or no rows if there is none.
 
+_allTaken(user: User) : many (year: Number, term: Term, subject: Subject)
+  Answers the subjects of every Record of user for a past season, in season order, then subject order.
+
 _pending(user: User) : optional (year: Number, term: Term)
   Answers the first season of pending(user), or no row if there is none (also when user has no start).
 

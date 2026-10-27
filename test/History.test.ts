@@ -29,6 +29,7 @@
  * ---- queries ----
  *   _profile: no Profile / partial (resume) / complete; _seasons: includes IAP and SUMMER, ends before the current
  *   _pending: first unanswered / none / no start; _encoded: answered Records only, ordered
+ *   _allTaken: every past Record's subjects, in season then subject order
  */
 
 import { beforeEach, describe, expect, it } from "bun:test";
@@ -141,6 +142,11 @@ describe("backfilling", () => {
     expect((await h._profile({ user: "u" })).complete).toBe(false); // prior credit not finished
     await h.finishPrior({ user: "u" });
     expect((await h._profile({ user: "u" })).complete).toBe(true);
+    expect(await h._allTaken({ user: "u" })).toEqual([
+      { year: 2025, term: "FALL", subject: "18.01" },
+      { year: 2025, term: "FALL", subject: "8.01" },
+      { year: 2026, term: "SPRING", subject: "18.02" },
+    ]);
     expect(JSON.parse((await h._encoded({ user: "u" })).history)).toEqual({
       prior: [],
       seasons: [
@@ -198,6 +204,7 @@ describe("backfilling", () => {
   it("covers a user with no Profile", async () => {
     expect(await h._seasons({ user: "x" })).toEqual([]);
     expect(await h._pending({ user: "x" })).toEqual([]);
+    expect(await h._allTaken({ user: "x" })).toEqual([]);
     expect(await h._taken({ user: "x", year: 2025, term: "FALL" })).toEqual([]);
     expect(JSON.parse((await h._encoded({ user: "x" })).history)).toEqual({ prior: [], seasons: [] });
   });

@@ -39,6 +39,17 @@ export function seasonsOf(c: Constraints, includeIAPAndSummer: boolean): Season[
   );
 }
 
+const YEARS = ["Freshman", "Sophomore", "Junior", "Senior"];
+// The academic year a season is in: FALL Y starts the year, IAP, SPRING and SUMMER of Y + 1 end it.
+const academicYear = (s: Season) => (s.term === "FALL" ? s.year : s.year - 1);
+
+/** Where a season falls for a student who started in start, e.g. "Freshman fall", "Year 5 spring". */
+export function classYear(start: Season, s: Season): string {
+  const n = academicYear(s) - academicYear(start);
+  const year = n < 0 ? "Before MIT" : (YEARS[n] ?? `Year ${n + 1}`);
+  return `${year} ${NAMES[s.term].toLowerCase()}`;
+}
+
 // ---------- Display ----------
 
 // MIT units look like "3-0-9" (= 12).

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // Your roads (owned, and shared with you) to reopen by name, and a form to
-// make a new road.
+// make a new road. Until the history is complete, a nudge leads to it.
 import { onMounted, ref } from "vue";
 import { call, message, type Output, type Term } from "../api.ts";
 import { loadMajors, majorLabel, majors } from "../majors.ts";
 
+defineProps<{ historyIncomplete?: boolean }>();
 const emit = defineEmits<{ open: [road: string] }>();
 
 type Roads = Output<"myRoads">["roads"];
@@ -54,6 +55,10 @@ async function createRoad() {
 <template>
   <main>
     <h1>Your roads</h1>
+    <p v-if="historyIncomplete" class="history-nudge" role="note">
+      <strong>Finish your history.</strong> Add your credit from before MIT and what you took each past semester, so
+      every road starts from it, locked. <a href="#history">Continue setting it up</a>
+    </p>
     <p v-if="listError" class="error" role="alert">{{ listError }}</p>
     <p v-else-if="!roads" class="hint">Loading…</p>
     <template v-else>

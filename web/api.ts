@@ -63,6 +63,10 @@ const blockErrors = {
 // role the requester may not use, NOT_FOUND a road they may not see.
 const ownerOnly = (what: string) => ({ FORBIDDEN: `Only the owner can ${what}.` });
 const noUser = "No user with that username.";
+const notInCatalog = "That subject is not in the catalog.";
+const alreadyTaken = "That subject is already in your history.";
+const lockedSeason = "That semester is locked. Unlock it to change it.";
+const notPast = "That semester is not one of your past semesters.";
 
 const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> = {
   register: { INVALID_REQUEST: "A username and a password are needed.", CONFLICT: "Username is already taken." },
@@ -73,10 +77,9 @@ const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> 
   addPrior: { NOT_FOUND: "That subject is not in the catalog." },
   pin: {
     NOT_FOUND: "That subject is not in the catalog.",
-    CONFLICT: "That semester is locked, or the subject is already prior credit.",
+    CONFLICT: "That semester is locked or part of your history, or the subject is already prior credit.",
     INVALID_REQUEST: "That semester is outside the road.",
   },
-  unPin: { NOT_FOUND: "That subject is not pinned in this road.", CONFLICT: "That semester is locked." },
   setCap: { INVALID_REQUEST: "A cap cannot be negative." },
   addBlock: { INVALID_REQUEST: blockErrors.INVALID_REQUEST },
   setCount: blockErrors,
@@ -99,6 +102,19 @@ const BY_ENDPOINT: Partial<Record<Endpoint, Partial<Record<Category, string>>>> 
   regenerateLink: ownerOnly("manage this road's links"),
   joinLink: { NOT_FOUND: "This link is no longer valid." },
   copyRoad: { INVALID_REQUEST: "A copy needs a name." },
+  // History (src/http.ts): NOT_FOUND a subject not in the catalog or not in that semester,
+  // CONFLICT a subject already in the history, FORBIDDEN a locked semester, INVALID_REQUEST
+  // a semester that is not one of the past ones.
+  addPriorCredit: { NOT_FOUND: notInCatalog, CONFLICT: alreadyTaken },
+  removePriorCredit: { NOT_FOUND: "That subject is not in your prior credit." },
+  setHistoryStart: { INVALID_REQUEST: "You must have started in a Fall or Spring semester." },
+  addTaken: { NOT_FOUND: notInCatalog, CONFLICT: alreadyTaken, FORBIDDEN: lockedSeason, INVALID_REQUEST: notPast },
+  removeTaken: { NOT_FOUND: "That subject is not in that semester.", FORBIDDEN: lockedSeason },
+  lockSeason: { INVALID_REQUEST: notPast },
+  unlockSeason: { CONFLICT: "That semester is not locked." },
+  unPin: { NOT_FOUND: "That subject is not pinned in this road.", CONFLICT: "That semester is locked or part of your history." },
+  setLocked: { CONFLICT: "That semester is part of your history. Change it in your history." },
+  resetSemester: { CONFLICT: "That semester is part of your history. Change it in your history." },
 };
 
 export class ApiError extends Error {

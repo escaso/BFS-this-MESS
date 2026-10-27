@@ -46,5 +46,16 @@ export const policy = httpPolicy({
     BAD_CAP_TYPE: "INVALID_REQUEST",
     NEGATIVE_LIMIT: "INVALID_REQUEST",
     NO_SUCH_SEMESTER: "NOT_FOUND",
+    HISTORY_SEASON: "CONFLICT",
+    HISTORY_PRIOR: "CONFLICT",
+    BAD_HISTORY: "INVALID_REQUEST",
+    // History (UNKNOWN_SUBJECT is the composition's catalog check). On addTaken the four
+    // refusals have four categories: NOT_PAST, LOCKED, ALREADY_TAKEN and UNKNOWN_SUBJECT.
+    UNKNOWN_SUBJECT: "NOT_FOUND",
+    ALREADY_TAKEN: "CONFLICT",
+    NOT_PAST: "INVALID_REQUEST",
+    LOCKED: "FORBIDDEN",
+    NOT_TAKEN: "NOT_FOUND",
+    NOT_LOCKED: "CONFLICT",
   },
 });

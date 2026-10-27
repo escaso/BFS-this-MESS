@@ -2,7 +2,7 @@ import { endpoint, receive, respond } from "@mit-sdg/sync-engine/boundary";
 import { compute, each, form, former, no, reaction, when, where } from "@mit-sdg/sync-engine/language";
 import { concepts } from "../concepts.ts";
 
-const { Authentication, Share, CourseOffering, Constrain, Requirements } = concepts;
+const { Authentication, Share, CourseOffering, Constrain, Requirements, History } = concepts;
 
 type Var = symbol;
 
@@ -218,10 +218,10 @@ const RoadConstraints = former(
     { road },
     {
       name, major, startYear, startTerm, endYear, endTerm,
-      priorSubject,
+      priorSubject, priorFromHistory,
       block, count, option, blockTitle, blockTechnical, blockOrigin,
       pinSubject, pinYear, pinTerm,
-      year, term, locked, maxUnits, maxTechnicalUnits,
+      year, term, locked, fromHistory, maxUnits, maxTechnicalUnits,
     },
   ) =>
     where(Constrain._road({ road }).is({ name, major, startYear, startTerm, endYear, endTerm })).form({
@@ -231,7 +231,8 @@ const RoadConstraints = former(
       startTerm,
       endYear,
       endTerm,
-      prior: each(Constrain._prior({ road }).is({ subject: priorSubject })).form({ subject: priorSubject }),
+      prior: each(Constrain._prior({ road }).is({ subject: priorSubject, fromHistory: priorFromHistory }))
+        .form({ subject: priorSubject, fromHistory: priorFromHistory }),
       blocks: each(
         Constrain._blocks({ road }).is({ block, count, subject: option, title: blockTitle, technical: blockTechnical, origin: blockOrigin }),
       ).form({ block, count, subject: option, title: blockTitle, technical: blockTechnical, origin: blockOrigin }),
@@ -241,8 +242,8 @@ const RoadConstraints = former(
         term: pinTerm,
       }),
       semesters: each(
-        Constrain._semesters({ road }).is({ year, term, locked, maxUnits, maxTechnicalUnits }),
-      ).form({ year, term, locked, maxUnits, maxTechnicalUnits }),
+        Constrain._semesters({ road }).is({ year, term, locked, fromHistory, maxUnits, maxTechnicalUnits }),
+      ).form({ year, term, locked, fromHistory, maxUnits, maxTechnicalUnits }),
     }),
 );
 
@@ -360,6 +361,40 @@ const UserRoads = former(
           Authentication._username({ user: owner }).is({ username: ownerName }),
         )
         .form({ road: shown, username: ownerName }),
+    }),
+);
+
+const UserHistory = former(
+  "the history of a user",
+  (
+    { user },
+    {
+      started, startYear, startTerm, priorDone, currentYear, currentTerm, complete, history,
+      prior, year, term, answered, locked, count, takenYear, takenTerm, taken, pendingYear, pendingTerm,
+      warnYear, warnTerm, warnSubject, missing, road, name, roadYear, roadTerm, roadSubject, roadMissing,
+    },
+  ) =>
+    where(
+      History._profile({ user }).is({ started, startYear, startTerm, priorDone, currentYear, currentTerm, complete }),
+      History._encoded({ user }).is({ history }),
+    ).form({
+      started, startYear, startTerm, priorDone, currentYear, currentTerm, complete,
+      prior: each(History._prior({ user }).is({ subject: prior })).form({ subject: prior }),
+      seasons: each(History._seasons({ user }).is({ year, term, answered, locked, count }))
+        .form({ year, term, answered, locked, count }),
+      taken: each(History._allTaken({ user }).is({ year: takenYear, term: takenTerm, subject: taken }))
+        .form({ year: takenYear, term: takenTerm, subject: taken }),
+      pending: each(History._pending({ user }).is({ year: pendingYear, term: pendingTerm }))
+        .form({ year: pendingYear, term: pendingTerm }),
+      warnings: each(Constrain._historyWarnings({ history }).is({ year: warnYear, term: warnTerm, subject: warnSubject, missing }))
+        .form({ year: warnYear, term: warnTerm, subject: warnSubject, missing }),
+      // Planned subjects, in roads the user owns, that the history leaves without what they need.
+      roadWarnings: each(Share._roadsOwnedBy({ user }).is({ road }))
+        .where(
+          Constrain._road({ road }).is({ name }),
+          Constrain._unmetDependencies({ road }).is({ year: roadYear, term: roadTerm, subject: roadSubject, missing: roadMissing }),
+        )
+        .form({ road, name, year: roadYear, term: roadTerm, subject: roadSubject, missing: roadMissing }),
     }),
 );
 
@@ -901,12 +936,155 @@ const CopyRoad = endpoint("/bfsthismess/copyRoad", ({ session, user, road, name,
     .where(Authentication._authenticate({ session }).is({ user }))
     .then(Share.claim({ road: copy, user }).responds({}))
     .then(Requirements.copyChoices({ from: road, to: copy }).responds({}))
+    .afterFlowSettles()
     .then(respond({ road: copy })),
 );
 
 // Same path as CopyRoad: the requests it refuses.
 const CopyRoadRefused = endpoint("/bfsthismess/copyRoad", ({ session, user, road, name }) =>
   receive({ session, road, name }).then(noSession(session), hiddenRoad(session, user, road)),
+);
+
+// ---------- History ----------
+// A user's history is theirs alone: each request reads only the requester's. After each
+// change it is placed again in every road they own (PlaceHistory*), and a new or copied
+// road gets its owner's history when it is claimed, before the request answers.
+
+const signedIn = (session: Var, user: Var, ...more: Parameters<typeof where>) =>
+  where(Authentication._authenticate({ session }).is({ user }), ...more);
+const inCatalog = (subject: Var) => CourseOffering._course({ course: subject }).is({ found: true });
+const notInCatalog = (subject: Var) => CourseOffering._course({ course: subject }).is({ found: false });
+
+const ViewHistory = endpoint("/bfsthismess/viewHistory", ({ session, user }) =>
+  receive({ session }).then(
+    noSession(session),
+    signedIn(session, user).then(respond({ history: UserHistory({ user }) })).named("signed-in"),
+  ),
+);
+
+// Each change answers once the history is placed in the user's roads. A request without a
+// session, or naming a subject not in the catalog, is answered by the *Refused endpoint on
+// the same path.
+const unknownSubject = (session: Var, subject: Var) =>
+  where(Authentication._authenticate({ session }), notInCatalog(subject))
+    .then(respond({ error: "UNKNOWN_SUBJECT" }))
+    .named("unknown-subject");
+
+const AddPriorCredit = endpoint("/bfsthismess/addPriorCredit", ({ session, user, subject }) =>
+  receive({ session, subject })
+    .where(Authentication._authenticate({ session }).is({ user }), inCatalog(subject))
+    .then(History.addPrior({ user, subject }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+const AddPriorCreditRefused = endpoint("/bfsthismess/addPriorCredit", ({ session, subject }) =>
+  receive({ session, subject }).then(noSession(session), unknownSubject(session, subject)),
+);
+
+const RemovePriorCredit = endpoint("/bfsthismess/removePriorCredit", ({ session, user, subject }) =>
+  receive({ session, subject })
+    .where(Authentication._authenticate({ session }).is({ user }))
+    .then(History.removePrior({ user, subject }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+const RemovePriorCreditRefused = endpoint("/bfsthismess/removePriorCredit", ({ session, subject }) =>
+  receive({ session, subject }).then(noSession(session)),
+);
+
+const FinishPriorCredit = endpoint("/bfsthismess/finishPriorCredit", ({ session, user }) =>
+  receive({ session }).then(
+    noSession(session),
+    signedIn(session, user).then(History.finishPrior({ user }).responds({})).then(respond({})).named("signed-in"),
+  ),
+);
+
+const SetHistoryStart = endpoint("/bfsthismess/setHistoryStart", ({ session, user, year, term }) =>
+  receive({ session, year, term })
+    .where(Authentication._authenticate({ session }).is({ user }))
+    .then(History.setStart({ user, year, term }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+const SetHistoryStartRefused = endpoint("/bfsthismess/setHistoryStart", ({ session, year, term }) =>
+  receive({ session, year, term }).then(noSession(session)),
+);
+
+const AddTaken = endpoint("/bfsthismess/addTaken", ({ session, user, year, term, subject }) =>
+  receive({ session, year, term, subject })
+    .where(Authentication._authenticate({ session }).is({ user }), inCatalog(subject))
+    .then(History.addTaken({ user, year, term, subject }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+const AddTakenRefused = endpoint("/bfsthismess/addTaken", ({ session, year, term, subject }) =>
+  receive({ session, year, term, subject }).then(noSession(session), unknownSubject(session, subject)),
+);
+
+const RemoveTaken = endpoint("/bfsthismess/removeTaken", ({ session, user, year, term, subject }) =>
+  receive({ session, year, term, subject })
+    .where(Authentication._authenticate({ session }).is({ user }))
+    .then(History.removeTaken({ user, year, term, subject }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+const RemoveTakenRefused = endpoint("/bfsthismess/removeTaken", ({ session, year, term, subject }) =>
+  receive({ session, year, term, subject }).then(noSession(session)),
+);
+
+const LockSeason = endpoint("/bfsthismess/lockSeason", ({ session, user, year, term }) =>
+  receive({ session, year, term })
+    .where(Authentication._authenticate({ session }).is({ user }))
+    .then(History.lock({ user, year, term }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+const LockSeasonRefused = endpoint("/bfsthismess/lockSeason", ({ session, year, term }) =>
+  receive({ session, year, term }).then(noSession(session)),
+);
+
+const UnlockSeason = endpoint("/bfsthismess/unlockSeason", ({ session, user, year, term }) =>
+  receive({ session, year, term })
+    .where(Authentication._authenticate({ session }).is({ user }))
+    .then(History.unlock({ user, year, term }).responds({}))
+    .afterFlowSettles()
+    .then(respond({})),
+);
+const UnlockSeasonRefused = endpoint("/bfsthismess/unlockSeason", ({ session, year, term }) =>
+  receive({ session, year, term }).then(noSession(session)),
+);
+
+// Each change to a history places it again in every road its user owns.
+const placeIn = (user: Var, road: Var, history: Var) =>
+  [Share._roadsOwnedBy({ user }).is({ road }), History._encoded({ user }).is({ history })] as const;
+
+const PlaceHistoryAfterAddPrior = reaction(({ user, road, history }) =>
+  when(History.addPrior({ user }).responds({})).where(...placeIn(user, road, history)).then(Constrain.applyHistory({ road, history })),
+);
+const PlaceHistoryAfterRemovePrior = reaction(({ user, road, history }) =>
+  when(History.removePrior({ user }).responds({})).where(...placeIn(user, road, history)).then(Constrain.applyHistory({ road, history })),
+);
+const PlaceHistoryAfterSetStart = reaction(({ user, road, history }) =>
+  when(History.setStart({ user }).responds({})).where(...placeIn(user, road, history)).then(Constrain.applyHistory({ road, history })),
+);
+const PlaceHistoryAfterAddTaken = reaction(({ user, road, history }) =>
+  when(History.addTaken({ user }).responds({})).where(...placeIn(user, road, history)).then(Constrain.applyHistory({ road, history })),
+);
+const PlaceHistoryAfterRemoveTaken = reaction(({ user, road, history }) =>
+  when(History.removeTaken({ user }).responds({})).where(...placeIn(user, road, history)).then(Constrain.applyHistory({ road, history })),
+);
+const PlaceHistoryAfterLock = reaction(({ user, road, history }) =>
+  when(History.lock({ user }).responds({})).where(...placeIn(user, road, history)).then(Constrain.applyHistory({ road, history })),
+);
+const PlaceHistoryAfterUnlock = reaction(({ user, road, history }) =>
+  when(History.unlock({ user }).responds({})).where(...placeIn(user, road, history)).then(Constrain.applyHistory({ road, history })),
+);
+
+// A new road, or a copy, starts from its owner's history.
+const PlaceHistoryOnClaim = reaction(({ road, user, history }) =>
+  when(Share.claim({ road, user }).responds({}))
+    .where(History._encoded({ user }).is({ history }))
+    .then(Constrain.applyHistory({ road, history })),
 );
 
 // ---------- Paths and viewing ----------
@@ -1037,6 +1215,31 @@ export const composition = {
   RoadLinks,
   RoadAccess,
   UserRoads,
+  UserHistory,
+  ViewHistory,
+  AddPriorCredit,
+  AddPriorCreditRefused,
+  RemovePriorCredit,
+  RemovePriorCreditRefused,
+  FinishPriorCredit,
+  SetHistoryStart,
+  SetHistoryStartRefused,
+  AddTaken,
+  AddTakenRefused,
+  RemoveTaken,
+  RemoveTakenRefused,
+  LockSeason,
+  LockSeasonRefused,
+  UnlockSeason,
+  UnlockSeasonRefused,
+  PlaceHistoryAfterAddPrior,
+  PlaceHistoryAfterRemovePrior,
+  PlaceHistoryAfterSetStart,
+  PlaceHistoryAfterAddTaken,
+  PlaceHistoryAfterRemoveTaken,
+  PlaceHistoryAfterLock,
+  PlaceHistoryAfterUnlock,
+  PlaceHistoryOnClaim,
   Register,
   LogIn,
   LogOut,

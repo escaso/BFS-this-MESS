@@ -7,7 +7,7 @@
 // locked as the path has it. Subjects are coloured by the requirement they count toward.
 import { computed, ref, watch } from "vue";
 import { call, message, type Constraints, type PlanRow } from "../api.ts";
-import { canEdit, canShare } from "../access.ts";
+import { canEdit, canShare, isOwner } from "../access.ts";
 import { key, label, rank, sameSeason, seasonsBetween, type Season } from "../util.ts";
 import SemesterDetails from "./SemesterDetails.vue";
 import SlotPicker from "./SlotPicker.vue";
@@ -101,6 +101,8 @@ function shortTitle(title: string) {
   return (parts.length > 1 ? parts.filter((p) => p !== "HASS") : parts).join(" · ");
 }
 const isLocked = (s: Season) => props.constraints.semesters.some((r) => sameSeason(r, s) && r.locked);
+// A semester of the owner's history: locked, and changed only in their history.
+const fromHistory = (s: Season) => props.constraints.semesters.some((r) => sameSeason(r, s) && r.fromHistory);
 
 // The caps of a semester (0 means none; IAP is capped at 12 unless set), and the units the path takes there.
 function capsOf(s: Season) {
@@ -249,8 +251,11 @@ function picked(subject: string) {
         @click="toggle(s)"
       >
         <h3>{{ label(s) }}</h3>
+        <p v-if="fromHistory(s)" class="lock hint" :title="`${label(s)} is part of ${isOwner ? 'your' : 'the owner\'s'} history`">
+          🔒 {{ isOwner ? "Your history" : "History" }}
+        </p>
         <button
-          v-if="canEdit && ((!noPath && !pastEnd(s)) || isLocked(s))"
+          v-else-if="canEdit && ((!noPath && !pastEnd(s)) || isLocked(s))"
           class="lock link"
           :disabled="busy"
           :title="isLocked(s) ? `Unlock ${label(s)} (its subjects stay pinned)` : `Lock ${label(s)} as this path has it`"

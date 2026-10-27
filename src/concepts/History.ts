@@ -251,6 +251,14 @@ export class HistoryConcept {
     return [...(record?.subjects ?? [])].sort(bySubject).map((subject) => ({ subject }));
   }
 
+  async _allTaken({ user }: { user: string }) {
+    const profile = await this.#profile(user);
+    const records = await this.#pastRecords(user, profile);
+    return [...records.entries()]
+      .sort(([a], [b]) => a - b)
+      .flatMap(([, r]) => [...r.subjects].sort(bySubject).map((subject) => ({ year: r.year, term: r.term, subject })));
+  }
+
   async _pending({ user }: { user: string }) {
     const profile = await this.#profile(user);
     const records = await this.#pastRecords(user, profile);
