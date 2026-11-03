@@ -11,3 +11,5 @@ In Task 5, can only see the compare paths sections and is trying to interpret it
 Lastly, when logging back in, whe forgot her password and was locked out of her app because I did not include a Forgot Password option.
 
 Overall, this user was very confused during the week set up. They were trying to add slots with the details section instead of selecting. It also seemed like she skimmed a lot of the information, like the hour breakdown, that could have maybe been more useful if placed elsewhere.
+
+Thought the app would be well suited for underclassmen to know how many classes to take per semester approximately.
