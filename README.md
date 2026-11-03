@@ -53,3 +53,12 @@ With MongoDB running (`bun run db:up`), run `bun test`. Tests cover each concept
 ## Screen recording
 
 [Final demo video](https://youtu.be/-OwBFTpCWnw)
+
+## **USER TESTING**
+
+* [Task list](documentation/task.md)
+* User Study reports:
+    1. [Tester 1](documentation/study1.md)
+    2. [Tester 2](documentation/study2.md)
+    
+* [3-5 Design flaws](documentation/flaws.md)
